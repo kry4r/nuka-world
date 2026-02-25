@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-nuka-page: #1A1A1A;
+  --color-nuka-card: #212121;
+  --color-nuka-elevated: #2D2D2D;
+  --color-nuka-placeholder: #3D3D3D;
+  --color-nuka-orange: #FF6B35;
+  --color-nuka-teal: #00D4AA;
+  --color-nuka-text: #FFFFFF;
+  --color-nuka-muted: #777777;
+  --font-heading: "Oswald", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+body {
+  background: var(--color-nuka-page);
+  color: var(--color-nuka-text);
+  font-family: var(--font-mono);
+  margin: 0;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3D3D3D; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }

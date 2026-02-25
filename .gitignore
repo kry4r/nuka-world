@@ -1,0 +1,31 @@
+# Binaries
+nuka
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+
+# Docker
+neo4j_data/
+pg_data/
+redis_data/
+
+# Node (web frontend)
+web/node_modules/
+web/.next/
