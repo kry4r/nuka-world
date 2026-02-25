@@ -1,5 +1,5 @@
 # Binaries
-nuka
+/nuka
 *.exe
 *.dll
 *.so
