@@ -1,0 +1,39 @@
+{
+  "schemas": [
+    {
+      "name": "Go并发",
+      "description": "Go语言并发编程模型，包括goroutine、channel、sync包",
+      "strength": 0.9
+    },
+    {
+      "name": "数据库设计",
+      "description": "关系型数据库设计原则，包括范式、索引、事务",
+      "strength": 0.8
+    },
+    {
+      "name": "API设计",
+      "description": "RESTful API设计最佳实践，包括路由、认证、版本控制",
+      "strength": 0.7
+    }
+  ],
+  "memories": {
+    "Go并发": [
+      "goroutine是Go语言的轻量级线程，由Go运行时管理",
+      "channel用于goroutine之间的通信和同步",
+      "sync.WaitGroup用于等待一组goroutine完成",
+      "select语句用于在多个channel操作中选择",
+      "context包用于控制goroutine的生命周期"
+    ],
+    "数据库设计": [
+      "第三范式要求消除传递依赖",
+      "B+树索引适合范围查询",
+      "事务的ACID特性保证数据一致性",
+      "连接池可以减少数据库连接开销"
+    ],
+    "API设计": [
+      "RESTful API使用HTTP方法表示操作语义",
+      "JWT token用于无状态认证",
+      "API版本控制可以通过URL路径或Header实现"
+    ]
+  }
+}
