@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -41,6 +42,9 @@ func (p *OpenAIProvider) Name() string { return p.config.Name }
 // chatURL builds the chat completions URL. If Extra["path_model"] is "true",
 // the model name is inserted into the URL path (e.g. for 讯飞星辰MaaS).
 func (p *OpenAIProvider) chatURL(model string) string {
+	if tpl := p.config.Extra["url_template"]; tpl != "" {
+		return strings.ReplaceAll(tpl, "{model}", model)
+	}
 	if p.config.Extra["path_model"] == "true" && model != "" {
 		return p.config.Endpoint + "/" + model + "/chat/completions"
 	}

@@ -316,6 +316,9 @@ func (c *CaptureAdapter) Platform() string                                  { re
 func (c *CaptureAdapter) Connect(ctx context.Context) error                 { return nil }
 func (c *CaptureAdapter) OnMessage(h gateway.MessageHandler)                { c.handler = h }
 func (c *CaptureAdapter) Close() error                                      { return nil }
+func (c *CaptureAdapter) Status() gateway.AdapterStatus {
+	return gateway.AdapterStatus{Platform: "test", Connected: true}
+}
 
 func (c *CaptureAdapter) Send(ctx context.Context, msg *gateway.OutboundMessage) error {
 	c.mu.Lock()

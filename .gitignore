@@ -1,5 +1,6 @@
 # Binaries
 /nuka
+/chat
 *.exe
 *.dll
 *.so
@@ -29,3 +30,6 @@ redis_data/
 # Node (web frontend)
 web/node_modules/
 web/.next/
+
+# configs
+/configs

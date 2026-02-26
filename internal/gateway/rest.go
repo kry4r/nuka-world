@@ -35,6 +35,14 @@ func (a *RESTAdapter) Connect(_ context.Context) error { return nil }
 
 func (a *RESTAdapter) OnMessage(h MessageHandler) { a.handler = h }
 
+func (a *RESTAdapter) Status() AdapterStatus {
+	return AdapterStatus{
+		Platform:  "rest",
+		Connected: true,
+		Details:   "ready",
+	}
+}
+
 func (a *RESTAdapter) Close() error { return nil }
 
 // Send delivers a message to a waiting REST channel.

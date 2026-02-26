@@ -24,6 +24,7 @@ type Handler struct {
 	steward     *orchestrator.Steward
 	broadcaster *gateway.Broadcaster
 	restGW      *gateway.RESTAdapter
+	gw          *gateway.Gateway
 	clock       *world.WorldClock
 	scheduleMgr *world.ScheduleManager
 	stateMgr    *world.StateManager
@@ -73,6 +74,7 @@ func NewHandler(
 	steward *orchestrator.Steward,
 	broadcaster *gateway.Broadcaster,
 	restGW *gateway.RESTAdapter,
+	gw *gateway.Gateway,
 	clock *world.WorldClock,
 	scheduleMgr *world.ScheduleManager,
 	stateMgr *world.StateManager,
@@ -86,6 +88,7 @@ func NewHandler(
 		steward:     steward,
 		broadcaster: broadcaster,
 		restGW:      restGW,
+		gw:          gw,
 		clock:       clock,
 		scheduleMgr: scheduleMgr,
 		stateMgr:    stateMgr,
@@ -126,6 +129,7 @@ func (h *Handler) Router() http.Handler {
 		r.Mount("/gateway/rest", h.restGW.Routes())
 		r.Get("/adapters", h.listAdapters)
 		r.Post("/adapters", h.saveAdapter)
+		r.Get("/gateway/status", h.gatewayStatus)
 
 		// Provider routes
 		r.Get("/providers", h.listProviders)
@@ -453,6 +457,15 @@ func (h *Handler) saveAdapter(w http.ResponseWriter, r *http.Request) {
 	}
 	h.adapterMu.Unlock()
 	writeJSON(w, http.StatusOK, a)
+}
+
+func (h *Handler) gatewayStatus(w http.ResponseWriter, r *http.Request) {
+	if h.gw == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway not initialized"})
+		return
+	}
+	statuses := h.gw.StatusAll()
+	writeJSON(w, http.StatusOK, statuses)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

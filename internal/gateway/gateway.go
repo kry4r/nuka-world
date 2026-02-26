@@ -125,3 +125,14 @@ func (g *Gateway) Adapters() []string {
 	}
 	return names
 }
+
+// StatusAll returns the status of all registered adapters.
+func (g *Gateway) StatusAll() []AdapterStatus {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	statuses := make([]AdapterStatus, 0, len(g.adapters))
+	for _, adapter := range g.adapters {
+		statuses = append(statuses, adapter.Status())
+	}
+	return statuses
+}

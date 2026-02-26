@@ -64,6 +64,16 @@ func (s *Steward) ListTeams() []*Team {
 	return teams
 }
 
+// FindTeamByName looks up a team by its name (case-insensitive).
+func (s *Steward) FindTeamByName(name string) (*Team, bool) {
+	for _, t := range s.teams {
+		if strings.EqualFold(t.Name, name) {
+			return t, true
+		}
+	}
+	return nil, false
+}
+
 // RegisterTeam adds a team under the steward's management.
 func (s *Steward) RegisterTeam(team *Team) {
 	if team.ID == "" {

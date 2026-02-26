@@ -1,19 +1,24 @@
-version: '3.9'
 services:
   nuka:
     build: .
     ports:
-      - "8080:8080"
+      - "${PORT:-3210}:3210"
     depends_on:
-      - neo4j
-      - postgres
-      - redis
+      neo4j:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     environment:
+      - CONFIG_PATH=/app/configs/nuka.json
       - NEO4J_URI=bolt://neo4j:7687
-      - POSTGRES_DSN=postgres://${POSTGRES_USER:-nuka}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nukaworld}?sslmode=disable
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-nukaworld}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-nuka}:${POSTGRES_PASSWORD:-nukaworld}@postgres:5432/${POSTGRES_DB:-nukaworld}?sslmode=disable
       - REDIS_URL=redis://redis:6379
+    restart: unless-stopped
 
   neo4j:
     image: neo4j:5-community
@@ -21,27 +26,39 @@ services:
       - "7474:7474"
       - "7687:7687"
     environment:
-      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD}
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-nukaworld}
     volumes:
       - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-nukaworld}
       POSTGRES_USER: ${POSTGRES_USER:-nuka}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nukaworld}
     volumes:
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nuka} -d ${POSTGRES_DB:-nukaworld}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   neo4j_data:

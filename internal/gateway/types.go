@@ -12,6 +12,7 @@ type GatewayAdapter interface {
 	Send(ctx context.Context, msg *OutboundMessage) error
 	OnMessage(handler MessageHandler)
 	Broadcast(ctx context.Context, msg *BroadcastMessage) error
+	Status() AdapterStatus
 	Close() error
 }
 
@@ -56,4 +57,13 @@ type BroadcastMessage struct {
 	AgentID   string        `json:"agent_id"`
 	Priority  int           `json:"priority"`
 	Platforms []string      `json:"platforms,omitempty"`
+}
+
+// AdapterStatus reports the runtime state of a gateway adapter.
+type AdapterStatus struct {
+	Platform    string     `json:"platform"`
+	Connected   bool       `json:"connected"`
+	ConnectedAt *time.Time `json:"connected_at,omitempty"`
+	Error       string     `json:"error,omitempty"`
+	Details     string     `json:"details,omitempty"`
 }

@@ -28,6 +28,9 @@ type SlackAdapter struct {
 	handler   MessageHandler
 	personas  map[string]*AgentPersona // agentID -> persona
 	threads   map[string]string        // channelID:userID -> thread_ts for conversation continuity
+	connected   bool
+	connectedAt time.Time
+	lastError   string
 	mu        sync.RWMutex
 	logger    *zap.Logger
 }
@@ -66,15 +69,42 @@ func (a *SlackAdapter) SetPersona(agentID string, persona *AgentPersona) {
 	a.personas[agentID] = persona
 }
 
-// Connect starts the Socket Mode event loop in a background goroutine.
+// Connect starts the Socket Mode event loop and verifies the connection via AuthTest.
 func (a *SlackAdapter) Connect(ctx context.Context) error {
 	go a.handleEvents(ctx)
 	go func() {
 		if err := a.socket.RunContext(ctx); err != nil {
 			a.logger.Error("slack socket mode error", zap.Error(err))
+			a.mu.Lock()
+			a.lastError = err.Error()
+			a.connected = false
+			a.mu.Unlock()
 		}
 	}()
-	a.logger.Info("slack adapter connected via socket mode")
+
+	// Verify connection with AuthTest
+	resp, err := a.client.AuthTestContext(ctx)
+	if err != nil {
+		a.mu.Lock()
+		a.lastError = fmt.Sprintf("AuthTest failed: %v", err)
+		a.connected = false
+		a.mu.Unlock()
+		a.logger.Error("slack AuthTest failed — check bot token",
+			zap.Error(err))
+		return fmt.Errorf("slack auth test: %w", err)
+	}
+
+	now := time.Now()
+	a.mu.Lock()
+	a.connected = true
+	a.connectedAt = now
+	a.lastError = ""
+	a.mu.Unlock()
+
+	a.logger.Info("slack adapter connected via socket mode",
+		zap.String("bot", resp.User),
+		zap.String("team", resp.Team),
+		zap.String("url", resp.URL))
 	return nil
 }
 
@@ -217,4 +247,20 @@ func (a *SlackAdapter) Broadcast(_ context.Context, msg *BroadcastMessage) error
 // Close is a no-op; the socket context cancellation handles shutdown.
 func (a *SlackAdapter) Close() error {
 	return nil
+}
+
+func (a *SlackAdapter) Status() AdapterStatus {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	s := AdapterStatus{
+		Platform:  "slack",
+		Connected: a.connected,
+		Error:     a.lastError,
+	}
+	if a.connected {
+		t := a.connectedAt
+		s.ConnectedAt = &t
+		s.Details = fmt.Sprintf("bot connected at %s", a.connectedAt.Format(time.RFC3339))
+	}
+	return s
 }

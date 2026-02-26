@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nidhogg/nuka-world/internal/mcp"
 	"github.com/nidhogg/nuka-world/internal/provider"
 )
 
@@ -147,6 +148,28 @@ type ScheduleRequest struct {
 	StartTime time.Time
 	Duration  time.Duration
 	Recurring string
+}
+
+// RegisterMCPTools bridges MCP server tools into the agent ToolRegistry.
+func RegisterMCPTools(reg *ToolRegistry, clients []*mcp.Client) {
+	for _, c := range clients {
+		for _, tool := range c.ListTools() {
+			client := c // capture
+			t := tool   // capture
+			reg.Register(provider.Tool{
+				Type: "function",
+				Function: provider.ToolFunction{
+					Name:        t.Name,
+					Description: t.Description,
+					Parameters:  t.InputSchema,
+				},
+			}, func(ctx context.Context, args string) (string, error) {
+				var parsed map[string]interface{}
+				json.Unmarshal([]byte(args), &parsed)
+				return client.CallTool(ctx, t.Name, parsed)
+			})
+		}
+	}
 }
 
 func truncate(s string, max int) string {

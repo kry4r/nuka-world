@@ -17,9 +17,10 @@ CREATE TABLE agents (
     name        VARCHAR(100) NOT NULL,
     role        VARCHAR(100),
     personality TEXT,
+    backstory   TEXT,
     system_prompt TEXT,
     sprite_config JSONB,
-    provider_id UUID REFERENCES providers(id),
+    provider_id TEXT,
     model       VARCHAR(100),
     status      VARCHAR(20) DEFAULT 'idle',
     created_at  TIMESTAMPTZ DEFAULT NOW(),
@@ -40,7 +41,8 @@ CREATE TABLE sessions (
     platform    VARCHAR(50),
     channel_id  VARCHAR(200),
     status      VARCHAR(20) DEFAULT 'active',
-    created_at  TIMESTAMPTZ DEFAULT NOW()
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(agent_id, platform, channel_id)
 );
 
 CREATE TABLE messages (
@@ -48,6 +50,7 @@ CREATE TABLE messages (
     session_id     UUID REFERENCES sessions(id),
     role           VARCHAR(20) NOT NULL,
     content        TEXT NOT NULL,
+    tool_calls     JSONB,
     thinking_chain JSONB,
     tokens_used    INT,
     created_at     TIMESTAMPTZ DEFAULT NOW()

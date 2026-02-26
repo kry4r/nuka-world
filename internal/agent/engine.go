@@ -13,12 +13,18 @@ import (
 	"go.uber.org/zap"
 )
 
+// AgentPersister is an optional interface for persisting agents.
+type AgentPersister interface {
+	SaveAgent(ctx context.Context, a *Agent) error
+}
+
 // Engine manages agent execution.
 type Engine struct {
 	agents           map[string]*Agent
 	router           *provider.Router
 	memory           *memory.Store
 	tools            *ToolRegistry
+	persister        AgentPersister
 	pendingSchedules []ScheduleRequest
 	mu               sync.RWMutex
 	logger           *zap.Logger
@@ -39,6 +45,9 @@ func NewEngine(router *provider.Router, mem *memory.Store, logger *zap.Logger) *
 
 // Tools returns the engine's tool registry.
 func (e *Engine) Tools() *ToolRegistry { return e.tools }
+
+// SetPersister sets an optional agent persister for database storage.
+func (e *Engine) SetPersister(p AgentPersister) { e.persister = p }
 
 func (e *Engine) addPendingSchedule(s ScheduleRequest) {
 	e.mu.Lock()
@@ -62,10 +71,21 @@ func (e *Engine) Register(a *Agent) {
 	if a.Persona.ID == "" {
 		a.Persona.ID = uuid.New().String()
 	}
-	a.CreatedAt = time.Now()
-	a.UpdatedAt = a.CreatedAt
-	a.Status = StatusIdle
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now()
+	}
+	a.UpdatedAt = time.Now()
+	if a.Status == "" {
+		a.Status = StatusIdle
+	}
 	e.agents[a.Persona.ID] = a
+
+	if e.persister != nil {
+		if err := e.persister.SaveAgent(context.Background(), a); err != nil {
+			e.logger.Error("failed to persist agent", zap.String("id", a.Persona.ID), zap.Error(err))
+		}
+	}
+
 	e.logger.Info("registered agent",
 		zap.String("id", a.Persona.ID),
 		zap.String("name", a.Persona.Name))

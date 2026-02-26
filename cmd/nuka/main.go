@@ -8,12 +8,18 @@ import (
 	"syscall"
 	"time"
 
+	"fmt"
+
 	"github.com/joho/godotenv"
 	"github.com/nidhogg/nuka-world/internal/agent"
 	"github.com/nidhogg/nuka-world/internal/api"
+	"github.com/nidhogg/nuka-world/internal/config"
 	"github.com/nidhogg/nuka-world/internal/gateway"
+	"github.com/nidhogg/nuka-world/internal/mcp"
 	"github.com/nidhogg/nuka-world/internal/memory"
+	pgstore "github.com/nidhogg/nuka-world/internal/store"
 	"github.com/nidhogg/nuka-world/internal/orchestrator"
+	msgrouter "github.com/nidhogg/nuka-world/internal/router"
 	"github.com/nidhogg/nuka-world/internal/provider"
 	"github.com/nidhogg/nuka-world/internal/world"
 	"go.uber.org/zap"
@@ -27,23 +33,86 @@ func main() {
 
 	logger.Info("Starting Nuka World...")
 
+	// Load configuration
+	cfgPath := os.Getenv("CONFIG_PATH")
+	if cfgPath == "" {
+		cfgPath = "configs/nuka.json"
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		logger.Fatal("failed to load config", zap.String("path", cfgPath), zap.Error(err))
+	}
+	logger.Info("Config loaded", zap.String("path", cfgPath))
+
 	// Initialize provider router
 	router := provider.NewRouter(logger)
-	setupProviders(router, logger)
+	for _, pc := range cfg.Providers {
+		provCfg := provider.ProviderConfig{
+			ID: pc.ID, Type: pc.Type, Name: pc.Name,
+			Endpoint: pc.Endpoint, APIKey: pc.APIKey,
+			Models: pc.Models, Extra: pc.Extra,
+		}
+		switch pc.Type {
+		case "openai":
+			router.Register(provider.NewOpenAIProvider(provCfg, logger))
+		case "anthropic":
+			router.Register(provider.NewAnthropicProvider(provCfg, logger))
+		default:
+			logger.Warn("unknown provider type", zap.String("id", pc.ID), zap.String("type", pc.Type))
+		}
+	}
 
 	// Initialize memory store
-	store, err := initMemoryStore(logger)
+	store, err := memory.NewStore(cfg.Database.Neo4j.URI, cfg.Database.Neo4j.User, cfg.Database.Neo4j.Password, logger)
 	if err != nil {
 		logger.Warn("Neo4j unavailable, running without memory", zap.Error(err))
 	}
 
+	// Initialize PostgreSQL store
+	var pgStore *pgstore.Store
+	if cfg.Database.Postgres.DSN != "" {
+		ps, pgErr := pgstore.New(cfg.Database.Postgres.DSN, logger)
+		if pgErr != nil {
+			logger.Warn("PostgreSQL unavailable, running without persistence", zap.Error(pgErr))
+		} else {
+			if mErr := ps.Migrate(context.Background(), "migrations"); mErr != nil {
+				logger.Fatal("migration failed", zap.Error(mErr))
+			}
+			pgStore = ps
+		}
+	}
+
 	// Initialize agent engine
 	engine := agent.NewEngine(router, store, logger)
+	if pgStore != nil {
+		engine.SetPersister(pgStore)
+		// Load persisted agents
+		agents, loadErr := pgStore.ListAgents(context.Background())
+		if loadErr != nil {
+			logger.Warn("failed to load agents from DB", zap.Error(loadErr))
+		} else {
+			for _, a := range agents {
+				engine.Register(a)
+			}
+			logger.Info("Loaded agents from DB", zap.Int("count", len(agents)))
+		}
+	}
+
+	// Initialize MCP clients
+	var mcpClients []*mcp.Client
+	for _, sc := range cfg.MCP.Servers {
+		c := mcp.NewClient(sc.Name, sc.URL, logger)
+		if err := c.Connect(context.Background()); err != nil {
+			logger.Warn("MCP server unavailable", zap.String("name", sc.Name), zap.Error(err))
+			continue
+		}
+		mcpClients = append(mcpClients, c)
+	}
+	agent.RegisterMCPTools(engine.Tools(), mcpClients)
 
 	// Initialize orchestrator
 	var steward *orchestrator.Steward
-	redisURL := envOr("REDIS_URL", "redis://localhost:6379")
-	bus, busErr := orchestrator.NewMessageBus(redisURL, logger)
+	bus, busErr := orchestrator.NewMessageBus(cfg.Database.Redis.URL, logger)
 	if busErr != nil {
 		logger.Warn("Redis unavailable, running without orchestrator", zap.Error(busErr))
 	} else {
@@ -54,17 +123,21 @@ func main() {
 
 	// Initialize gateway
 	gw := gateway.NewGateway(logger)
+
+	// Wire message router BEFORE registering adapters (Register captures handler)
+	msgRouter := msgrouter.New(engine, gw, steward, pgStore, logger)
+	gw.SetHandler(msgRouter.Handle)
+
 	restAdapter := gateway.NewRESTAdapter(logger)
 	gw.Register(restAdapter)
 
-	if slackBot := os.Getenv("SLACK_BOT_TOKEN"); slackBot != "" {
-		slackApp := os.Getenv("SLACK_APP_TOKEN")
-		slackAdapter := gateway.NewSlackAdapter(slackBot, slackApp, logger)
+	if cfg.Gateway.Slack.Enabled && cfg.Gateway.Slack.BotToken != "" {
+		slackAdapter := gateway.NewSlackAdapter(cfg.Gateway.Slack.BotToken, cfg.Gateway.Slack.AppToken, logger)
 		gw.Register(slackAdapter)
 	}
 
-	if discordToken := os.Getenv("DISCORD_BOT_TOKEN"); discordToken != "" {
-		discordAdapter := gateway.NewDiscordAdapter(discordToken, logger)
+	if cfg.Gateway.Discord.Enabled && cfg.Gateway.Discord.BotToken != "" {
+		discordAdapter := gateway.NewDiscordAdapter(cfg.Gateway.Discord.BotToken, logger)
 		gw.Register(discordAdapter)
 	}
 
@@ -126,10 +199,13 @@ func main() {
 	logger.Info("World simulation started")
 
 	// Build HTTP handler
-	handler := api.NewHandler(engine, store, steward, broadcaster, restAdapter, clock, scheduleMgr, stateMgr, growthTracker, heartbeat, logger)
+	handler := api.NewHandler(engine, store, steward, broadcaster, restAdapter, gw, clock, scheduleMgr, stateMgr, growthTracker, heartbeat, logger)
 
 	// Start server
-	port := envOr("PORT", "8080")
+	port := fmt.Sprintf("%d", cfg.Server.Port)
+	if port == "0" {
+		port = "8080"
+	}
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: handler.Router(),
@@ -157,43 +233,12 @@ func main() {
 	if bus != nil {
 		bus.Close()
 	}
+	if pgStore != nil {
+		pgStore.Close()
+	}
+	for _, mc := range mcpClients {
+		mc.Close()
+	}
 	gw.Close()
 }
 
-func setupProviders(router *provider.Router, logger *zap.Logger) {
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		p := provider.NewOpenAIProvider(provider.ProviderConfig{
-			ID:       "openai",
-			Type:     "openai",
-			Name:     "OpenAI",
-			APIKey:   key,
-			Endpoint: envOr("OPENAI_ENDPOINT", "https://api.openai.com/v1"),
-		}, logger)
-		router.Register(p)
-	}
-
-	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-		p := provider.NewAnthropicProvider(provider.ProviderConfig{
-			ID:       "anthropic",
-			Type:     "anthropic",
-			Name:     "Anthropic",
-			APIKey:   key,
-			Endpoint: envOr("ANTHROPIC_ENDPOINT", "https://api.anthropic.com/v1"),
-		}, logger)
-		router.Register(p)
-	}
-}
-
-func initMemoryStore(logger *zap.Logger) (*memory.Store, error) {
-	uri := envOr("NEO4J_URI", "bolt://localhost:7687")
-	user := envOr("NEO4J_USER", "neo4j")
-	pass := envOr("NEO4J_PASSWORD", "")
-	return memory.NewStore(uri, user, pass, logger)
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}

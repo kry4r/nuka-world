@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"go.uber.org/zap"
@@ -16,6 +17,9 @@ type DiscordAdapter struct {
 	handler  MessageHandler
 	personas map[string]*AgentPersona // agentID -> persona
 	webhooks map[string]string        // channelID -> webhook URL for persona messages
+	connected   bool
+	connectedAt time.Time
+	lastError   string
 	mu       sync.RWMutex
 	logger   *zap.Logger
 }
@@ -48,10 +52,13 @@ func (a *DiscordAdapter) SetWebhook(channelID, webhookURL string) {
 	a.webhooks[channelID] = webhookURL
 }
 
-// Connect opens the Discord gateway websocket connection.
+// Connect opens the Discord gateway websocket and verifies guild membership.
 func (a *DiscordAdapter) Connect(_ context.Context) error {
 	session, err := discordgo.New("Bot " + a.token)
 	if err != nil {
+		a.mu.Lock()
+		a.lastError = fmt.Sprintf("session create: %v", err)
+		a.mu.Unlock()
 		return fmt.Errorf("discord session: %w", err)
 	}
 	a.session = session
@@ -60,10 +67,29 @@ func (a *DiscordAdapter) Connect(_ context.Context) error {
 	a.session.AddHandler(a.onMessageCreate)
 
 	if err := a.session.Open(); err != nil {
+		a.mu.Lock()
+		a.lastError = fmt.Sprintf("open failed: %v", err)
+		a.connected = false
+		a.mu.Unlock()
 		return fmt.Errorf("discord open: %w", err)
 	}
+
+	now := time.Now()
+	a.mu.Lock()
+	a.connected = true
+	a.connectedAt = now
+	a.lastError = ""
+	a.mu.Unlock()
+
+	// Log guild count
+	guildCount := len(a.session.State.Guilds)
+	if guildCount == 0 {
+		a.logger.Warn("discord bot not added to any server — invite it first")
+	}
+
 	a.logger.Info("discord adapter connected",
-		zap.String("user", a.session.State.User.Username))
+		zap.String("user", a.session.State.User.Username),
+		zap.Int("guilds", guildCount))
 	return nil
 }
 
@@ -165,4 +191,25 @@ func (a *DiscordAdapter) Close() error {
 		return a.session.Close()
 	}
 	return nil
+}
+
+func (a *DiscordAdapter) Status() AdapterStatus {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	s := AdapterStatus{
+		Platform:  "discord",
+		Connected: a.connected,
+		Error:     a.lastError,
+	}
+	if a.connected {
+		t := a.connectedAt
+		s.ConnectedAt = &t
+		guildCount := 0
+		if a.session != nil && a.session.State != nil {
+			guildCount = len(a.session.State.Guilds)
+		}
+		s.Details = fmt.Sprintf("bot=%s, guilds=%d",
+			a.session.State.User.Username, guildCount)
+	}
+	return s
 }

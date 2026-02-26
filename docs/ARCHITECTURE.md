@@ -255,14 +255,12 @@ Nuka/
 - ⚠️ 内置工具 `web_search` 为占位实现，需接入实际搜索 API
 
 ## 9. 后续开发方向
-
-- [ ] 接入实际搜索 API 替换 `web_search` 占位实现
+- [ ] 完善 Slack/Discord 适配器的双向消息处理，尝试通过Socket Mode模式接入Slack，只需提供appToken与botToken接入，自己调研实现方法（最重要）
+- [ ] 修复讯飞星辰Maas API调用，确保所有api调用的无缝接入（次重要）
+- [ ] 接入实际搜索 API 替换 `web_search` 占位实现，使用该mcp https://github.com/Aas-ee/open-webSearch/blob/main/README-zh.md
 - [ ] 前端 Memory Graph 页面接入后端记忆 API，实现交互式图谱
-- [ ] WebSocket 实时推送（Agent 状态变更、世界事件）
+- [ ] WebSocket 实时推送（Agent 状态变更、世界事件）（结合slack接入一起做）
 - [ ] Agent 像素风头像生成与展示
-- [ ] 完善 Slack/Discord 适配器的双向消息处理
-- [ ] 添加更多 Provider 支持（Google Gemini、本地 Ollama）
-- [ ] 记忆系统性能优化（批量激活、缓存热点记忆）
-- [ ] 前端深色主题微调与移动端适配
+- [ ] 记忆系统性能优化（批量激活、缓存热点记忆），将上下文压缩与记忆系统结合，形成新型的记忆系统
 - [ ] CI/CD 流水线配置
 - [ ] 更完整的测试覆盖（记忆系统、编排器、网关）
