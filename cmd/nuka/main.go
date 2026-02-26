@@ -98,6 +98,33 @@ func main() {
 		}
 	}
 
+	// Seed default World agent if none registered
+	if len(engine.List()) == 0 {
+		defaultProvider := os.Getenv("DEFAULT_PROVIDER_ID")
+		if defaultProvider == "" {
+			defaultProvider = "xfyun"
+		}
+		defaultModel := os.Getenv("DEFAULT_MODEL")
+		if defaultModel == "" {
+			defaultModel = "xminimaxm25"
+		}
+		engine.Register(&agent.Agent{
+			Persona: agent.Persona{
+				ID:   "world",
+				Name: "World",
+				Role: "主管理员",
+				Personality: "友善、博学、乐于助人的AI助手，负责管理和协调Nuka World中的一切事务",
+				SystemPrompt: "你是 Nuka World 的主管理员 World。你负责回答用户的问题、管理世界中的事务、协调其他Agent的工作。" +
+					"你应该友善、专业地回应所有消息。如果用户的请求超出你的能力范围，请诚实告知。",
+			},
+			ProviderID: defaultProvider,
+			Model:      defaultModel,
+		})
+		logger.Info("Seeded default World agent",
+			zap.String("provider", defaultProvider),
+			zap.String("model", defaultModel))
+	}
+
 	// Initialize MCP clients
 	var mcpClients []*mcp.Client
 	for _, sc := range cfg.MCP.Servers {

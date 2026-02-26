@@ -80,6 +80,11 @@ func (e *Engine) Register(a *Agent) {
 	}
 	e.agents[a.Persona.ID] = a
 
+	// Bind agent to its declared provider so the router uses the correct one.
+	if a.ProviderID != "" {
+		e.router.Bind(a.Persona.ID, a.ProviderID)
+	}
+
 	if e.persister != nil {
 		if err := e.persister.SaveAgent(context.Background(), a); err != nil {
 			e.logger.Error("failed to persist agent", zap.String("id", a.Persona.ID), zap.Error(err))

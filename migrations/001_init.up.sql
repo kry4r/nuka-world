@@ -1,7 +1,7 @@
 -- Nuka World: Initial Schema
 -- Phase 1 Migration
 
-CREATE TABLE providers (
+CREATE TABLE IF NOT EXISTS providers (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        VARCHAR(100) NOT NULL,
     type        VARCHAR(50) NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE providers (
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE agents (
+CREATE TABLE IF NOT EXISTS agents (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        VARCHAR(100) NOT NULL,
     role        VARCHAR(100),
@@ -27,7 +27,7 @@ CREATE TABLE agents (
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE teams (
+CREATE TABLE IF NOT EXISTS teams (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        VARCHAR(100) NOT NULL,
     steward_id  UUID REFERENCES agents(id),
@@ -35,7 +35,7 @@ CREATE TABLE teams (
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_id    UUID REFERENCES agents(id),
     platform    VARCHAR(50),
@@ -45,7 +45,7 @@ CREATE TABLE sessions (
     UNIQUE(agent_id, platform, channel_id)
 );
 
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id     UUID REFERENCES sessions(id),
     role           VARCHAR(20) NOT NULL,
