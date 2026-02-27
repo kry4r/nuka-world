@@ -2,28 +2,120 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"fmt"
-
 	"github.com/joho/godotenv"
 	"github.com/nidhogg/nuka-world/internal/agent"
 	"github.com/nidhogg/nuka-world/internal/api"
+	"github.com/nidhogg/nuka-world/internal/command"
 	"github.com/nidhogg/nuka-world/internal/config"
+	"github.com/nidhogg/nuka-world/internal/embedding"
 	"github.com/nidhogg/nuka-world/internal/gateway"
 	"github.com/nidhogg/nuka-world/internal/mcp"
 	"github.com/nidhogg/nuka-world/internal/memory"
-	pgstore "github.com/nidhogg/nuka-world/internal/store"
 	"github.com/nidhogg/nuka-world/internal/orchestrator"
-	msgrouter "github.com/nidhogg/nuka-world/internal/router"
 	"github.com/nidhogg/nuka-world/internal/provider"
+	"github.com/nidhogg/nuka-world/internal/rag"
+	msgrouter "github.com/nidhogg/nuka-world/internal/router"
+	"github.com/nidhogg/nuka-world/internal/skill"
+	pgstore "github.com/nidhogg/nuka-world/internal/store"
+	"github.com/nidhogg/nuka-world/internal/vectorstore"
 	"github.com/nidhogg/nuka-world/internal/world"
 	"go.uber.org/zap"
 )
+
+// ---------------------------------------------------------------------------
+// Adapters — bridge concrete types to command package interfaces.
+// ---------------------------------------------------------------------------
+
+// agentListerAdapter adapts *agent.Engine to command.AgentLister.
+type agentListerAdapter struct{ e *agent.Engine }
+
+func (a *agentListerAdapter) List() []command.AgentInfo {
+	agents := a.e.List()
+	out := make([]command.AgentInfo, len(agents))
+	for i, ag := range agents {
+		out[i] = command.AgentInfo{
+			ID:     ag.Persona.ID,
+			Name:   ag.Persona.Name,
+			Role:   ag.Persona.Role,
+			Status: string(ag.Status),
+		}
+	}
+	return out
+}
+
+// mcpListerAdapter adapts []*mcp.Client to command.MCPLister.
+type mcpListerAdapter struct{ clients []*mcp.Client }
+
+func (a *mcpListerAdapter) ListTools() []command.ToolInfo {
+	var out []command.ToolInfo
+	for _, c := range a.clients {
+		for _, t := range c.ListTools() {
+			out = append(out, command.ToolInfo{
+				ServerName: c.Name(),
+				ToolName:   t.Name,
+			})
+		}
+	}
+	return out
+}
+
+// statusAdapter adapts *gateway.Gateway to command.StatusProvider.
+type statusAdapter struct{ gw *gateway.Gateway }
+
+func (a *statusAdapter) StatusAll() []command.AdapterStatus {
+	raw := a.gw.StatusAll()
+	out := make([]command.AdapterStatus, len(raw))
+	for i, s := range raw {
+		out[i] = command.AdapterStatus{
+			Name:      s.Platform,
+			Platform:  s.Platform,
+			Connected: s.Connected,
+		}
+	}
+	return out
+}
+
+// skillListerAdapter adapts *skill.Manager to command.SkillLister.
+type skillListerAdapter struct{ mgr *skill.Manager }
+
+func (a *skillListerAdapter) ListSkills() []command.SkillInfo {
+	skills := a.mgr.All()
+	out := make([]command.SkillInfo, len(skills))
+	for i, s := range skills {
+		out[i] = command.SkillInfo{
+			Name:        s.Name,
+			Description: s.Description,
+			Source:      s.Source,
+		}
+	}
+	return out
+}
+
+// ragSearchAdapter adapts *rag.Orchestrator to command.RAGSearcher.
+type ragSearchAdapter struct{ o *rag.Orchestrator }
+
+func (a *ragSearchAdapter) Query(ctx context.Context, agentID, query string, topK int) ([]command.RAGSearchResult, error) {
+	results, err := a.o.Query(ctx, agentID, query, topK)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]command.RAGSearchResult, len(results))
+	for i, r := range results {
+		out[i] = command.RAGSearchResult{
+			Content: r.Content,
+			Source:  r.Source,
+			Score:   r.Score,
+		}
+	}
+	return out, nil
+}
 
 func main() {
 	_ = godotenv.Load()
@@ -137,6 +229,62 @@ func main() {
 	}
 	agent.RegisterMCPTools(engine.Tools(), mcpClients)
 
+	// --- Skill Manager ---
+	skillMgr := skill.NewManager()
+	skill.RegisterBuiltins(skillMgr)
+	if cfg.SkillsDir != "" {
+		plugins, loadErr := skill.LoadFromDir(cfg.SkillsDir)
+		if loadErr != nil {
+			logger.Warn("failed to load plugin skills", zap.Error(loadErr))
+		} else {
+			for _, s := range plugins {
+				skillMgr.Add(s)
+			}
+			logger.Info("Loaded plugin skills", zap.Int("count", len(plugins)))
+		}
+	}
+	engine.SetSkillManager(skillMgr)
+	// Auto-assign default skills to world agent
+	skillMgr.AssignSkill("world", "web_search")
+	skillMgr.AssignSkill("world", "world_observer")
+	skillMgr.AssignSkill("world", "memory_recall")
+
+	// --- Embedding + Qdrant + RAG ---
+	var ragOrch *rag.Orchestrator
+	if cfg.Embedding.Endpoint != "" {
+		embCfg := embedding.Config{
+			Provider:  cfg.Embedding.Provider,
+			Endpoint:  cfg.Embedding.Endpoint,
+			Model:     cfg.Embedding.Model,
+			APIKey:    cfg.Embedding.APIKey,
+			Dimension: cfg.Embedding.Dimension,
+		}
+		var embedder embedding.Provider
+		switch cfg.Embedding.Provider {
+		case "local":
+			embedder = embedding.NewLocalProvider(embCfg)
+		default:
+			embedder = embedding.NewAPIProvider(embCfg)
+		}
+
+		if cfg.Database.Qdrant.Host != "" {
+			qClient, qErr := vectorstore.NewClient(vectorstore.QdrantConfig{
+				Host: cfg.Database.Qdrant.Host,
+				Port: cfg.Database.Qdrant.Port,
+			})
+			if qErr != nil {
+				logger.Warn("Qdrant unavailable, running without RAG", zap.Error(qErr))
+			} else {
+				ragOrch = rag.NewOrchestrator(embedder, qClient, logger)
+				if initErr := ragOrch.InitCollections(context.Background()); initErr != nil {
+					logger.Warn("RAG collection init failed", zap.Error(initErr))
+				}
+				engine.SetRAG(rag.NewProviderAdapter(ragOrch))
+				logger.Info("RAG initialized")
+			}
+		}
+	}
+
 	// Initialize orchestrator
 	var steward *orchestrator.Steward
 	bus, busErr := orchestrator.NewMessageBus(cfg.Database.Redis.URL, logger)
@@ -152,7 +300,42 @@ func main() {
 	gw := gateway.NewGateway(logger)
 
 	// Wire message router BEFORE registering adapters (Register captures handler)
-	msgRouter := msgrouter.New(engine, gw, steward, pgStore, logger)
+	cmdRegistry := command.NewRegistry()
+	command.RegisterBuiltins(cmdRegistry,
+		&agentListerAdapter{e: engine},
+		&mcpListerAdapter{clients: mcpClients},
+		&statusAdapter{gw: gw},
+		&skillListerAdapter{mgr: skillMgr},
+	)
+	command.RegisterCreateCommands(cmdRegistry,
+		func(id, name, personality, systemPrompt string) string {
+			a := &agent.Agent{
+				Persona: agent.Persona{
+					ID:           id,
+					Name:         name,
+					Personality:  personality,
+					SystemPrompt: systemPrompt,
+				},
+			}
+			engine.Register(a)
+			return a.Persona.ID
+		},
+		func(ctx context.Context, agentID, name, description string) (string, error) {
+			s := &skill.Skill{
+				ID:          name,
+				Name:        name,
+				Description: description,
+				Source:      "user",
+			}
+			skillMgr.Add(s)
+			skillMgr.AssignSkill(agentID, s.ID)
+			return s.ID, nil
+		},
+	)
+	if ragOrch != nil {
+		command.RegisterSearchCommand(cmdRegistry, &ragSearchAdapter{o: ragOrch})
+	}
+	msgRouter := msgrouter.New(engine, gw, steward, pgStore, cmdRegistry, logger)
 	gw.SetHandler(msgRouter.Handle)
 
 	restAdapter := gateway.NewRESTAdapter(logger)

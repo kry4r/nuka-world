@@ -14,6 +14,8 @@ type Config struct {
 	Gateway   GatewayConfig    `json:"gateway"`
 	MCP       MCPConfig        `json:"mcp"`
 	Database  DatabaseConfig   `json:"database"`
+	Embedding EmbeddingConfig  `json:"embedding"`
+	SkillsDir string           `json:"skills_dir"`
 }
 
 type ServerConfig struct {
@@ -62,6 +64,7 @@ type DatabaseConfig struct {
 	Postgres PostgresConfig `json:"postgres"`
 	Neo4j    Neo4jConfig    `json:"neo4j"`
 	Redis    RedisConfig    `json:"redis"`
+	Qdrant   QdrantConfig   `json:"qdrant"`
 }
 
 type PostgresConfig struct {
@@ -76,6 +79,19 @@ type Neo4jConfig struct {
 
 type RedisConfig struct {
 	URL string `json:"url"`
+}
+
+type EmbeddingConfig struct {
+	Provider  string `json:"provider"`
+	Endpoint  string `json:"endpoint"`
+	Model     string `json:"model"`
+	APIKey    string `json:"api_key"`
+	Dimension int    `json:"dimension"`
+}
+
+type QdrantConfig struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
 }
 
 // envVarRe matches ${VAR} and ${VAR:default} patterns.

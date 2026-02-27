@@ -32,7 +32,7 @@ func newTestHandler(t *testing.T) (*Handler, http.Handler) {
 	stateMgr := world.NewStateManager(scheduleMgr, logger)
 	growth := world.NewGrowthTracker(logger)
 
-	h := NewHandler(engine, nil, nil, broadcaster, restGW, clock, scheduleMgr, stateMgr, growth, nil, logger)
+	h := NewHandler(engine, nil, nil, broadcaster, restGW, gw, clock, scheduleMgr, stateMgr, growth, nil, logger)
 	return h, h.Router()
 }
 

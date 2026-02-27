@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/nidhogg/nuka-world/internal/agent"
+	"github.com/nidhogg/nuka-world/internal/command"
 	"github.com/nidhogg/nuka-world/internal/gateway"
 	"github.com/nidhogg/nuka-world/internal/memory"
 	"github.com/nidhogg/nuka-world/internal/orchestrator"
@@ -370,7 +371,7 @@ func setupL3Gateway(t *testing.T, engine *agent.Engine,
 	gw := gateway.NewGateway(testLogger)
 	capture := &CaptureAdapter{}
 
-	msgRouter := router.New(engine, gw, steward, testPGStore, testLogger)
+	msgRouter := router.New(engine, gw, steward, testPGStore, command.NewRegistry(), testLogger)
 
 	// SetHandler BEFORE Register — handler is captured at registration time
 	gw.SetHandler(msgRouter.Handle)

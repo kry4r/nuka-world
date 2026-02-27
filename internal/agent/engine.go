@@ -18,6 +18,29 @@ type AgentPersister interface {
 	SaveAgent(ctx context.Context, a *Agent) error
 }
 
+// RAGProvider abstracts RAG operations for the engine.
+type RAGProvider interface {
+	Query(ctx context.Context, agentID, query string, topK int) ([]RAGQueryResult, error)
+	Store(ctx context.Context, collection, content string, metadata map[string]string) error
+}
+
+// RAGQueryResult holds a single RAG retrieval hit.
+type RAGQueryResult struct {
+	Content string
+	Source  string
+	Score   float32
+}
+
+// SkillProvider abstracts the skill manager to avoid circular imports.
+type SkillProvider interface {
+	// GetAgentSkillPrompt returns a formatted prompt fragment for all skills
+	// assigned to the given agent. Returns "" if no skills are assigned.
+	GetAgentSkillPrompt(agentID string) string
+	// GetAgentToolNames returns the deduplicated tool names from all skills
+	// assigned to the given agent.
+	GetAgentToolNames(agentID string) []string
+}
+
 // Engine manages agent execution.
 type Engine struct {
 	agents           map[string]*Agent
@@ -25,6 +48,8 @@ type Engine struct {
 	memory           *memory.Store
 	tools            *ToolRegistry
 	persister        AgentPersister
+	skillMgr         SkillProvider
+	rag              RAGProvider
 	pendingSchedules []ScheduleRequest
 	mu               sync.RWMutex
 	logger           *zap.Logger
@@ -48,6 +73,12 @@ func (e *Engine) Tools() *ToolRegistry { return e.tools }
 
 // SetPersister sets an optional agent persister for database storage.
 func (e *Engine) SetPersister(p AgentPersister) { e.persister = p }
+
+// SetSkillManager sets an optional skill provider for skill-based prompt injection and tool filtering.
+func (e *Engine) SetSkillManager(m SkillProvider) { e.skillMgr = m }
+
+// SetRAG sets an optional RAG provider for retrieval-augmented generation.
+func (e *Engine) SetRAG(r RAGProvider) { e.rag = r }
 
 func (e *Engine) addPendingSchedule(s ScheduleRequest) {
 	e.mu.Lock()
@@ -154,8 +185,23 @@ func (e *Engine) Execute(ctx context.Context, agentID string, userMsg string) (*
 		}
 	}
 
-	// Step 2: Build messages with system prompt + persona + memory
-	messages := e.buildMessages(agent, userMsg, memoryContext)
+	// Step 1.5: RAG retrieval
+	var ragContext string
+	if e.rag != nil {
+		ragResults, ragErr := e.rag.Query(ctx, agentID, userMsg, 5)
+		if ragErr != nil {
+			e.logger.Warn("RAG query failed", zap.Error(ragErr))
+		} else if len(ragResults) > 0 {
+			var ragParts []string
+			for _, r := range ragResults {
+				ragParts = append(ragParts, fmt.Sprintf("[%s] %s", r.Source, r.Content))
+			}
+			ragContext = "## Retrieved Context (RAG)\n\n" + strings.Join(ragParts, "\n\n")
+		}
+	}
+
+	// Step 2: Build messages with system prompt + persona + memory + RAG
+	messages := e.buildMessages(agent, userMsg, memoryContext, ragContext)
 
 	// Step 3: Record reasoning step
 	chain.Steps = append(chain.Steps, ThinkStep{
@@ -172,7 +218,15 @@ func (e *Engine) Execute(ctx context.Context, agentID string, userMsg string) (*
 	}
 	if len(e.tools.Definitions()) > 0 {
 		req.Tools = e.tools.Definitions()
-		req.ToolChoice = "auto"
+		if e.skillMgr != nil {
+			allowedTools := e.skillMgr.GetAgentToolNames(agentID)
+			if len(allowedTools) > 0 {
+				req.Tools = e.tools.FilterDefinitions(allowedTools)
+			}
+		}
+		if len(req.Tools) > 0 {
+			req.ToolChoice = "auto"
+		}
 	}
 
 	const maxToolRounds = 5
@@ -251,6 +305,17 @@ func (e *Engine) Execute(ctx context.Context, agentID string, userMsg string) (*
 		}
 	}
 
+	// Step 7: Index conversation into RAG (async)
+	if e.rag != nil {
+		go func() {
+			storeCtx := context.Background()
+			_ = e.rag.Store(storeCtx, "conversations", userMsg+"\n"+resp.Content, map[string]string{
+				"agent_id": agentID,
+				"role":     "conversation",
+			})
+		}()
+	}
+
 	chain.Duration = time.Since(chain.StartedAt)
 
 	return &ExecuteResult{
@@ -285,7 +350,7 @@ func (e *Engine) setStatus(agentID string, s Status) {
 	}
 }
 
-func (e *Engine) buildMessages(a *Agent, userMsg string, memoryCtx string) []provider.Message {
+func (e *Engine) buildMessages(a *Agent, userMsg string, memoryCtx string, ragCtx string) []provider.Message {
 	msgs := []provider.Message{
 		{Role: "system", Content: a.Persona.SystemPrompt},
 	}
@@ -300,6 +365,20 @@ func (e *Engine) buildMessages(a *Agent, userMsg string, memoryCtx string) []pro
 			Role:    "system",
 			Content: memoryCtx,
 		})
+	}
+	if ragCtx != "" {
+		msgs = append(msgs, provider.Message{
+			Role:    "system",
+			Content: ragCtx,
+		})
+	}
+	if e.skillMgr != nil {
+		if skillPrompt := e.skillMgr.GetAgentSkillPrompt(a.Persona.ID); skillPrompt != "" {
+			msgs = append(msgs, provider.Message{
+				Role:    "system",
+				Content: skillPrompt,
+			})
+		}
 	}
 	msgs = append(msgs, provider.Message{
 		Role:    "user",

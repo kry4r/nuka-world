@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/nidhogg/nuka-world/internal/agent"
+	"github.com/nidhogg/nuka-world/internal/command"
 	"github.com/nidhogg/nuka-world/internal/gateway"
 	"github.com/nidhogg/nuka-world/internal/orchestrator"
 	"github.com/nidhogg/nuka-world/internal/provider"
@@ -15,23 +16,25 @@ import (
 
 // MessageRouter routes inbound messages to the appropriate agent or team.
 type MessageRouter struct {
-	engine  *agent.Engine
-	gw      *gateway.Gateway
-	steward *orchestrator.Steward
-	store   *pgstore.Store
-	logger  *zap.Logger
+	engine   *agent.Engine
+	gw       *gateway.Gateway
+	steward  *orchestrator.Steward
+	store    *pgstore.Store
+	commands *command.Registry
+	logger   *zap.Logger
 }
 
 // New creates a new MessageRouter.
 func New(engine *agent.Engine, gw *gateway.Gateway,
 	steward *orchestrator.Steward, store *pgstore.Store,
-	logger *zap.Logger) *MessageRouter {
+	commands *command.Registry, logger *zap.Logger) *MessageRouter {
 	return &MessageRouter{
-		engine:  engine,
-		gw:      gw,
-		steward: steward,
-		store:   store,
-		logger:  logger,
+		engine:   engine,
+		gw:       gw,
+		steward:  steward,
+		store:    store,
+		commands: commands,
+		logger:   logger,
 	}
 }
 
@@ -44,6 +47,26 @@ func (mr *MessageRouter) Handle(msg *gateway.InboundMessage) {
 		zap.String("channel", msg.ChannelID),
 		zap.String("user", msg.UserName),
 	)
+
+	// 0. Intercept slash commands before any agent/team routing
+	if strings.HasPrefix(msg.Content, "/") {
+		cc := &command.CommandContext{
+			Platform:  msg.Platform,
+			ChannelID: msg.ChannelID,
+			UserID:    msg.UserID,
+			UserName:  msg.UserName,
+			Engine:    mr.engine,
+			Store:     mr.store,
+		}
+		result, err := mr.commands.Dispatch(ctx, msg.Content, cc)
+		if err != nil {
+			mr.logger.Error("command dispatch error", zap.Error(err))
+			mr.sendReply(ctx, msg, "Command error: "+err.Error())
+			return
+		}
+		mr.sendReply(ctx, msg, result.Content)
+		return
+	}
 
 	// 1. Try Team routing first (@team-<name>)
 	if teamID, cleanMsg := mr.resolveTeam(msg.Content); teamID != "" && mr.steward != nil {

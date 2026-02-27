@@ -42,3 +42,18 @@ func (r *ToolRegistry) Execute(ctx context.Context, name, args string) (string, 
 	}
 	return h(ctx, args)
 }
+
+// FilterDefinitions returns only tool definitions whose names are in the allowed list.
+func (r *ToolRegistry) FilterDefinitions(names []string) []provider.Tool {
+	allowed := make(map[string]bool, len(names))
+	for _, n := range names {
+		allowed[n] = true
+	}
+	var filtered []provider.Tool
+	for _, d := range r.defs {
+		if allowed[d.Function.Name] {
+			filtered = append(filtered, d)
+		}
+	}
+	return filtered
+}
