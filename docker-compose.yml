@@ -20,6 +20,7 @@ services:
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-nukaworld}
       - DATABASE_URL=postgres://${POSTGRES_USER:-nuka}:${POSTGRES_PASSWORD:-nukaworld}@postgres:5432/${POSTGRES_DB:-nukaworld}?sslmode=disable
       - REDIS_URL=redis://redis:6379
+      - QDRANT_HOST=qdrant
     restart: unless-stopped
 
   neo4j:

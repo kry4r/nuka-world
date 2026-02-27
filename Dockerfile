@@ -11,5 +11,6 @@ WORKDIR /app
 COPY --from=builder /app/nuka .
 COPY --from=builder /app/configs ./configs
 COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/skills ./skills
 EXPOSE 3210
 CMD ["./nuka"]
