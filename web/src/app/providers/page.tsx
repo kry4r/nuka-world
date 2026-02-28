@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import PageLayout from "@/components/PageLayout";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
@@ -16,53 +16,120 @@ function StatBox({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ProviderCard({ provider }: { provider: ProviderConfig }) {
+function ToggleSwitch({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
-    <div className="bg-nuka-card rounded-2xl p-6 flex flex-col gap-4 flex-1 min-w-[280px]">
+    <button
+      onClick={onClick}
+      className={`relative w-10 h-5 rounded-full transition-colors ${
+        active ? "bg-nuka-teal" : "bg-nuka-elevated"
+      }`}
+    >
+      <div
+        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+          active ? "translate-x-5.5" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+function ProviderCard({
+  provider,
+  onToggle,
+  onEdit,
+  onDelete,
+  onTest,
+}: {
+  provider: ProviderConfig;
+  onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onTest: () => void;
+}) {
+  const { t } = useI18n();
+  const isDefault = provider.is_default;
+
+  return (
+    <div
+      className={`bg-nuka-card rounded-2xl p-6 flex flex-col gap-4 flex-1 min-w-[280px] border-2 transition-colors ${
+        isDefault ? "border-nuka-teal" : "border-nuka-elevated"
+      }`}
+    >
       <div className="flex items-center justify-between">
-        <span className="font-[var(--font-oswald)] text-base font-bold text-white">{provider.name}</span>
-        <span className="text-xs text-nuka-teal px-2 py-1 bg-nuka-teal/10 rounded">{provider.type}</span>
+        <span className="font-[var(--font-oswald)] text-base font-bold text-white">
+          {provider.name}
+        </span>
+        <ToggleSwitch active={!!isDefault} onClick={onToggle} />
       </div>
-      <div className="text-xs text-nuka-muted">{provider.endpoint}</div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-nuka-teal px-2 py-1 bg-nuka-teal/10 rounded">
+          {provider.type}
+        </span>
+        {isDefault && (
+          <span className="text-xs text-nuka-orange px-2 py-1 bg-nuka-orange/10 rounded">
+            {t("prov.default")}
+          </span>
+        )}
+      </div>
+      <div className="text-xs text-nuka-muted truncate">{provider.endpoint}</div>
       <div className="flex flex-col gap-2">
         <span className="text-xs text-nuka-muted">MODELS</span>
         <div className="flex gap-2 flex-wrap">
           {provider.models?.map((m) => (
-            <span key={m} className="text-xs text-white bg-nuka-elevated px-2 py-1 rounded">{m}</span>
+            <span key={m} className="text-xs text-white bg-nuka-elevated px-2 py-1 rounded">
+              {m}
+            </span>
           ))}
         </div>
       </div>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-nuka-muted">TOKEN USAGE</span>
-        <span className="font-[var(--font-oswald)] text-sm font-bold text-nuka-orange">0</span>
+      <div className="flex items-center gap-2 pt-2 border-t border-nuka-elevated">
+        <button onClick={onEdit} className="text-xs text-nuka-muted hover:text-white transition-colors">
+          {t("prov.edit")}
+        </button>
+        <span className="text-nuka-elevated">|</span>
+        <button onClick={onTest} className="text-xs text-nuka-teal hover:text-white transition-colors">
+          {t("prov.test")}
+        </button>
+        <span className="text-nuka-elevated">|</span>
+        <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-300 transition-colors">
+          {t("prov.delete")}
+        </button>
       </div>
     </div>
   );
 }
 
-function AddProviderForm({
-  onCreated,
+function ProviderEditModal({
+  initial,
+  onSave,
   onCancel,
 }: {
-  onCreated: (p: ProviderConfig) => void;
+  initial?: ProviderConfig;
+  onSave: (p: Partial<ProviderConfig>) => void;
   onCancel: () => void;
 }) {
   const { t } = useI18n();
-  const [form, setForm] = useState({ name: "", url: "", token: "" });
+  const [form, setForm] = useState({
+    name: initial?.name || "",
+    type: initial?.type || "openai",
+    endpoint: initial?.endpoint || "",
+    api_key: "",
+    models: initial?.models?.join(", ") || "",
+  });
   const [submitting, setSubmitting] = useState(false);
+  const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   const submit = async () => {
-    if (!form.name || !form.url) return;
+    if (!form.name || !form.endpoint) return;
     setSubmitting(true);
-    try {
-      const p = await api.addProvider({
-        name: form.name,
-        type: "openai-compatible",
-        endpoint: form.url,
-        api_key: form.token,
-      });
-      onCreated(p);
-    } catch { /* ignore */ }
+    const payload: Partial<ProviderConfig> = {
+      name: form.name,
+      type: form.type,
+      endpoint: form.endpoint,
+      models: form.models.split(",").map((m) => m.trim()).filter(Boolean),
+    };
+    if (form.api_key) payload.api_key = form.api_key;
+    onSave(payload);
     setSubmitting(false);
   };
 
@@ -72,19 +139,26 @@ function AddProviderForm({
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-nuka-card rounded-2xl p-6 w-[420px] flex flex-col gap-4">
         <span className="font-[var(--font-oswald)] text-lg font-bold text-white">
-          {t("prov.add")}
+          {initial ? t("prov.edit") : t("prov.add")}
         </span>
         <input className={fc} placeholder={t("prov.name")}
-          value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-        <input className={fc} placeholder={t("prov.url")}
-          value={form.url} onChange={(e) => setForm((p) => ({ ...p, url: e.target.value }))} />
+          value={form.name} onChange={(e) => set("name", e.target.value)} />
+        <select className={fc} value={form.type} onChange={(e) => set("type", e.target.value)}>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+        </select>
+        <input className={fc} placeholder={t("prov.endpoint")}
+          value={form.endpoint} onChange={(e) => set("endpoint", e.target.value)} />
         <input className={fc} placeholder={t("prov.token")} type="password"
-          value={form.token} onChange={(e) => setForm((p) => ({ ...p, token: e.target.value }))} />
+          value={form.api_key} onChange={(e) => set("api_key", e.target.value)} />
+        <input className={fc} placeholder={t("prov.models_label")}
+          value={form.models} onChange={(e) => set("models", e.target.value)} />
         <div className="flex justify-end gap-3 pt-2">
-          <button onClick={onCancel} className="text-sm text-nuka-muted hover:text-white transition-colors">
+          <button onClick={onCancel}
+            className="text-sm text-nuka-muted hover:text-white transition-colors">
             {t("prov.cancel")}
           </button>
-          <button onClick={submit} disabled={submitting || !form.name || !form.url}
+          <button onClick={submit} disabled={submitting || !form.name || !form.endpoint}
             className="text-sm text-nuka-orange hover:text-white transition-colors disabled:opacity-50">
             {t("prov.submit")}
           </button>
@@ -98,43 +172,115 @@ export default function ProvidersPage() {
   const { t } = useI18n();
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [status, setStatus] = useState<string>("checking...");
+  const [editTarget, setEditTarget] = useState<ProviderConfig | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const refresh = useCallback(() => {
+    api.listProviders().then(setProviders).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.health()
       .then(() => setStatus("connected"))
       .catch(() => setStatus("offline"));
-    api.listProviders().then(setProviders).catch(() => {});
-  }, []);
+    refresh();
+  }, [refresh]);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 3000);
+  };
+
+  const handleToggle = async (p: ProviderConfig) => {
+    if (p.is_default) return;
+    try {
+      await api.setDefaultProvider(p.id);
+      refresh();
+    } catch { showToast(t("prov.test_fail")); }
+  };
+
+  const handleAdd = async (data: Partial<ProviderConfig>) => {
+    try {
+      await api.addProvider(data);
+      setShowAdd(false);
+      refresh();
+    } catch { showToast("Failed to add provider"); }
+  };
+
+  const handleEdit = async (data: Partial<ProviderConfig>) => {
+    if (!editTarget) return;
+    try {
+      await api.updateProvider(editTarget.id, data);
+      setEditTarget(null);
+      refresh();
+    } catch { showToast("Failed to update provider"); }
+  };
+
+  const handleDelete = async (p: ProviderConfig) => {
+    try {
+      await api.deleteProvider(p.id);
+      refresh();
+    } catch { showToast("Failed to delete provider"); }
+  };
+
+  const handleTest = async (p: ProviderConfig) => {
+    showToast(t("prov.testing"));
+    try {
+      await api.testProvider(p.id);
+      showToast(t("prov.test_ok"));
+    } catch { showToast(t("prov.test_fail")); }
+  };
 
   return (
     <PageLayout>
       <div className="flex flex-col gap-6 p-8">
         <PageHeader title={t("prov.title")} subtitle={t("prov.subtitle")} />
+
+        {toast && (
+          <div className="fixed top-4 right-4 bg-nuka-card border border-nuka-elevated rounded-xl px-4 py-2 text-sm text-white z-50">
+            {toast}
+          </div>
+        )}
+
         <div className="flex gap-4">
           <StatBox label="STATUS" value={status} />
           <StatBox label="PROVIDERS" value={String(providers.length)} />
           <StatBox label="MODELS" value={String(providers.reduce((n, p) => n + (p.models?.length || 0), 0))} />
         </div>
+
         <div className="flex justify-end">
           <button onClick={() => setShowAdd(true)}
             className="text-sm text-nuka-orange hover:text-white transition-colors">
             + {t("prov.add")}
           </button>
         </div>
+
         <div className="flex gap-4 flex-wrap">
           {providers.length === 0 && (
             <span className="text-sm text-nuka-muted">{t("prov.no_providers")}</span>
           )}
           {providers.map((p) => (
-            <ProviderCard key={p.id} provider={p} />
+            <ProviderCard
+              key={p.id}
+              provider={p}
+              onToggle={() => handleToggle(p)}
+              onEdit={() => setEditTarget(p)}
+              onDelete={() => handleDelete(p)}
+              onTest={() => handleTest(p)}
+            />
           ))}
         </div>
       </div>
+
       {showAdd && (
-        <AddProviderForm
-          onCreated={(p) => { setProviders((prev) => [...prev, p]); setShowAdd(false); }}
-          onCancel={() => setShowAdd(false)}
+        <ProviderEditModal onSave={handleAdd} onCancel={() => setShowAdd(false)} />
+      )}
+      {editTarget && (
+        <ProviderEditModal
+          initial={editTarget}
+          onSave={handleEdit}
+          onCancel={() => setEditTarget(null)}
         />
       )}
     </PageLayout>

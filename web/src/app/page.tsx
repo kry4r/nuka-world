@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import PageLayout from "@/components/PageLayout";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
-import type { Agent, WorldStatus } from "@/lib/types";
+import type { Agent, WorldStatus, Team, A2ATask } from "@/lib/types";
 
 function MetricCard({ label, value, accent }: { label: string; value: string | number; accent?: boolean }) {
   return (
@@ -34,15 +34,20 @@ function AgentRow({ agent }: { agent: Agent }) {
 
 export default function DashboardPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [tasks, setTasks] = useState<A2ATask[]>([]);
   const [world, setWorld] = useState<WorldStatus | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     api.worldStatus().then(setWorld).catch((e) => setError(e.message));
     api.listAgents().then(setAgents).catch(() => {});
+    api.listTeams().then(setTeams).catch(() => {});
+    api.listA2ATasks().then(setTasks).catch(() => {});
   }, []);
 
   const activeCount = agents.filter((a) => a.status === "active").length;
+  const activeTasks = tasks.filter((t) => t.status === "working" || t.status === "planning").length;
 
   return (
     <PageLayout>
@@ -52,9 +57,9 @@ export default function DashboardPage() {
 
         <div className="flex gap-4">
           <MetricCard label="RESIDENTS" value={agents.length} />
-          <MetricCard label="SCHEMAS" value={0} />
-          <MetricCard label="TEAMS" value={0} />
-          <MetricCard label="TOKENS USED" value="0" accent />
+          <MetricCard label="TEAMS" value={teams.length} />
+          <MetricCard label="A2A TASKS" value={tasks.length} />
+          <MetricCard label="ACTIVE TASKS" value={activeTasks} accent />
         </div>
 
         <div className="flex gap-4 flex-1">

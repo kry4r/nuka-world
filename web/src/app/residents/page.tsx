@@ -89,10 +89,11 @@ function CreateAgentForm({ onCreated, onCancel }: { onCreated: (a: Agent) => voi
 export default function ResidentsPage() {
   const { t } = useI18n();
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
-    api.listAgents().then(setAgents).catch(() => {});
+    api.listAgents().then(setAgents).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const active = agents.filter((a) => a.status === "active").length;
@@ -116,7 +117,10 @@ export default function ResidentsPage() {
           </button>
         </div>
         <div className="flex flex-wrap gap-4">
-          {agents.length === 0 && (
+          {loading && (
+            <span className="text-sm text-nuka-muted">{t("common.loading")}</span>
+          )}
+          {!loading && agents.length === 0 && (
             <span className="text-sm text-nuka-muted">{t("res.no_agents")}</span>
           )}
           {agents.map((a) => (

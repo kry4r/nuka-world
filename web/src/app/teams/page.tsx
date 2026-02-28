@@ -122,11 +122,14 @@ export default function TeamsPage() {
   const { t } = useI18n();
   const [teams, setTeams] = useState<Team[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
-    api.listTeams().then(setTeams).catch(() => {});
-    api.listAgents().then(setAgents).catch(() => {});
+    Promise.all([
+      api.listTeams().then(setTeams).catch(() => {}),
+      api.listAgents().then(setAgents).catch(() => {}),
+    ]).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -140,7 +143,10 @@ export default function TeamsPage() {
           </button>
         </div>
         <div className="flex flex-col gap-4">
-          {teams.length === 0 && (
+          {loading && (
+            <span className="text-sm text-nuka-muted">{t("common.loading")}</span>
+          )}
+          {!loading && teams.length === 0 && (
             <span className="text-sm text-nuka-muted">{t("team.no_teams")}</span>
           )}
           {teams.map((tm) => (

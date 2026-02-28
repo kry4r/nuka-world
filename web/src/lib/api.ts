@@ -10,6 +10,8 @@ import type {
   ProviderConfig,
   SkillConfig,
   AdapterConfig,
+  A2ATask,
+  A2ATaskDetail,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
@@ -68,7 +70,31 @@ export const api = {
   // Providers
   listProviders: () => request<ProviderConfig[]>("/providers"),
   addProvider: (p: Partial<ProviderConfig>) =>
-    request<ProviderConfig>("/providers", { method: "POST", body: JSON.stringify(p) }),
+    request<{ status: string; name: string }>("/providers", { method: "POST", body: JSON.stringify(p) }),
+  updateProvider: (id: string, p: Partial<ProviderConfig>) =>
+    request<{ status: string }>(`/providers/${id}`, { method: "PUT", body: JSON.stringify(p) }),
+  deleteProvider: (id: string) =>
+    request<{ status: string }>(`/providers/${id}`, { method: "DELETE" }),
+  setDefaultProvider: (id: string) =>
+    request<{ status: string }>("/providers/default", { method: "PUT", body: JSON.stringify({ id }) }),
+  testProvider: (id: string) =>
+    request<{ status: string }>(`/providers/${id}/test`, { method: "POST" }),
+
+  // A2A Collaboration
+  listA2ATasks: () => request<A2ATask[]>("/a2a/tasks"),
+  getA2ATask: (id: string) => request<A2ATaskDetail>(`/a2a/tasks/${id}`),
+  createA2ATask: (description: string, maxRounds?: number) =>
+    request<A2ATask>("/a2a/tasks", {
+      method: "POST",
+      body: JSON.stringify({ description, max_rounds: maxRounds || 10 }),
+    }),
+  confirmA2ATask: (id: string, agents?: string[]) =>
+    request<{ status: string }>(`/a2a/tasks/${id}/confirm`, {
+      method: "POST",
+      body: JSON.stringify(agents ? { agents } : {}),
+    }),
+  cancelA2ATask: (id: string) =>
+    request<{ status: string }>(`/a2a/tasks/${id}/cancel`, { method: "POST" }),
 
   // Skills
   listSkills: () => request<SkillConfig[]>("/skills"),

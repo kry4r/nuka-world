@@ -115,6 +115,45 @@ export interface ProviderConfig {
   endpoint: string;
   api_key: string;
   models: string[];
+  extra?: Record<string, string>;
+  is_default?: boolean;
+}
+
+// A2A types
+export type A2ATaskStatus =
+  | "submitted"
+  | "planning"
+  | "confirmed"
+  | "working"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export interface A2ATask {
+  id: string;
+  description: string;
+  status: A2ATaskStatus;
+  proposed_agents: string[];
+  confirmed_agents: string[];
+  result: string;
+  max_rounds: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface A2AMessage {
+  id: string;
+  task_id: string;
+  from_agent: string;
+  content: string;
+  round: number;
+  msg_type: string;
+  created_at: string;
+}
+
+export interface A2ATaskDetail {
+  task: A2ATask;
+  messages: A2AMessage[];
 }
 
 export interface AdapterConfig {

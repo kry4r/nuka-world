@@ -29,6 +29,9 @@ type Store struct {
 	logger *zap.Logger
 }
 
+// Pool returns the underlying connection pool.
+func (s *Store) Pool() *pgxpool.Pool { return s.db }
+
 // New creates a Store with a pgx connection pool.
 func New(dsn string, logger *zap.Logger) (*Store, error) {
 	pool, err := pgxpool.New(context.Background(), dsn)

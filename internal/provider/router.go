@@ -46,6 +46,13 @@ func (r *Router) SetDefault(providerID string) {
 	r.defaults = providerID
 }
 
+// DefaultID returns the current default provider ID.
+func (r *Router) DefaultID() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.defaults
+}
+
 // Bind associates an agent with a specific provider.
 func (r *Router) Bind(agentID, providerID string) {
 	r.mu.Lock()

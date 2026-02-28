@@ -12,6 +12,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/nidhogg/nuka-world/internal/a2a"
 	"github.com/nidhogg/nuka-world/internal/agent"
 	"github.com/nidhogg/nuka-world/internal/api"
 	"github.com/nidhogg/nuka-world/internal/command"
@@ -133,10 +134,100 @@ func (a *agentGetterAdapter) GetAgent(id string) (command.AgentInfo, bool) {
 	}, true
 }
 
+// providerSwitcherAdapter adapts *provider.Router to command.ProviderSwitcher.
+type providerSwitcherAdapter struct{ r *provider.Router }
+
+func (a *providerSwitcherAdapter) SetDefault(providerID string) { a.r.SetDefault(providerID) }
+
+func (a *providerSwitcherAdapter) ListProviders() []command.ProviderInfo {
+	defaultID := a.r.DefaultID()
+	providers := a.r.ListProviders()
+	out := make([]command.ProviderInfo, len(providers))
+	for i, p := range providers {
+		pType := "unknown"
+		switch p.(type) {
+		case *provider.OpenAIProvider:
+			pType = "openai"
+		case *provider.AnthropicProvider:
+			pType = "anthropic"
+		}
+		out[i] = command.ProviderInfo{
+			ID:        p.ID(),
+			Name:      p.Name(),
+			Type:      pType,
+			IsDefault: p.ID() == defaultID,
+		}
+	}
+	return out
+}
+
 // agentRemoverAdapter adapts *agent.Engine to command.AgentRemover.
 type agentRemoverAdapter struct{ e *agent.Engine }
 
 func (a *agentRemoverAdapter) RemoveAgent(id string) bool { return a.e.Remove(id) }
+
+// a2aEngineAdapter adapts *agent.Engine to a2a.AgentEngine.
+type a2aEngineAdapter struct{ e *agent.Engine }
+
+func (a *a2aEngineAdapter) ListAgentIDs() []string {
+	agents := a.e.List()
+	ids := make([]string, len(agents))
+	for i, ag := range agents {
+		ids[i] = ag.Persona.ID
+	}
+	return ids
+}
+
+func (a *a2aEngineAdapter) GetAgentCard(id string) (*a2a.AgentCard, bool) {
+	ag, ok := a.e.Get(id)
+	if !ok {
+		return nil, false
+	}
+	return &a2a.AgentCard{
+		ID:        ag.Persona.ID,
+		Name:      ag.Persona.Name,
+		Role:      ag.Persona.Role,
+		Available: ag.Status == agent.StatusIdle || ag.Status == "",
+	}, true
+}
+
+// a2aTaskCreatorAdapter adapts a2a components to command.A2ATaskCreator.
+type a2aTaskCreatorAdapter struct {
+	store   *a2a.Store
+	planner *a2a.Planner
+}
+
+func (a *a2aTaskCreatorAdapter) CreateTask(ctx context.Context, description string, maxRounds int) (string, []string, error) {
+	task := &a2a.Task{
+		Description: description,
+		Status:      a2a.StatusSubmitted,
+		MaxRounds:   maxRounds,
+	}
+	if a.planner != nil {
+		proposal, err := a.planner.ProposeTeam(ctx, description)
+		if err == nil && len(proposal.ProposedAgents) > 0 {
+			for _, ag := range proposal.ProposedAgents {
+				task.ProposedAgents = append(task.ProposedAgents, ag.ID)
+			}
+			task.Status = a2a.StatusPlanning
+		}
+	}
+	if err := a.store.CreateTask(ctx, task); err != nil {
+		return "", nil, err
+	}
+	return task.ID, task.ProposedAgents, nil
+}
+
+// a2aTaskQuerierAdapter adapts *a2a.Store to command.A2ATaskQuerier.
+type a2aTaskQuerierAdapter struct{ store *a2a.Store }
+
+func (a *a2aTaskQuerierAdapter) GetTaskStatus(ctx context.Context, taskID string) (string, error) {
+	task, err := a.store.GetTask(ctx, taskID)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Task %s: status=%s, agents=%v", task.ID, task.Status, task.ConfirmedAgents), nil
+}
 
 // agentExecAdapter adapts *agent.Engine to command.AgentExecutor.
 type agentExecAdapter struct{ e *agent.Engine }
@@ -256,6 +347,30 @@ func main() {
 				logger.Fatal("migration failed", zap.Error(mErr))
 			}
 			pgStore = ps
+
+			// Load DB providers and register into Router (overrides config)
+			dbProviders, dbErr := ps.ListProviders(context.Background())
+			if dbErr != nil {
+				logger.Warn("failed to load providers from DB", zap.Error(dbErr))
+			} else {
+				for _, dp := range dbProviders {
+					provCfg := provider.ProviderConfig{
+						ID: dp.ID, Type: dp.Type, Name: dp.Name,
+						Endpoint: dp.Endpoint, APIKey: dp.APIKey,
+						Models: dp.Models, Extra: dp.Extra,
+					}
+					switch dp.Type {
+					case "openai":
+						router.Register(provider.NewOpenAIProvider(provCfg, logger))
+					case "anthropic":
+						router.Register(provider.NewAnthropicProvider(provCfg, logger))
+					}
+					if dp.IsDefault {
+						router.SetDefault(dp.ID)
+					}
+				}
+				logger.Info("Loaded providers from DB", zap.Int("count", len(dbProviders)))
+			}
 		}
 	}
 
@@ -433,6 +548,7 @@ func main() {
 		&memoryAdapter{mem: store},
 	)
 	command.RegisterTeamCommands(cmdRegistry, teamRegistry, &agentExecAdapter{e: engine})
+	command.RegisterProviderCommands(cmdRegistry, &providerSwitcherAdapter{r: router})
 
 	// Bridge: expose all slash commands as LLM-callable tools for World agent
 	bridgeCC := &command.CommandContext{Engine: engine, Store: pgStore}
@@ -521,8 +637,26 @@ func main() {
 	clock.Start()
 	logger.Info("World simulation started")
 
+	// --- A2A-Lite initialization ---
+	var a2aStore *a2a.Store
+	var a2aConv *a2a.ConversationEngine
+	var a2aPlanner *a2a.Planner
+	if pgStore != nil {
+		a2aStore = a2a.NewStore(pgStore.Pool())
+		a2aConv = a2a.NewConversationEngine(
+			&agentExecAdapter{e: engine}, a2aStore, logger,
+		)
+		a2aPlanner = a2a.NewPlanner(&a2aEngineAdapter{e: engine})
+		logger.Info("A2A-Lite initialized")
+
+		command.RegisterA2ACommands(cmdRegistry,
+			&a2aTaskCreatorAdapter{store: a2aStore, planner: a2aPlanner},
+			&a2aTaskQuerierAdapter{store: a2aStore},
+		)
+	}
+
 	// Build HTTP handler
-	handler := api.NewHandler(engine, store, steward, broadcaster, restAdapter, gw, clock, scheduleMgr, stateMgr, growthTracker, heartbeat, logger)
+	handler := api.NewHandler(engine, store, steward, broadcaster, restAdapter, gw, clock, scheduleMgr, stateMgr, growthTracker, heartbeat, logger, pgStore, router, a2aStore, a2aConv, a2aPlanner)
 
 	// Start server
 	port := fmt.Sprintf("%d", cfg.Server.Port)

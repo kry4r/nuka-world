@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { key: "nav.chat", href: "/chat" },
   { key: "nav.memory", href: "/memory" },
   { key: "nav.teams", href: "/teams" },
+  { key: "nav.collaboration", href: "/collaboration" },
   { key: "nav.providers", href: "/providers" },
   { key: "nav.gateway", href: "/gateway" },
   { key: "nav.skills", href: "/skills" },
