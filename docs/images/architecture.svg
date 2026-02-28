@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" font-family="'JetBrains Mono','Fira Code','SF Mono',monospace" font-size="13">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="620" rx="12" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <text x="450" y="38" text-anchor="middle" fill="#7ee787" font-size="16" font-weight="bold">&gt; nuka_world // system architecture</text>
+  <line x1="60" y1="52" x2="840" y2="52" stroke="#30363d" stroke-width="1"/>
+
+  <!-- ==================== Gateway Layer ==================== -->
+  <rect x="60" y="68" width="780" height="72" rx="8" fill="none" stroke="#e94560" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="80" y="88" fill="#e94560" font-size="11" opacity="0.7">GATEWAY</text>
+
+  <rect x="160" y="94" width="140" height="34" rx="6" fill="#1a1a2e" stroke="#e94560" stroke-width="1"/>
+  <text x="230" y="116" text-anchor="middle" fill="#f0f0f0">REST API</text>
+
+  <rect x="380" y="94" width="140" height="34" rx="6" fill="#1a1a2e" stroke="#e94560" stroke-width="1"/>
+  <text x="450" y="116" text-anchor="middle" fill="#f0f0f0">Slack</text>
+
+  <rect x="600" y="94" width="140" height="34" rx="6" fill="#1a1a2e" stroke="#e94560" stroke-width="1"/>
+  <text x="670" y="116" text-anchor="middle" fill="#f0f0f0">Discord</text>
+
+  <!-- Arrow: Gateway -> Core -->
+  <line x1="450" y1="140" x2="450" y2="160" stroke="#484f58" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ==================== Core Layer ==================== -->
+  <rect x="60" y="160" width="780" height="72" rx="8" fill="none" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="80" y="180" fill="#58a6ff" font-size="11" opacity="0.7">CORE</text>
+
+  <rect x="100" y="186" width="190" height="34" rx="6" fill="#1a1a2e" stroke="#7ee787" stroke-width="1"/>
+  <text x="195" y="208" text-anchor="middle" fill="#7ee787">Command Registry</text>
+
+  <rect x="355" y="186" width="190" height="34" rx="6" fill="#1a1a2e" stroke="#7ee787" stroke-width="1"/>
+  <text x="450" y="208" text-anchor="middle" fill="#7ee787">Agent Engine</text>
+
+  <rect x="610" y="186" width="190" height="34" rx="6" fill="#1a1a2e" stroke="#7ee787" stroke-width="1"/>
+  <text x="705" y="208" text-anchor="middle" fill="#7ee787">Provider Router</text>
+
+  <!-- Arrow: Core -> Tools -->
+  <line x1="450" y1="232" x2="450" y2="252" stroke="#484f58" stroke-width="1.5"/>
+
+  <!-- ==================== Tools Layer ==================== -->
+  <rect x="60" y="252" width="780" height="72" rx="8" fill="none" stroke="#e94560" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="80" y="272" fill="#e94560" font-size="11" opacity="0.7">TOOLS &amp; SKILLS</text>
+
+  <rect x="80" y="278" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#e94560" stroke-width="1"/>
+  <text x="157" y="300" text-anchor="middle" fill="#f0f0f0">Skill Manager</text>
+
+  <rect x="255" y="278" width="195" height="34" rx="6" fill="#1a1a2e" stroke="#d29922" stroke-width="1.5"/>
+  <text x="352" y="300" text-anchor="middle" fill="#d29922">Cmd-as-Tool Bridge</text>
+
+  <rect x="470" y="278" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#e94560" stroke-width="1"/>
+  <text x="547" y="300" text-anchor="middle" fill="#f0f0f0">MCP Clients</text>
+
+  <rect x="645" y="278" width="175" height="34" rx="6" fill="#1a1a2e" stroke="#e94560" stroke-width="1"/>
+  <text x="732" y="300" text-anchor="middle" fill="#f0f0f0">Orchestrator</text>
+
+  <!-- Bridge annotation -->
+  <path d="M352,278 L352,222 L290,222" fill="none" stroke="#d29922" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="270" y="245" fill="#d29922" font-size="10" opacity="0.8">wraps cmds as tools</text>
+
+  <!-- Arrow: Tools -> Data -->
+  <line x1="450" y1="324" x2="450" y2="348" stroke="#484f58" stroke-width="1.5"/>
+
+  <!-- ==================== Data Layer ==================== -->
+  <rect x="60" y="348" width="780" height="72" rx="8" fill="none" stroke="#1f6feb" stroke-width="1.5"/>
+  <text x="80" y="368" fill="#1f6feb" font-size="11" opacity="0.7">DATA</text>
+
+  <rect x="80" y="374" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#79c0ff" stroke-width="1"/>
+  <text x="157" y="391" text-anchor="middle" fill="#79c0ff" font-size="12">Neo4j</text>
+  <text x="157" y="403" text-anchor="middle" fill="#484f58" font-size="9">Memory Graph</text>
+
+  <rect x="265" y="374" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#79c0ff" stroke-width="1"/>
+  <text x="342" y="391" text-anchor="middle" fill="#79c0ff" font-size="12">PostgreSQL</text>
+  <text x="342" y="403" text-anchor="middle" fill="#484f58" font-size="9">Persistence</text>
+
+  <rect x="450" y="374" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#79c0ff" stroke-width="1"/>
+  <text x="527" y="391" text-anchor="middle" fill="#79c0ff" font-size="12">Qdrant</text>
+  <text x="527" y="403" text-anchor="middle" fill="#484f58" font-size="9">Vectors</text>
+
+  <rect x="635" y="374" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#79c0ff" stroke-width="1"/>
+  <text x="712" y="391" text-anchor="middle" fill="#79c0ff" font-size="12">Redis</text>
+  <text x="712" y="403" text-anchor="middle" fill="#484f58" font-size="9">Message Bus</text>
+
+  <!-- Arrow: Data -> World -->
+  <line x1="450" y1="420" x2="450" y2="444" stroke="#484f58" stroke-width="1.5"/>
+
+  <!-- ==================== World Layer ==================== -->
+  <rect x="60" y="444" width="780" height="72" rx="8" fill="none" stroke="#a371f7" stroke-width="1.5"/>
+  <text x="80" y="464" fill="#a371f7" font-size="11" opacity="0.7">WORLD SIMULATION</text>
+
+  <rect x="80" y="470" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#a371f7" stroke-width="1"/>
+  <text x="157" y="492" text-anchor="middle" fill="#d2a8ff">World Clock</text>
+
+  <rect x="265" y="470" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#a371f7" stroke-width="1"/>
+  <text x="342" y="492" text-anchor="middle" fill="#d2a8ff">Heartbeat</text>
+
+  <rect x="450" y="470" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#a371f7" stroke-width="1"/>
+  <text x="527" y="492" text-anchor="middle" fill="#d2a8ff">Relations Graph</text>
+
+  <rect x="635" y="470" width="155" height="34" rx="6" fill="#1a1a2e" stroke="#a371f7" stroke-width="1"/>
+  <text x="712" y="492" text-anchor="middle" fill="#d2a8ff">State + Growth</text>
+
+  <!-- Heartbeat -> Engine annotation -->
+  <path d="M342,470 L342,450 L820,450 L820,203 L800,203" fill="none" stroke="#a371f7" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="825" y="340" fill="#a371f7" font-size="10" opacity="0.7" transform="rotate(90,825,340)">autonomous thinking</text>
+
+  <!-- Footer -->
+  <line x1="60" y1="540" x2="840" y2="540" stroke="#30363d" stroke-width="1"/>
+  <text x="450" y="562" text-anchor="middle" fill="#484f58" font-size="11">Go 1.25 | OpenAI + Anthropic | Neo4j + PostgreSQL + Qdrant + Redis</text>
+  <text x="450" y="582" text-anchor="middle" fill="#30363d" font-size="10">github.com/nidhogg/nuka-world</text>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#484f58"/>
+    </marker>
+  </defs>
+</svg>

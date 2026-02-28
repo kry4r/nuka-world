@@ -146,6 +146,29 @@ func (e *Engine) List() []*Agent {
 	return result
 }
 
+// ListAgentIDs returns all registered agent IDs.
+func (e *Engine) ListAgentIDs() []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	ids := make([]string, 0, len(e.agents))
+	for id := range e.agents {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// Remove deletes an agent from the engine.
+func (e *Engine) Remove(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, ok := e.agents[id]; !ok {
+		return false
+	}
+	delete(e.agents, id)
+	e.logger.Info("removed agent", zap.String("id", id))
+	return true
+}
+
 // Execute runs the agent's cognitive loop for a single message.
 func (e *Engine) Execute(ctx context.Context, agentID string, userMsg string) (*ExecuteResult, error) {
 	agent, ok := e.Get(agentID)
@@ -353,6 +376,12 @@ func (e *Engine) setStatus(agentID string, s Status) {
 func (e *Engine) buildMessages(a *Agent, userMsg string, memoryCtx string, ragCtx string) []provider.Message {
 	msgs := []provider.Message{
 		{Role: "system", Content: a.Persona.SystemPrompt},
+	}
+	if profile := LoadProfile(a.Persona.ID); profile != "" {
+		msgs = append(msgs, provider.Message{
+			Role:    "system",
+			Content: profile,
+		})
 	}
 	if a.Persona.Personality != "" {
 		msgs = append(msgs, provider.Message{

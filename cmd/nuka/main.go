@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/nidhogg/nuka-world/internal/agent"
 	"github.com/nidhogg/nuka-world/internal/api"
 	"github.com/nidhogg/nuka-world/internal/command"
@@ -115,6 +117,89 @@ func (a *ragSearchAdapter) Query(ctx context.Context, agentID, query string, top
 		}
 	}
 	return out, nil
+}
+
+// agentGetterAdapter adapts *agent.Engine to command.AgentGetter.
+type agentGetterAdapter struct{ e *agent.Engine }
+
+func (a *agentGetterAdapter) GetAgent(id string) (command.AgentInfo, bool) {
+	ag, ok := a.e.Get(id)
+	if !ok {
+		return command.AgentInfo{}, false
+	}
+	return command.AgentInfo{
+		ID: ag.Persona.ID, Name: ag.Persona.Name,
+		Role: ag.Persona.Role, Status: string(ag.Status),
+	}, true
+}
+
+// agentRemoverAdapter adapts *agent.Engine to command.AgentRemover.
+type agentRemoverAdapter struct{ e *agent.Engine }
+
+func (a *agentRemoverAdapter) RemoveAgent(id string) bool { return a.e.Remove(id) }
+
+// agentExecAdapter adapts *agent.Engine to command.AgentExecutor.
+type agentExecAdapter struct{ e *agent.Engine }
+
+func (a *agentExecAdapter) ExecuteAgent(ctx context.Context, agentID, message string) (string, error) {
+	res, err := a.e.Execute(ctx, agentID, message)
+	if err != nil {
+		return "", err
+	}
+	return res.Content, nil
+}
+
+// memoryAdapter adapts *memory.Store to command.MemoryWriter and command.MemoryReader.
+type memoryAdapter struct{ mem *memory.Store }
+
+func (a *memoryAdapter) Remember(ctx context.Context, agentID, content string) error {
+	if a.mem == nil {
+		return fmt.Errorf("memory store unavailable")
+	}
+	keywords := extractSimpleKeywords(content)
+	_, err := a.mem.Process(ctx, agentID, content, keywords, 0.5)
+	return err
+}
+
+func (a *memoryAdapter) Forget(ctx context.Context, agentID, keyword string) error {
+	if a.mem == nil {
+		return fmt.Errorf("memory store unavailable")
+	}
+	sess := a.mem.Driver().NewSession(ctx, neo4j.SessionConfig{})
+	defer sess.Close(ctx)
+	_, err := sess.Run(ctx,
+		`MATCH (m:Memory {agent_id: $aid}) WHERE toLower(m.content) CONTAINS toLower($kw) DETACH DELETE m`,
+		map[string]interface{}{"aid": agentID, "kw": keyword})
+	return err
+}
+
+func (a *memoryAdapter) Recall(ctx context.Context, agentID, query string) (string, error) {
+	if a.mem == nil {
+		return "", fmt.Errorf("memory store unavailable")
+	}
+	keywords := extractSimpleKeywords(query)
+	blocks, err := a.mem.BuildContext(ctx, agentID, keywords, memory.DefaultContextBudget())
+	if err != nil {
+		return "", err
+	}
+	if len(blocks) == 0 {
+		return "", nil
+	}
+	return memory.FormatContextPrompt(blocks), nil
+}
+
+func extractSimpleKeywords(text string) []string {
+	words := strings.Fields(text)
+	var out []string
+	for _, w := range words {
+		if len(w) >= 3 {
+			out = append(out, strings.ToLower(w))
+		}
+		if len(out) >= 10 {
+			break
+		}
+	}
+	return out
 }
 
 func main() {
@@ -301,6 +386,7 @@ func main() {
 
 	// Wire message router BEFORE registering adapters (Register captures handler)
 	cmdRegistry := command.NewRegistry()
+	teamRegistry := command.NewTeamRegistry()
 	command.RegisterBuiltins(cmdRegistry,
 		&agentListerAdapter{e: engine},
 		&mcpListerAdapter{clients: mcpClients},
@@ -331,10 +417,37 @@ func main() {
 			skillMgr.AssignSkill(agentID, s.ID)
 			return s.ID, nil
 		},
+		agent.CopyTemplate,
+		teamRegistry,
 	)
 	if ragOrch != nil {
 		command.RegisterSearchCommand(cmdRegistry, &ragSearchAdapter{o: ragOrch})
 	}
+	command.RegisterAdminCommands(cmdRegistry,
+		&agentGetterAdapter{e: engine},
+		&agentRemoverAdapter{e: engine},
+		skillMgr,
+	)
+	command.RegisterMemoryCommands(cmdRegistry,
+		&memoryAdapter{mem: store},
+		&memoryAdapter{mem: store},
+	)
+	command.RegisterTeamCommands(cmdRegistry, teamRegistry, &agentExecAdapter{e: engine})
+
+	// Bridge: expose all slash commands as LLM-callable tools for World agent
+	bridgeCC := &command.CommandContext{Engine: engine, Store: pgStore}
+	for _, bt := range command.BridgeCommands(cmdRegistry, bridgeCC) {
+		engine.Tools().Register(provider.Tool{
+			Type: "function",
+			Function: provider.ToolFunction{
+				Name:        bt.Def.Function.Name,
+				Description: bt.Def.Function.Description,
+				Parameters:  bt.Def.Function.Parameters,
+			},
+		}, bt.Handler)
+	}
+	logger.Info("Command-as-Tool bridge registered", zap.Int("tools", len(command.BridgeCommands(cmdRegistry, bridgeCC))))
+
 	msgRouter := msgrouter.New(engine, gw, steward, pgStore, cmdRegistry, logger)
 	gw.SetHandler(msgRouter.Handle)
 

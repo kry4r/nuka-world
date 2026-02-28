@@ -33,3 +33,6 @@ web/.next/
 
 # configs
 /configs
+
+# Design docs (local only)
+docs/plans/

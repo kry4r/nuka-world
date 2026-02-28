@@ -24,12 +24,15 @@ type SkillCreateFunc func(ctx context.Context, agentID, name, description string
 // RegisterCreateCommands wires up the four /create_* slash commands.
 // ---------------------------------------------------------------------------
 
+// ProfileCopyFunc copies template profile files for a newly created agent.
+type ProfileCopyFunc func(agentID string) error
+
 // RegisterCreateCommands registers /create_agent, /create_skill,
 // /create_team, and /create_schedule.
-func RegisterCreateCommands(reg *Registry, createAgent AgentCreateFunc, createSkill SkillCreateFunc) {
-	reg.Register(createAgentCommand(createAgent))
+func RegisterCreateCommands(reg *Registry, createAgent AgentCreateFunc, createSkill SkillCreateFunc, copyProfile ProfileCopyFunc, tr *TeamRegistry) {
+	reg.Register(createAgentCommand(createAgent, copyProfile))
 	reg.Register(createSkillCommand(createSkill))
-	reg.Register(createTeamCommand())
+	reg.Register(createTeamCommand(tr))
 	reg.Register(createScheduleCommand())
 }
 
@@ -37,7 +40,7 @@ func RegisterCreateCommands(reg *Registry, createAgent AgentCreateFunc, createSk
 // /create_agent <name> <personality description>
 // ---------------------------------------------------------------------------
 
-func createAgentCommand(create AgentCreateFunc) *Command {
+func createAgentCommand(create AgentCreateFunc, copyProfile ProfileCopyFunc) *Command {
 	return &Command{
 		Name:        "create_agent",
 		Description: "Create a new AI agent from a name and description",
@@ -62,6 +65,11 @@ func createAgentCommand(create AgentCreateFunc) *Command {
 
 			systemPrompt := fmt.Sprintf("You are %s. %s", name, personality)
 			id := create(name, name, personality, systemPrompt)
+
+			// Copy profile template for the new agent.
+			if copyProfile != nil {
+				_ = copyProfile(id)
+			}
 
 			return &CommandResult{
 				Content: fmt.Sprintf("Agent created: [%s] %s\nPersonality: %s", id, name, personality),
@@ -120,10 +128,10 @@ func createSkillCommand(create SkillCreateFunc) *Command {
 // /create_team <name> <agent_id1,agent_id2,...>
 // ---------------------------------------------------------------------------
 
-func createTeamCommand() *Command {
+func createTeamCommand(tr *TeamRegistry) *Command {
 	return &Command{
 		Name:        "create_team",
-		Description: "Create a team of agents (placeholder)",
+		Description: "Create a team of agents",
 		Usage:       "/create_team <name> <agent_id1,agent_id2,...>",
 		Handler: func(_ context.Context, args string, _ *CommandContext) (*CommandResult, error) {
 			args = strings.TrimSpace(args)
@@ -151,8 +159,10 @@ func createTeamCommand() *Command {
 				}, nil
 			}
 
+			tr.Add(teamName, members)
+
 			return &CommandResult{
-				Content: fmt.Sprintf("Team '%s' registered with %d member(s): %s\n(Note: full orchestration pending)",
+				Content: fmt.Sprintf("Team '%s' registered with %d member(s): %s",
 					teamName, len(members), strings.Join(members, ", ")),
 				Data: map[string]interface{}{
 					"team":    teamName,
