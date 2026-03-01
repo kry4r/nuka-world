@@ -93,7 +93,7 @@ export default function ResidentsPage() {
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
-    api.listAgents().then(setAgents).catch(() => {}).finally(() => setLoading(false));
+    api.listAgents().then((a) => setAgents(a || [])).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const active = agents.filter((a) => a.status === "active").length;

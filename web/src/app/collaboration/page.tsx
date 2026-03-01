@@ -226,7 +226,7 @@ export default function CollaborationPage() {
   const [toast, setToast] = useState("");
 
   const refresh = useCallback(() => {
-    api.listA2ATasks().then(setTasks).catch(() => {});
+    api.listA2ATasks().then((t) => setTasks(t || [])).catch(() => {});
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);

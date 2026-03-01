@@ -140,7 +140,7 @@ export default function SkillsPage() {
   const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
-    api.listSkills().then(setSkills).catch(() => {});
+    api.listSkills().then((s) => setSkills(s || [])).catch(() => {});
   }, []);
 
   const handleRemove = async (name: string) => {

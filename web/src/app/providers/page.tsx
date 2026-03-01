@@ -177,7 +177,7 @@ export default function ProvidersPage() {
   const [toast, setToast] = useState("");
 
   const refresh = useCallback(() => {
-    api.listProviders().then(setProviders).catch(() => {});
+    api.listProviders().then((p) => setProviders(p || [])).catch(() => {});
   }, []);
 
   useEffect(() => {

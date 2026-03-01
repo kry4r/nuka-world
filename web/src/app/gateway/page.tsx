@@ -153,7 +153,7 @@ export default function GatewayPage() {
     api.health()
       .then(() => setStatus("connected"))
       .catch(() => setStatus("offline"));
-    api.listAdapters().then(setAdapters).catch(() => {});
+    api.listAdapters().then((a) => setAdapters(a || [])).catch(() => {});
   }, []);
 
   const configured = adapters.filter((a) => a.status === "configured" || a.status === "connected").length;

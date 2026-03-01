@@ -127,8 +127,8 @@ export default function TeamsPage() {
 
   useEffect(() => {
     Promise.all([
-      api.listTeams().then(setTeams).catch(() => {}),
-      api.listAgents().then(setAgents).catch(() => {}),
+      api.listTeams().then((t) => setTeams(t || [])).catch(() => {}),
+      api.listAgents().then((a) => setAgents(a || [])).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
 

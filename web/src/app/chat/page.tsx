@@ -27,10 +27,11 @@ export default function ChatPage() {
 
   useEffect(() => {
     api.listAgents().then((list) => {
-      setAgents(list);
-      if (list.length > 0) setSelected(list[0].persona.id);
+      const agents = list || [];
+      setAgents(agents);
+      if (agents.length > 0) setSelected(agents[0].persona.id);
     }).catch(() => {});
-    api.listTeams().then(setTeams).catch(() => {});
+    api.listTeams().then((t) => setTeams(t || [])).catch(() => {});
   }, []);
 
   useEffect(() => {

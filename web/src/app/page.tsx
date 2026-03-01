@@ -41,9 +41,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     api.worldStatus().then(setWorld).catch((e) => setError(e.message));
-    api.listAgents().then(setAgents).catch(() => {});
-    api.listTeams().then(setTeams).catch(() => {});
-    api.listA2ATasks().then(setTasks).catch(() => {});
+    api.listAgents().then((a) => setAgents(a || [])).catch(() => {});
+    api.listTeams().then((t) => setTeams(t || [])).catch(() => {});
+    api.listA2ATasks().then((t) => setTasks(t || [])).catch(() => {});
   }, []);
 
   const activeCount = agents.filter((a) => a.status === "active").length;
