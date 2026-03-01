@@ -134,10 +134,35 @@ func (a *agentGetterAdapter) GetAgent(id string) (command.AgentInfo, bool) {
 	}, true
 }
 
-// providerSwitcherAdapter adapts *provider.Router to command.ProviderSwitcher.
-type providerSwitcherAdapter struct{ r *provider.Router }
+// providerSwitcherAdapter adapts *provider.Router + *agent.Engine to command.ProviderSwitcher.
+type providerSwitcherAdapter struct {
+	r *provider.Router
+	e *agent.Engine
+}
 
 func (a *providerSwitcherAdapter) SetDefault(providerID string) { a.r.SetDefault(providerID) }
+
+func (a *providerSwitcherAdapter) BindAgent(agentID, providerID string) {
+	a.r.Bind(agentID, providerID)
+	if ag, ok := a.e.Get(agentID); ok {
+		ag.ProviderID = providerID
+		a.e.Register(ag) // upsert to persist
+	}
+}
+
+func (a *providerSwitcherAdapter) SetAgentModel(agentID, model string) {
+	if ag, ok := a.e.Get(agentID); ok {
+		ag.Model = model
+		a.e.Register(ag) // upsert to persist
+	}
+}
+
+func (a *providerSwitcherAdapter) GetAgentBinding(agentID string) (string, string) {
+	if ag, ok := a.e.Get(agentID); ok {
+		return ag.ProviderID, ag.Model
+	}
+	return "", ""
+}
 
 func (a *providerSwitcherAdapter) ListProviders() []command.ProviderInfo {
 	defaultID := a.r.DefaultID()
@@ -151,10 +176,18 @@ func (a *providerSwitcherAdapter) ListProviders() []command.ProviderInfo {
 		case *provider.AnthropicProvider:
 			pType = "anthropic"
 		}
+		// Get models from provider config
+		var models []string
+		if ml, err := p.ListModels(context.Background()); err == nil {
+			for _, m := range ml {
+				models = append(models, m.ID)
+			}
+		}
 		out[i] = command.ProviderInfo{
 			ID:        p.ID(),
 			Name:      p.Name(),
 			Type:      pType,
+			Models:    models,
 			IsDefault: p.ID() == defaultID,
 		}
 	}
@@ -593,7 +626,7 @@ func main() {
 		&memoryAdapter{mem: store},
 	)
 	command.RegisterTeamCommands(cmdRegistry, teamRegistry, &agentExecAdapter{e: engine})
-	command.RegisterProviderCommands(cmdRegistry, &providerSwitcherAdapter{r: router})
+	command.RegisterProviderCommands(cmdRegistry, &providerSwitcherAdapter{r: router, e: engine})
 
 	// Bridge: expose all slash commands as LLM-callable tools for World agent
 	bridgeCC := &command.CommandContext{Engine: engine, Store: pgStore}
