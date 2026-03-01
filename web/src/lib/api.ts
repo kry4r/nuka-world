@@ -36,6 +36,8 @@ export const api = {
   getAgent: (id: string) => request<Agent>(`/agents/${id}`),
   createAgent: (agent: Partial<Agent>) =>
     request<Agent>("/agents", { method: "POST", body: JSON.stringify(agent) }),
+  updateAgent: (id: string, data: { provider_id?: string; model?: string }) =>
+    request<Agent>(`/agents/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   chatWithAgent: (id: string, message: string) =>
     request<ExecuteResult>(`/agents/${id}/chat`, {
       method: "POST",

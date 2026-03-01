@@ -415,6 +415,51 @@ func main() {
 		logger.Info("Seeded default World agent",
 			zap.String("provider", defaultProvider),
 			zap.String("model", defaultModel))
+
+		// Seed the default provider into DB if not already present
+		if pgStore != nil {
+			existing, _ := pgStore.ListProviders(context.Background())
+			providerExists := false
+			for _, ep := range existing {
+				if ep.ID == defaultProvider || ep.Name == defaultProvider {
+					providerExists = true
+					break
+				}
+			}
+			if !providerExists {
+				provEndpoint := os.Getenv("DEFAULT_PROVIDER_ENDPOINT")
+				provAPIKey := os.Getenv("DEFAULT_PROVIDER_API_KEY")
+				if provEndpoint == "" {
+					provEndpoint = "https://aigw-gzgy2.cucloud.cn:8443/v1"
+				}
+				if provAPIKey == "" {
+					provAPIKey = os.Getenv("XFYUN_API_KEY")
+				}
+				if provAPIKey != "" {
+					seedRow := &pgstore.ProviderRow{
+						Name:      defaultProvider,
+						Type:      "openai",
+						Endpoint:  provEndpoint,
+						APIKey:    provAPIKey,
+						Models:    []string{defaultModel},
+						IsDefault: true,
+					}
+					if err := pgStore.SaveProvider(context.Background(), seedRow); err != nil {
+						logger.Warn("failed to seed default provider", zap.Error(err))
+					} else {
+						// Register into live router
+						provCfg := provider.ProviderConfig{
+							ID: defaultProvider, Type: "openai", Name: defaultProvider,
+							Endpoint: provEndpoint, APIKey: provAPIKey,
+							Models: []string{defaultModel},
+						}
+						router.Register(provider.NewOpenAIProvider(provCfg, logger))
+						router.SetDefault(defaultProvider)
+						logger.Info("Seeded default provider into DB", zap.String("id", defaultProvider))
+					}
+				}
+			}
+		}
 	}
 
 	// Initialize MCP clients

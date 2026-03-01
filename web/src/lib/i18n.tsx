@@ -37,6 +37,11 @@ const translations: Record<Locale, Record<string, string>> = {
     "res.personality": "Personality",
     "res.backstory": "Backstory",
     "res.system_prompt": "System Prompt",
+    "res.provider": "Provider",
+    "res.select_provider": "Select Provider",
+    "res.no_provider": "No provider",
+    "res.edit": "Edit",
+    "res.save": "Save",
     "res.cancel": "Cancel",
     "res.submit": "Create",
     // Chat
@@ -192,6 +197,11 @@ const translations: Record<Locale, Record<string, string>> = {
     "res.personality": "性格",
     "res.backstory": "背景故事",
     "res.system_prompt": "系统提示词",
+    "res.provider": "Provider",
+    "res.select_provider": "选择 Provider",
+    "res.no_provider": "未配置",
+    "res.edit": "编辑",
+    "res.save": "保存",
     "res.cancel": "取消",
     "res.submit": "创建",
     // Chat

@@ -135,6 +135,7 @@ func (h *Handler) Router() http.Handler {
 		r.Get("/agents", h.listAgents)
 		r.Post("/agents", h.createAgent)
 		r.Get("/agents/{id}", h.getAgent)
+		r.Put("/agents/{id}", h.updateAgent)
 		r.Post("/agents/{id}/chat", h.chatWithAgent)
 
 		// Orchestrator routes
@@ -207,6 +208,33 @@ func (h *Handler) getAgent(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "agent not found"})
 		return
 	}
+	writeJSON(w, http.StatusOK, a)
+}
+
+type updateAgentRequest struct {
+	ProviderID string `json:"provider_id"`
+	Model      string `json:"model"`
+}
+
+func (h *Handler) updateAgent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	a, ok := h.engine.Get(id)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "agent not found"})
+		return
+	}
+	var req updateAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.ProviderID != "" {
+		a.ProviderID = req.ProviderID
+	}
+	if req.Model != "" {
+		a.Model = req.Model
+	}
+	h.engine.Register(a) // upsert
 	writeJSON(w, http.StatusOK, a)
 }
 

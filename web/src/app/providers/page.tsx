@@ -16,60 +16,28 @@ function StatBox({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ToggleSwitch({ active, onClick }: { active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`relative w-10 h-5 rounded-full transition-colors ${
-        active ? "bg-nuka-teal" : "bg-nuka-elevated"
-      }`}
-    >
-      <div
-        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-          active ? "translate-x-5.5" : "translate-x-0.5"
-        }`}
-      />
-    </button>
-  );
-}
-
 function ProviderCard({
   provider,
-  onToggle,
   onEdit,
   onDelete,
   onTest,
 }: {
   provider: ProviderConfig;
-  onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onTest: () => void;
 }) {
   const { t } = useI18n();
-  const isDefault = provider.is_default;
 
   return (
-    <div
-      className={`bg-nuka-card rounded-2xl p-6 flex flex-col gap-4 flex-1 min-w-[280px] border-2 transition-colors ${
-        isDefault ? "border-nuka-teal" : "border-nuka-elevated"
-      }`}
-    >
+    <div className="bg-nuka-card rounded-2xl p-6 flex flex-col gap-4 flex-1 min-w-[280px] border-2 border-nuka-elevated">
       <div className="flex items-center justify-between">
         <span className="font-[var(--font-oswald)] text-base font-bold text-white">
           {provider.name}
         </span>
-        <ToggleSwitch active={!!isDefault} onClick={onToggle} />
-      </div>
-      <div className="flex items-center gap-2">
         <span className="text-xs text-nuka-teal px-2 py-1 bg-nuka-teal/10 rounded">
           {provider.type}
         </span>
-        {isDefault && (
-          <span className="text-xs text-nuka-orange px-2 py-1 bg-nuka-orange/10 rounded">
-            {t("prov.default")}
-          </span>
-        )}
       </div>
       <div className="text-xs text-nuka-muted truncate">{provider.endpoint}</div>
       <div className="flex flex-col gap-2">
@@ -192,14 +160,6 @@ export default function ProvidersPage() {
     setTimeout(() => setToast(""), 3000);
   };
 
-  const handleToggle = async (p: ProviderConfig) => {
-    if (p.is_default) return;
-    try {
-      await api.setDefaultProvider(p.id);
-      refresh();
-    } catch { showToast(t("prov.test_fail")); }
-  };
-
   const handleAdd = async (data: Partial<ProviderConfig>) => {
     try {
       await api.addProvider(data);
@@ -264,7 +224,6 @@ export default function ProvidersPage() {
             <ProviderCard
               key={p.id}
               provider={p}
-              onToggle={() => handleToggle(p)}
               onEdit={() => setEditTarget(p)}
               onDelete={() => handleDelete(p)}
               onTest={() => handleTest(p)}
