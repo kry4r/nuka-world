@@ -1,8 +1,8 @@
 <div align="center">
 
-# `> nuka_world`
+# `nuka_world`
 
-**Autonomous Multi-Agent System with Memory, Skills & World Simulation**
+**Autonomous Multi-Agent Runtime with Memory, Skills, and World Simulation**
 
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?style=flat-square&logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
@@ -12,142 +12,114 @@
 
 <br>
 
-*A living world where AI agents think, remember, collaborate, and evolve.*
+<img src="docs/images/architecture-light.svg" alt="Nuka World Architecture (Light)" width="980"/>
 
 </div>
 
----
+## Overview
 
-## Architecture
+Nuka World is an agent platform for building persistent AI characters and teams.  
+It combines runtime orchestration, graph memory, skill/tool execution, and a world simulation loop.
 
-<div align="center">
-<img src="docs/images/architecture.svg" alt="Nuka World Architecture" width="800"/>
-</div>
+### Why This Project
 
-## Features
+- Multi-agent execution with agent-level persona and goal injection.
+- Command and tool unification (`slash command -> callable tool` bridge).
+- Memory + retrieval stack for long-term context and semantic recall.
+- World loop for autonomous progression (`clock`, `heartbeat`, `relations`, `growth`).
+- Multi-platform ingress through REST and adapters.
 
-| Category | Description |
-|----------|-------------|
-| **Multi-Agent Engine** | Register, execute, and manage multiple AI agents with independent personas, memories, and goals |
-| **Memory Graph** | Neo4j-backed spreading activation memory — agents recall relevant context automatically |
-| **RAG Pipeline** | Qdrant vector store + embedding providers for retrieval-augmented generation |
-| **Skill System** | Pluggable skills assigned per-agent, with built-in + user-defined skill support |
-| **Command-as-Tool Bridge** | All slash commands are auto-exposed as LLM-callable tools via function calling |
-| **World Simulation** | World clock, heartbeat-driven autonomous thinking, relation graphs, state & growth tracking |
-| **Multi-Platform Gateway** | REST API + Slack + Discord adapters with unified message routing |
-| **Orchestrator** | Redis-backed message bus with scheduler and steward for multi-agent coordination |
-| **Agent Profiles** | `SOUL.md` / `Agent.md` / `GOALS.md` per agent — personality, role, and goals injected into system prompt |
-| **MCP Integration** | Connect external tool servers via Model Context Protocol |
+## Architecture Layers
+
+| Layer | Responsibility | Main Components |
+| --- | --- | --- |
+| Gateway | External access and channel integration | REST API, Slack adapter, Discord adapter, Web client |
+| Runtime Core | Request handling and agent execution | Command registry, agent engine, provider router, message router |
+| Skills and Tools | Tool invocation and capability composition | Skill manager, command-as-tool bridge, MCP clients, orchestrator |
+| Data and Retrieval | Persistence and context retrieval | Neo4j, PostgreSQL, Qdrant, Redis |
+| World Simulation | Autonomous state evolution | World clock, heartbeat loop, relations graph, state and growth |
 
 ## Quick Start
 
 ### Prerequisites
 
 - Go 1.25+
-- Neo4j (memory graph)
-- PostgreSQL (persistence)
-- Redis (orchestrator)
+- PostgreSQL
+- Neo4j
+- Redis
 - Qdrant (optional, for RAG)
 
-### Run Locally
-
-```bash
-# Clone
-git clone https://github.com/nidhogg/nuka-world.git
-cd nuka-world
-
-# Configure
-cp configs/nuka.example.json configs/nuka.json
-# Edit configs/nuka.json with your database URIs and API keys
-
-# Build & Run
-go build -o nuka ./cmd/nuka
-./nuka
-```
-
-### Run with Docker
+### Option A: Docker (Fastest)
 
 ```bash
 docker compose up -d
 ```
 
-The API server starts on `:8080` by default.
+Default API port: `:8080`
 
-## Slash Commands
+### Option B: Local Run
 
-All commands can be triggered directly via the API or invoked by the World agent through natural language (Command-as-Tool bridge).
+```bash
+git clone https://github.com/kry4r/nuka-world.git
+cd nuka-world
 
-| Command | Usage | Description |
-|---------|-------|-------------|
-| `/help` | `/help` | List all available commands |
-| `/agents` | `/agents` | List registered agents |
-| `/tools` | `/tools` | List available tools |
-| `/skills` | `/skills` | List loaded skills |
-| `/status` | `/status` | Show gateway adapter status |
-| `/create_agent` | `/create_agent <name> <personality>` | Create a new agent |
-| `/create_skill` | `/create_skill <agent_id> <description>` | Create and assign a skill |
-| `/create_team` | `/create_team <name> <id1,id2,...>` | Create an agent team |
-| `/create_schedule` | `/create_schedule <agent_id> <type> <desc>` | Schedule a task |
-| `/agent_info` | `/agent_info <agent_id>` | Get agent details |
-| `/remove_agent` | `/remove_agent <agent_id>` | Remove an agent |
-| `/assign_skill` | `/assign_skill <agent_id> <skill_id>` | Assign skill to agent |
-| `/unassign_skill` | `/unassign_skill <agent_id> <skill_id>` | Remove skill from agent |
-| `/remember` | `/remember <agent_id> <content>` | Store a memory |
-| `/forget` | `/forget <agent_id> <keyword>` | Delete matching memories |
-| `/recall` | `/recall <agent_id> <query>` | Retrieve memories |
-| `/assign_task` | `/assign_task <agent_id> <task>` | Assign task to agent |
-| `/broadcast` | `/broadcast <message>` | Broadcast to all agents |
-| `/team_msg` | `/team_msg <team> <from> <to> <msg>` | Inter-agent team message |
-| `/search` | `/search <agent_id> <query>` | RAG search (if enabled) |
+cp configs/nuka.example.json configs/nuka.json
+# edit configs/nuka.json
 
-## Agent Profiles
-
-Each agent has a profile directory under `agents/<id>/` with three files:
-
+go build -o nuka ./cmd/nuka
+./nuka
 ```
+
+## Command Interface
+
+All slash commands are available via API and can be invoked by the world agent through tool calling.
+
+| Category | Commands |
+| --- | --- |
+| Discovery | `/help`, `/agents`, `/tools`, `/skills`, `/status`, `/providers`, `/models` |
+| Agent Lifecycle | `/create_agent`, `/remove_agent`, `/agent_info`, `/assign_skill`, `/unassign_skill` |
+| Collaboration | `/create_team`, `/team_msg`, `/broadcast`, `/assign_task`, `/create_schedule` |
+| Memory and Retrieval | `/remember`, `/forget`, `/recall`, `/search` |
+
+## Agent Profile Model
+
+Each agent lives under `agents/<id>/`:
+
+```text
 agents/
   world/
-    SOUL.md      # Personality, values, communication style, boundaries
-    Agent.md     # Role, capabilities, tools, provider config
-    GOALS.md     # Short-term and long-term goals
-  _template/     # Copied for new agents via /create_agent
+    SOUL.md
+    Agent.md
+    GOALS.md
+  _template/
 ```
 
-These files are loaded into the system prompt at execution time, giving each agent a persistent identity.
+- `SOUL.md`: personality, values, boundaries, communication style
+- `Agent.md`: role, capabilities, tools, provider settings
+- `GOALS.md`: short-term and long-term goals
 
-## Project Structure
+## Project Layout
 
-```
-cmd/nuka/          # Application entrypoint
+```text
+cmd/nuka/          # entrypoint
 internal/
-  agent/           # Agent engine, tool registry, profiles
-  api/             # HTTP handler (chi router)
-  command/         # Slash command registry + bridge
-  config/          # Configuration loader
-  embedding/       # Embedding providers
-  gateway/         # REST, Slack, Discord adapters
-  mcp/             # Model Context Protocol client
-  memory/          # Neo4j memory graph with spreading activation
-  orchestrator/    # Redis message bus, scheduler, steward
-  provider/        # LLM provider router (OpenAI, Anthropic)
-  rag/             # RAG orchestrator
-  router/          # Message router
-  skill/           # Skill manager + built-in skills
-  store/           # PostgreSQL persistence
-  vectorstore/     # Qdrant vector store client
-  world/           # World simulation (clock, heartbeat, relations, state)
-agents/            # Agent profile directories
-skills/            # Plugin skill definitions
-migrations/        # PostgreSQL migrations
+  agent/           # runtime agent engine and profile loading
+  api/             # HTTP handlers
+  command/         # slash command registry and bridge
+  gateway/         # REST, Slack, Discord
+  memory/          # Neo4j memory graph
+  rag/             # retrieval orchestration
+  skill/           # skill manager
+  store/           # PostgreSQL
+  vectorstore/     # Qdrant
+  orchestrator/    # Redis bus, scheduler, steward
+  world/           # simulation loop
+agents/            # agent profiles
+skills/            # pluggable skills
+migrations/        # SQL migrations
 web/               # Next.js frontend
 ```
 
 ## License
 
 MIT
-
----
-
-<div align="center">
-<sub>Built with caffeine and mass amounts of LLM tokens.</sub>
-</div>
