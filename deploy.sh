@@ -71,6 +71,25 @@ if [ "$HAS_LLM" = false ]; then
 fi
 ok "LLM provider configured"
 
+# Step 4.5: Validate encryption key (required for storing provider API keys)
+info "Checking encryption key configuration..."
+if [ -z "${NUKA_ENCRYPT_KEY:-}" ]; then
+    warn "NUKA_ENCRYPT_KEY not set, generating and writing to .env..."
+    if ! command -v openssl &>/dev/null; then
+        fail "openssl not found. Install openssl or set NUKA_ENCRYPT_KEY manually (64 hex chars)."
+    fi
+    NUKA_ENCRYPT_KEY="$(openssl rand -hex 32)"
+    tmp="$(mktemp)"
+    awk -v key="$NUKA_ENCRYPT_KEY" 'BEGIN{done=0} /^NUKA_ENCRYPT_KEY=/{print "NUKA_ENCRYPT_KEY="key; done=1; next} {print} END{if(!done) print "NUKA_ENCRYPT_KEY="key}' .env > "$tmp"
+    mv "$tmp" .env
+    ok "NUKA_ENCRYPT_KEY generated"
+else
+    if [[ ! "$NUKA_ENCRYPT_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        fail "NUKA_ENCRYPT_KEY must be 64 hex chars (32 bytes)."
+    fi
+    ok "NUKA_ENCRYPT_KEY configured"
+fi
+
 # Step 5: Deploy
 echo ""
 info "Starting Nuka World (building + pulling images)..."
