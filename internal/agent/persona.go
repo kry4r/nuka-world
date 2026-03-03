@@ -7,6 +7,7 @@ import (
 // Persona defines an agent's identity and personality.
 type Persona struct {
 	ID           string             `json:"id"`
+	ProfileID    string             `json:"profile_id,omitempty"` // profile folder to load from (for clones/persisted teams)
 	Name         string             `json:"name"`
 	Role         string             `json:"role"`
 	Personality  string             `json:"personality"`

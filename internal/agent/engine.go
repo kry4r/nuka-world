@@ -377,7 +377,7 @@ func (e *Engine) buildMessages(a *Agent, userMsg string, memoryCtx string, ragCt
 	msgs := []provider.Message{
 		{Role: "system", Content: a.Persona.SystemPrompt},
 	}
-	if profile := LoadProfile(a.Persona.ID); profile != "" {
+	if profile := LoadProfileWithProfileID(a.Persona.ID, a.Persona.ProfileID); profile != "" {
 		msgs = append(msgs, provider.Message{
 			Role:    "system",
 			Content: profile,
