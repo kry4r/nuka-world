@@ -9,10 +9,7 @@ import (
 // ProfileDir is the base directory for agent profile files.
 var ProfileDir = "agents"
 
-// LoadProfile reads SOUL.md, Agent.md, and GOALS.md for the given agent ID
-// and returns the concatenated content for system prompt injection.
-func LoadProfile(agentID string) string {
-	dir := filepath.Join(ProfileDir, agentID)
+func loadProfileDir(dir string) string {
 	files := []string{"SOUL.md", "Agent.md", "GOALS.md"}
 	var parts []string
 	for _, f := range files {
@@ -28,6 +25,21 @@ func LoadProfile(agentID string) string {
 		return ""
 	}
 	return strings.Join(parts, "\n\n---\n\n")
+}
+
+// LoadProfile reads SOUL.md, Agent.md, and GOALS.md for the given agent ID
+// and returns the concatenated content for system prompt injection.
+func LoadProfile(agentID string) string {
+	dir := filepath.Join(ProfileDir, agentID)
+	return loadProfileDir(dir)
+}
+
+func LoadProfileWithProfileID(agentID, profileID string) string {
+	if profileID == "" {
+		return LoadProfile(agentID)
+	}
+	dir := filepath.Join(ProfileDir, profileID)
+	return loadProfileDir(dir)
 }
 
 // CopyTemplate copies _template/ profile files to agents/<id>/.
