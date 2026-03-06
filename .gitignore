@@ -30,6 +30,13 @@ redis_data/
 # Node (web frontend)
 web/node_modules/
 web/.next/
+apps/desktop/node_modules/
+apps/desktop/dist/
+apps/desktop/.vite/
+.npm-cache/
+
+# Rust
+target/
 
 # configs
 /configs
