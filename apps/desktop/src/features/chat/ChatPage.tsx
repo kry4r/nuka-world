@@ -127,10 +127,8 @@ export function ChatPage() {
         <div className="page-layout__main chat-stage">
           <div className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}>
             {landing ? (
-              <div className="chat-hero">
-                <div className="chat-hero__mark">
-                  <NukaLogo className="chat-hero__logo" size={96} />
-                </div>
+              <div aria-label="World chat landing hero" className="chat-hero">
+                <NukaLogo className="chat-hero__logo" size={84} />
                 <div className="chat-hero__copy">
                   <span className="chat-hero__eyebrow">World Chat</span>
                   <h1>Nuka World</h1>
@@ -146,7 +144,9 @@ export function ChatPage() {
                       Session {formatSession(session?.sessionId)} ¡¤ {formatRoute(session?.route)} ¡¤ Tools ready
                     </span>
                   </div>
-                  <span className="chat-surface__status">Session live</span>
+                  <span aria-label="World chat session status" className="chat-surface__status">
+                    Session live
+                  </span>
                 </header>
 
                 <div className="chat-feed" role="log">
@@ -164,7 +164,7 @@ export function ChatPage() {
               </section>
             )}
 
-            <div className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}>
+            <div aria-label="World chat composer" className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}>
               {landing ? null : (
                 <div aria-label="Conversation quick actions" className="composer__choices">
                   {QUICK_CHOICES.map((choice) => (
@@ -202,6 +202,7 @@ export function ChatPage() {
                   </div>
                 </div>
                 <button
+                  aria-label={landing ? "Send to World" : "Send"}
                   className="composer__send"
                   disabled={isRouting || prompt.trim().length === 0}
                   onClick={() => void handleSend()}

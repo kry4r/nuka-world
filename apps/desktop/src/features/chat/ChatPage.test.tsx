@@ -36,6 +36,12 @@ describe("ChatPage", () => {
         .querySelector("textarea")
         ?.getAttribute("placeholder"),
     ).toBe("Message World to start a session...");
+    expect(
+      view.container.querySelector('[aria-label="World chat landing hero"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('[aria-label="World chat composer"]'),
+    ).toBeTruthy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
   });
 
@@ -73,5 +79,11 @@ describe("ChatPage", () => {
     expect(
       view.container.querySelector('[aria-label="Conversation quick actions"]'),
     ).toBeTruthy();
+    expect(
+      view.container.querySelector('[aria-label="World chat session status"]')?.textContent?.trim(),
+    ).toBe("Session live");
+    expect(
+      view.container.querySelector('[aria-label="World chat landing hero"]'),
+    ).toBeFalsy();
   });
 });
