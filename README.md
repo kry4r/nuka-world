@@ -1,12 +1,11 @@
 <p align="center">
-  <img src="./docs/logo/goodlogo.png" alt="Nuka World" width="168">
+  <img src="./docs/logo/goodlogo.png" alt="Nuka World" width="156">
 </p>
 
 <h1 align="center">Nuka World Desktop</h1>
 
 <p align="center">
-  一个 <strong>desktop-first</strong> 的 AI 工作台，基于 <code>Rust</code>、<code>Tauri 2</code>、<code>React</code> 与 <code>TypeScript</code> 构建，
-  将聊天、工作流、Agent、记忆、知识库与运行时控制整合到一个本地优先的桌面空间里。
+  A desktop-first AI workspace built with <code>Rust</code>, <code>Tauri 2</code>, <code>React</code>, and <code>TypeScript</code>.
 </p>
 
 <p align="center">
@@ -20,75 +19,69 @@
 </p>
 
 <p align="center">
-  <strong>World Chat 为核心 · 多页面桌面工作流 · Local-first Runtime · 轻量但可扩展</strong>
+  <a href="./README.md"><img src="https://img.shields.io/badge/English-1F221D?style=flat-square" alt="English"></a>
+  &nbsp;
+  <a href="./README.zh-CN.md"><img src="https://img.shields.io/badge/ZH--CN-D9E4CB?style=flat-square&labelColor=F6F3EC&color=C7D7B7" alt="简体中文"></a>
+</p>
+
+<p align="center">
+  World Chat at the center, with layered desktop surfaces for workflows, agents, memory, knowledge, and runtime control.
 </p>
 
 ---
 
-## ✨ 当前产品概览
+## Current Product
 
-Nuka World 当前围绕 `World Chat` 展开，并提供一组面向桌面 AI 工作流的主页面：
+Nuka World currently ships as a focused desktop workspace organized around these surfaces:
 
-- `Chat`：空态品牌引导、药丸式输入、进入会话后的对话与上下文检查器
-- `Workflow`：面向房间/模板的任务组织方式
-- `Agents`：一句话创建与工具绑定的 Agent 预设入口
-- `Memory`：图式、多层级、可切换主体的记忆视图
-- `Knowledge`：外部知识库接入、分层与分块组织
-- `Settings`：`Providers / Appearance / Runtime` 的可编辑表单状态
+- `Chat` for prompt-first conversation, empty-state onboarding, and inspector-ready sessions
+- `Workflow` for room-based execution and repeatable templates
+- `Agents` for one-line preset creation and tool bindings
+- `Memory` for graph-style, layered, multi-subject inspection
+- `Knowledge` for external sources, chunked ingestion, and layered libraries
+- `Settings` for editable `Providers`, `Appearance`, and `Runtime` state
 
 ---
 
-## 🧭 Light Architecture
+## Light Architecture
 
 <p align="center">
   <img src="./docs/images/architecture-light.svg" alt="Nuka World Light Architecture" width="100%">
 </p>
 
-这张架构图对应当前仓库的真实分层：
+The architecture stays intentionally simple:
 
-- 顶层是 `React + TypeScript` 的桌面 UI 表面
-- 中间是 `Tauri Shell`，负责窗口生命周期、托盘与命令桥接
-- 底层是 Rust workspace 中的 `domain / runtime / storage / memory / knowledge / tools / integrations`
-- 最下方是本地持久化、Provider 配置、文件 I/O 与桌面系统能力
+- `Desktop UI` provides the shell, chat canvas, settings forms, and product surfaces
+- `Tauri Shell` handles native lifecycle, tray behavior, and command bridging
+- `Rust Workspace` carries domain, runtime, storage, memory, knowledge, tools, and integrations
+- `Local Foundations` persist sessions and settings while connecting to providers and local resources
 
 ---
 
-## 🧩 Feature Map
+## Feature Map
 
 <p align="center">
   <img src="./docs/images/feature-map-light.svg" alt="Nuka World Feature Map" width="100%">
 </p>
 
-这张功能图聚焦当前已经落地的产品面：
+The feature map reflects the current product shape:
 
-- `World Chat` 是中心入口
-- `Workflow / Agents / Memory / Knowledge / Settings` 作为环绕式工作台模块
-- 所有页面都围绕一个 desktop-first 的统一 shell 和本地运行时组织
-
----
-
-## 🏗 Runtime Model
-
-- `Local-first desktop shell`：以 `Tauri 2` 提供原生窗口、托盘与桌面生命周期
-- `Rust workspace`：承载领域模型、运行时编排、存储、记忆、知识、工具与集成能力
-- `React application`：负责页面编排、表单状态、聊天视图与桌面交互体验
-- `SQLite foundation`：为会话、模板与配置提供本地持久化基础
-- `Tray-resident behavior`：支撑长生命周期桌面运行流程
+- `World Chat` is the primary entry and conversation surface
+- `Workflow`, `Agents`, `Memory`, `Knowledge`, and `Settings` are surrounding workbench modules
+- All surfaces live inside the same desktop shell and local-first runtime model
 
 ---
 
-## 📦 仓库状态
+## Runtime Model
 
-当前主代码树已经统一为：
-
-- `Rust + Tauri + React + TypeScript`
-- 旧的 Go 后端入口、运行时代码与历史 Next.js Web App 已从活跃产品树中移除
-- `docs/plans/` 中保留了当前重写过程的计划文档，作为实现上下文
-- 当前品牌源图使用 `docs/logo/goodlogo.png`
+- `Local-first shell` with `Tauri 2` for native window, tray, and lifecycle control
+- `Rust workspace` for orchestration, storage, memory, knowledge, tools, and integrations
+- `React application` for routing, editable forms, and desktop interaction patterns
+- `SQLite foundation` for local persistence of sessions, templates, and configuration
 
 ---
 
-## 🗂 Workspace Layout
+## Workspace Layout
 
 ```text
 apps/
@@ -112,7 +105,7 @@ docs/
 
 ---
 
-## 🛠 Development Commands
+## Development Commands
 
 ```bash
 cargo test --workspace
@@ -122,15 +115,6 @@ npm.cmd --prefix apps/desktop run build
 
 ---
 
-## 🎨 UI Notes
-
-- 大尺寸品牌展示使用 `goodlogo.png`
-- 紧凑侧边栏场景保留了更简洁的小尺寸标识
-- `Settings` 已不再是静态展示，而是可编辑的桌面表单状态
-- 整体 README 图示采用 light、偏现代极客风的轻卡片视觉语言
-
----
-
-## 📄 License
+## License
 
 This project is licensed under the `Apache-2.0` License. See `LICENSE` for details.
