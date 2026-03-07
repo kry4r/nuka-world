@@ -1,0 +1,13 @@
+[package]
+name = "nuka-storage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+nuka-domain = { path = "../nuka-domain" }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "=1.48.0", features = ["macros", "rt-multi-thread"] }

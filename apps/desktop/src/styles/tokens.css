@@ -1,0 +1,27 @@
+:root {
+  color-scheme: light;
+  --color-bg: #eee7dd;
+  --color-panel: #fcf8f2;
+  --color-panel-soft: #f8f3ec;
+  --color-panel-accent: #f7f1e8;
+  --color-border: #e1d7ca;
+  --color-border-strong: #d8ccbd;
+  --color-text: #2f2a26;
+  --color-text-soft: #766f66;
+  --color-text-muted: #6e665d;
+  --color-brand: #4a423a;
+  --color-brand-soft: #e9ddce;
+  --shadow-panel: 0 12px 32px rgba(88, 72, 52, 0.08);
+  --radius-shell: 32px;
+  --radius-panel: 28px;
+  --radius-card: 20px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --font-sans: Inter, "Segoe UI", sans-serif;
+}

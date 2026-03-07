@@ -1,0 +1,24 @@
+[package]
+name = "desktop-tauri"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "desktop_tauri"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "desktop-tauri"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2" }
+
+[dependencies]
+nuka-integrations = { path = "../../../crates/nuka-integrations" }
+nuka-knowledge = { path = "../../../crates/nuka-knowledge" }
+nuka-memory = { path = "../../../crates/nuka-memory" }
+nuka-runtime = { path = "../../../crates/nuka-runtime" }
+nuka-tools = { path = "../../../crates/nuka-tools" }
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = ["tray-icon"] }

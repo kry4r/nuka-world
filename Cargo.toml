@@ -1,0 +1,12 @@
+[workspace]
+members = [
+  "apps/desktop/src-tauri",
+  "crates/nuka-domain",
+  "crates/nuka-runtime",
+  "crates/nuka-storage",
+  "crates/nuka-tools",
+  "crates/nuka-integrations",
+  "crates/nuka-memory",
+  "crates/nuka-knowledge",
+]
+resolver = "2"
