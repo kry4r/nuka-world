@@ -1,33 +1,94 @@
-﻿# Nuka World Desktop
+<p align="center">
+  <img src="./docs/logo/goodlogo.png" alt="Nuka World" width="168">
+</p>
 
-Nuka World is a desktop-first AI workspace built with Rust, Tauri 2, React, and TypeScript.
+<h1 align="center">Nuka World Desktop</h1>
 
-## Current Product
+<p align="center">
+  一个 <strong>desktop-first</strong> 的 AI 工作台，基于 <code>Rust</code>、<code>Tauri 2</code>、<code>React</code> 与 <code>TypeScript</code> 构建，
+  将聊天、工作流、Agent、记忆、知识库与运行时控制整合到一个本地优先的桌面空间里。
+</p>
 
-The current application is centered around `World Chat`, with dedicated desktop surfaces for:
+<p align="center">
+  <img src="https://img.shields.io/badge/runtime-Tauri%202-E8E2D5?style=flat-square" alt="Tauri 2">
+  &nbsp;
+  <img src="https://img.shields.io/badge/core-Rust-C7D7B7?style=flat-square" alt="Rust Workspace">
+  &nbsp;
+  <img src="https://img.shields.io/badge/ui-React%20%2B%20TypeScript-EFE9DC?style=flat-square" alt="React and TypeScript">
+  &nbsp;
+  <img src="https://img.shields.io/badge/license-Apache--2.0-A5BC8D?style=flat-square" alt="Apache 2.0 License">
+</p>
 
-- `Workflow` collaboration rooms
-- `Agents` preset creation and tool bindings
-- `Memory` graph-style layered memory inspection
-- `Knowledge` library and ingestion structure
-- `Settings` with editable `Providers`, `Appearance`, and `Runtime`
+<p align="center">
+  <strong>World Chat 为核心 · 多页面桌面工作流 · Local-first Runtime · 轻量但可扩展</strong>
+</p>
 
-## Runtime Model
+---
 
-- Local-first desktop shell powered by `Tauri 2`
-- Rust workspace for domain, runtime, storage, memory, knowledge, tools, and integrations
-- React + TypeScript UI for desktop pages and interaction flows
-- SQLite-backed storage foundations in the Rust layer
-- Tray-resident desktop behavior for long-running runtime flows
+## ✨ 当前产品概览
 
-## Repository State
+Nuka World 当前围绕 `World Chat` 展开，并提供一组面向桌面 AI 工作流的主页面：
 
-- The main code tree is now `Rust + Tauri + React + TypeScript`
-- Legacy Go backend entrypoints, runtime packages, and the old Next.js web app have been removed from the active product tree
-- The remaining migration plan documents under `docs/plans/` are kept as historical implementation context
-- The selected brand source asset is `docs/logo/goodlogo.png`
+- `Chat`：空态品牌引导、药丸式输入、进入会话后的对话与上下文检查器
+- `Workflow`：面向房间/模板的任务组织方式
+- `Agents`：一句话创建与工具绑定的 Agent 预设入口
+- `Memory`：图式、多层级、可切换主体的记忆视图
+- `Knowledge`：外部知识库接入、分层与分块组织
+- `Settings`：`Providers / Appearance / Runtime` 的可编辑表单状态
 
-## Workspace Layout
+---
+
+## 🧭 Light Architecture
+
+<p align="center">
+  <img src="./docs/images/architecture-light.svg" alt="Nuka World Light Architecture" width="100%">
+</p>
+
+这张架构图对应当前仓库的真实分层：
+
+- 顶层是 `React + TypeScript` 的桌面 UI 表面
+- 中间是 `Tauri Shell`，负责窗口生命周期、托盘与命令桥接
+- 底层是 Rust workspace 中的 `domain / runtime / storage / memory / knowledge / tools / integrations`
+- 最下方是本地持久化、Provider 配置、文件 I/O 与桌面系统能力
+
+---
+
+## 🧩 Feature Map
+
+<p align="center">
+  <img src="./docs/images/feature-map-light.svg" alt="Nuka World Feature Map" width="100%">
+</p>
+
+这张功能图聚焦当前已经落地的产品面：
+
+- `World Chat` 是中心入口
+- `Workflow / Agents / Memory / Knowledge / Settings` 作为环绕式工作台模块
+- 所有页面都围绕一个 desktop-first 的统一 shell 和本地运行时组织
+
+---
+
+## 🏗 Runtime Model
+
+- `Local-first desktop shell`：以 `Tauri 2` 提供原生窗口、托盘与桌面生命周期
+- `Rust workspace`：承载领域模型、运行时编排、存储、记忆、知识、工具与集成能力
+- `React application`：负责页面编排、表单状态、聊天视图与桌面交互体验
+- `SQLite foundation`：为会话、模板与配置提供本地持久化基础
+- `Tray-resident behavior`：支撑长生命周期桌面运行流程
+
+---
+
+## 📦 仓库状态
+
+当前主代码树已经统一为：
+
+- `Rust + Tauri + React + TypeScript`
+- 旧的 Go 后端入口、运行时代码与历史 Next.js Web App 已从活跃产品树中移除
+- `docs/plans/` 中保留了当前重写过程的计划文档，作为实现上下文
+- 当前品牌源图使用 `docs/logo/goodlogo.png`
+
+---
+
+## 🗂 Workspace Layout
 
 ```text
 apps/
@@ -43,12 +104,15 @@ crates/
   nuka-tools/
   nuka-integrations/
 docs/
-  design.pen
+  images/
   logo/
   plans/
+  design.pen
 ```
 
-## Development Commands
+---
+
+## 🛠 Development Commands
 
 ```bash
 cargo test --workspace
@@ -56,8 +120,17 @@ npm.cmd --prefix apps/desktop test
 npm.cmd --prefix apps/desktop run build
 ```
 
-## UI Notes
+---
 
-- Expanded brand lockups use the selected `goodlogo.png` source asset
-- Compact sidebar states keep a simplified mark for small-size readability
-- Settings persist editable local UI state for providers, appearance, and runtime sections
+## 🎨 UI Notes
+
+- 大尺寸品牌展示使用 `goodlogo.png`
+- 紧凑侧边栏场景保留了更简洁的小尺寸标识
+- `Settings` 已不再是静态展示，而是可编辑的桌面表单状态
+- 整体 README 图示采用 light、偏现代极客风的轻卡片视觉语言
+
+---
+
+## 📄 License
+
+This project is licensed under the `Apache-2.0` License. See `LICENSE` for details.
