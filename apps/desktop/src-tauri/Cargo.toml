@@ -16,5 +16,6 @@ tauri-build = { version = "2" }
 
 [dependencies]
 nuka-runtime = { path = "../../../crates/nuka-runtime" }
+nuka-tools = { path = "../../../crates/nuka-tools" }
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = ["tray-icon"] }

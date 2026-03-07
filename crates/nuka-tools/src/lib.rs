@@ -1,3 +1,1 @@
-pub fn crate_name() -> &'static str {
-    "nuka-tools"
-}
+pub mod registry;

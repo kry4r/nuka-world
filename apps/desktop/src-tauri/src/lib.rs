@@ -7,6 +7,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(app_state::AppState::default())
         .invoke_handler(tauri::generate_handler![
+            commands::agents::default_agent_tool_bindings,
             commands::app::close_policy_minimizes_to_tray,
             commands::chat::route_world_prompt,
             commands::workflow::start_workflow_session,
