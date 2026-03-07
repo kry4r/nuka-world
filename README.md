@@ -1,21 +1,21 @@
-# Nuka World Desktop Rewrite
+﻿# Nuka World Desktop
 
-This worktree tracks Nuka World as a pure desktop application built with Rust, Tauri 2, React, and TypeScript.
+Nuka World is now a desktop-only application built with Rust, Tauri 2, React, and TypeScript.
 
 ## Product Surface
 
-- Desktop-only application shell
-- No legacy Go API server or Next.js web frontend in this worktree
-- Local-first runtime with Rust commands behind the Tauri boundary
+- `World Chat` as the primary entrypoint
+- `Workflow`, `Agents`, `Memory`, `Knowledge`, and `Settings` as first-class desktop pages
+- Local-first runtime behind the Tauri command boundary
+- Editable desktop settings for `Providers`, `Appearance`, and `Runtime`
 
-## Stack
+## Repository State
 
-- Rust workspace
-- Tauri 2 desktop shell
-- React + TypeScript + Vite UI
-- SQLite-backed local data flow
+- The active product stack is `Rust + Tauri + React + TypeScript`
+- Legacy Go backend entrypoints, runtime packages, and the old Next.js web app have been removed from the main code tree
+- Some files under `docs/plans/` still mention the old stack as historical migration context
 
-## Structure
+## Workspace Layout
 
 ```text
 apps/
@@ -23,6 +23,13 @@ apps/
     src/
     src-tauri/
 crates/
+  nuka-domain/
+  nuka-runtime/
+  nuka-storage/
+  nuka-memory/
+  nuka-knowledge/
+  nuka-tools/
+  nuka-integrations/
 ```
 
 ## Development
@@ -32,3 +39,9 @@ cargo test --workspace
 npm.cmd --prefix apps/desktop test
 npm.cmd --prefix apps/desktop run build
 ```
+
+## Current UI Notes
+
+- Expanded brand lockups use the provided `docs/logo/goodlogo.png` asset
+- Compact sidebar states keep a simplified mark for small-size readability
+- Settings now persist local editable form state in the desktop UI layer
