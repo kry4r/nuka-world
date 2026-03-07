@@ -1,19 +1,31 @@
 ﻿# Nuka World Desktop
 
-Nuka World is now a desktop-only application built with Rust, Tauri 2, React, and TypeScript.
+Nuka World is a desktop-first AI workspace built with Rust, Tauri 2, React, and TypeScript.
 
-## Product Surface
+## Current Product
 
-- `World Chat` as the primary entrypoint
-- `Workflow`, `Agents`, `Memory`, `Knowledge`, and `Settings` as first-class desktop pages
-- Local-first runtime behind the Tauri command boundary
-- Editable desktop settings for `Providers`, `Appearance`, and `Runtime`
+The current application is centered around `World Chat`, with dedicated desktop surfaces for:
+
+- `Workflow` collaboration rooms
+- `Agents` preset creation and tool bindings
+- `Memory` graph-style layered memory inspection
+- `Knowledge` library and ingestion structure
+- `Settings` with editable `Providers`, `Appearance`, and `Runtime`
+
+## Runtime Model
+
+- Local-first desktop shell powered by `Tauri 2`
+- Rust workspace for domain, runtime, storage, memory, knowledge, tools, and integrations
+- React + TypeScript UI for desktop pages and interaction flows
+- SQLite-backed storage foundations in the Rust layer
+- Tray-resident desktop behavior for long-running runtime flows
 
 ## Repository State
 
-- The active product stack is `Rust + Tauri + React + TypeScript`
-- Legacy Go backend entrypoints, runtime packages, and the old Next.js web app have been removed from the main code tree
-- Some files under `docs/plans/` still mention the old stack as historical migration context
+- The main code tree is now `Rust + Tauri + React + TypeScript`
+- Legacy Go backend entrypoints, runtime packages, and the old Next.js web app have been removed from the active product tree
+- The remaining migration plan documents under `docs/plans/` are kept as historical implementation context
+- The selected brand source asset is `docs/logo/goodlogo.png`
 
 ## Workspace Layout
 
@@ -30,9 +42,13 @@ crates/
   nuka-knowledge/
   nuka-tools/
   nuka-integrations/
+docs/
+  design.pen
+  logo/
+  plans/
 ```
 
-## Development
+## Development Commands
 
 ```bash
 cargo test --workspace
@@ -40,8 +56,8 @@ npm.cmd --prefix apps/desktop test
 npm.cmd --prefix apps/desktop run build
 ```
 
-## Current UI Notes
+## UI Notes
 
-- Expanded brand lockups use the provided `docs/logo/goodlogo.png` asset
+- Expanded brand lockups use the selected `goodlogo.png` source asset
 - Compact sidebar states keep a simplified mark for small-size readability
-- Settings now persist local editable form state in the desktop UI layer
+- Settings persist editable local UI state for providers, appearance, and runtime sections
