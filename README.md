@@ -101,7 +101,26 @@ docs/
   logo/
   plans/
   design.pen
+  readme-diagrams.pen
 ```
+
+---
+
+## Requirements
+
+- Rust toolchain for the workspace and desktop shell
+- Node.js for the React desktop frontend
+- Tauri desktop prerequisites for your platform
+
+---
+
+## Installation
+
+```bash
+npm.cmd --prefix apps/desktop ci
+```
+
+Install the frontend dependencies before running the desktop tests or build.
 
 ---
 

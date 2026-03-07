@@ -101,7 +101,26 @@ docs/
   logo/
   plans/
   design.pen
+  readme-diagrams.pen
 ```
+
+---
+
+## 环境要求
+
+- 用于 workspace 与桌面壳层的 Rust 工具链
+- 用于 React 桌面前端的 Node.js
+- 你当前平台所需的 Tauri 桌面依赖
+
+---
+
+## 安装依赖
+
+```bash
+npm.cmd --prefix apps/desktop ci
+```
+
+在运行桌面前端测试或构建前，请先安装前端依赖。
 
 ---
 

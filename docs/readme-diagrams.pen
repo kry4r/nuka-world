@@ -1,0 +1,423 @@
+{
+  "version": "2.8",
+  "children": [
+    {
+      "type": "frame",
+      "id": "readmeArch",
+      "x": 0,
+      "y": 0,
+      "name": "README Architecture",
+      "clip": true,
+      "width": 1440,
+      "height": 920,
+      "fill": "#F6F2E9",
+      "cornerRadius": 32,
+      "layout": "vertical",
+      "gap": 28,
+      "padding": [40, 40],
+      "children": [
+        {
+          "type": "frame",
+          "id": "archTitle",
+          "name": "Arch Title",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 10,
+          "children": [
+            {
+              "type": "text",
+              "id": "archTitleText",
+              "content": "Nuka World Architecture",
+              "fontFamily": "Inter",
+              "fontSize": 38,
+              "fontWeight": "600",
+              "fill": "#1F221D"
+            },
+            {
+              "type": "text",
+              "id": "archSubtitle",
+              "content": "A clean view of the desktop stack: UI, shell, Rust workspace, and local foundations.",
+              "fontFamily": "Inter",
+              "fontSize": 18,
+              "fill": "#6E7268"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "archBody",
+          "name": "Arch Body",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "horizontal",
+          "gap": 28,
+          "children": [
+            {
+              "type": "frame",
+              "id": "archLeft",
+              "name": "Arch Left",
+              "width": 940,
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 20,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "archCard1",
+                  "name": "Desktop UI Card",
+                  "width": "fill_container",
+                  "height": 128,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 28,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [24, 24],
+                  "children": [
+                    { "type": "text", "id": "archCard1Label", "content": "01 · DESKTOP UI", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "archCard1Title", "content": "React product surfaces", "fontFamily": "Inter", "fontSize": 28, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "archCard1Body", "content": "Shell, chat, settings, and desktop pages.", "fontFamily": "Inter", "fontSize": 15, "fill": "#6E7268" }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "archCard2",
+                  "name": "Tauri Shell Card",
+                  "width": "fill_container",
+                  "height": 128,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 28,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [24, 24],
+                  "children": [
+                    { "type": "text", "id": "archCard2Label", "content": "02 · TAURI SHELL", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "archCard2Title", "content": "Native lifecycle bridge", "fontFamily": "Inter", "fontSize": 28, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "archCard2Body", "content": "Window controls, tray, and command routing.", "fontFamily": "Inter", "fontSize": 15, "fill": "#6E7268" }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "archCard3",
+                  "name": "Rust Workspace Card",
+                  "width": "fill_container",
+                  "height": 144,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 28,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [24, 24],
+                  "children": [
+                    { "type": "text", "id": "archCard3Label", "content": "03 · RUST WORKSPACE", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "archCard3Title", "content": "Modular backend crates", "fontFamily": "Inter", "fontSize": 28, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "archCard3Body", "content": "Domain, runtime, storage, memory, knowledge, tools, integrations.", "fontFamily": "Inter", "fontSize": 15, "fill": "#6E7268" }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "archCard4",
+                  "name": "Local Foundations Card",
+                  "width": "fill_container",
+                  "height": 128,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 28,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [24, 24],
+                  "children": [
+                    { "type": "text", "id": "archCard4Label", "content": "04 · LOCAL FOUNDATIONS", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "archCard4Title", "content": "State and persistence", "fontFamily": "Inter", "fontSize": 28, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "archCard4Body", "content": "SQLite, providers, local files, and resources.", "fontFamily": "Inter", "fontSize": 15, "fill": "#6E7268" }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "archRight",
+              "name": "Arch Right",
+              "width": 392,
+              "height": "fill_container",
+              "fill": "#FBF8F1",
+              "cornerRadius": 28,
+              "layout": "vertical",
+              "gap": 18,
+              "padding": [24, 24],
+              "children": [
+                { "type": "text", "id": "flowTitle", "content": "Runtime Flow", "fontFamily": "Inter", "fontSize": 24, "fontWeight": "600", "fill": "#1F221D" },
+                { "type": "text", "id": "flowSubtitle", "content": "One prompt moving through the stack.", "fontFamily": "Inter", "fontSize": 14, "fill": "#6E7268" },
+                {
+                  "type": "frame",
+                  "id": "flowCard1",
+                  "width": "fill_container",
+                  "height": 88,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 22,
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [18, 18],
+                  "children": [
+                    { "type": "text", "id": "flowCard1Title", "content": "Prompt enters UI", "fontFamily": "Inter", "fontSize": 18, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "flowCard1Body", "content": "Chat or workflow starts a session.", "fontFamily": "Inter", "fontSize": 13, "fill": "#6E7268" }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "flowCard2",
+                  "width": "fill_container",
+                  "height": 88,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 22,
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [18, 18],
+                  "children": [
+                    { "type": "text", "id": "flowCard2Title", "content": "Tauri dispatches", "fontFamily": "Inter", "fontSize": 18, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "flowCard2Body", "content": "Native commands route work to runtime.", "fontFamily": "Inter", "fontSize": 13, "fill": "#6E7268" }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "flowCard3",
+                  "width": "fill_container",
+                  "height": 88,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 22,
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [18, 18],
+                  "children": [
+                    { "type": "text", "id": "flowCard3Title", "content": "Rust resolves route", "fontFamily": "Inter", "fontSize": 18, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "flowCard3Body", "content": "Memory, knowledge, tools, and providers cooperate.", "fontFamily": "Inter", "fontSize": 13, "fill": "#6E7268" }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "flowCard4",
+                  "width": "fill_container",
+                  "height": 104,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 22,
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [18, 18],
+                  "children": [
+                    { "type": "text", "id": "flowCard4Title", "content": "State persists locally", "fontFamily": "Inter", "fontSize": 18, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "flowCard4Body", "content": "Sessions and settings stay local.", "fontFamily": "Inter", "fontSize": 13, "fill": "#6E7268" }
+                  ]
+                },
+                { "type": "frame", "id": "flowSpacer", "width": "fill_container", "height": "fill_container", "fill": "#00000000" },
+                {
+                  "type": "frame",
+                  "id": "flowNote",
+                  "width": "fill_container",
+                  "height": 88,
+                  "fill": "#F4F0E8",
+                  "cornerRadius": 22,
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [18, 18],
+                  "children": [
+                    { "type": "text", "id": "flowNoteTitle", "content": "Local-first runtime", "fontFamily": "Inter", "fontSize": 18, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "flowNoteBody", "content": "Local state stays close to the desktop shell.", "fontFamily": "Inter", "fontSize": 13, "fill": "#6E7268" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "readmeFeature",
+      "x": 1480,
+      "y": 0,
+      "name": "README Feature Map",
+      "clip": true,
+      "width": 1440,
+      "height": 1080,
+      "fill": "#F6F2E9",
+      "cornerRadius": 32,
+      "layout": "vertical",
+      "gap": 28,
+      "padding": [40, 40],
+      "children": [
+        {
+          "type": "frame",
+          "id": "featureTitle",
+          "name": "Feature Title",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 10,
+          "children": [
+            { "type": "text", "id": "featureTitleText", "content": "Nuka World Feature Map", "fontFamily": "Inter", "fontSize": 38, "fontWeight": "600", "fill": "#1F221D" },
+            { "type": "text", "id": "featureSubtitle", "content": "A product-facing map of the current desktop surfaces built around World Chat.", "fontFamily": "Inter", "fontSize": 18, "fill": "#6E7268" }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "featureCanvas",
+          "name": "Feature Canvas",
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "#FBF8F1",
+          "cornerRadius": 28,
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [24, 24],
+          "children": [
+            {
+              "type": "frame",
+              "id": "featureTopRow",
+              "width": "fill_container",
+              "layout": "horizontal",
+              "gap": 20,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "workflowCard",
+                  "width": 272,
+                  "height": 164,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 28,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [22, 22],
+                  "children": [
+                    { "type": "text", "id": "workflowLabel", "content": "WORKFLOW", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "workflowTitle", "content": "Room-based runs", "fontFamily": "Inter", "fontSize": 24, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "workflowBody", "content": "Templates and repeatable execution.", "fontFamily": "Inter", "fontSize": 14, "fill": "#6E7268" }
+                  ]
+                },
+                { "type": "frame", "id": "featureTopSpacer", "width": "fill_container", "height": 1, "fill": "#00000000" },
+                {
+                  "type": "frame",
+                  "id": "agentsCard",
+                  "width": 272,
+                  "height": 164,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 28,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [22, 22],
+                  "children": [
+                    { "type": "text", "id": "agentsLabel", "content": "AGENTS", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "agentsTitle", "content": "Preset builders", "fontFamily": "Inter", "fontSize": 24, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "agentsBody", "content": "One-line creation and tool bindings.", "fontFamily": "Inter", "fontSize": 14, "fill": "#6E7268" }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "featureMidRow",
+              "width": "fill_container",
+              "layout": "horizontal",
+              "gap": 20,
+              "children": [
+                { "type": "frame", "id": "featureMidSpacerLeft", "width": "fill_container", "height": 1, "fill": "#00000000" },
+                {
+                  "type": "frame",
+                  "id": "worldChatCard",
+                  "width": 460,
+                  "height": 250,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 32,
+                  "layout": "vertical",
+                  "gap": 14,
+                  "padding": [28, 28],
+                  "children": [
+                    { "type": "text", "id": "worldChatLabel", "content": "CORE SURFACE", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "worldChatTitle", "content": "World Chat", "fontFamily": "Inter", "fontSize": 34, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "worldChatBody", "content": "Prompt-first chat, session flow, and inspection.", "fontFamily": "Inter", "fontSize": 15, "fill": "#6E7268" }
+                  ]
+                },
+                { "type": "frame", "id": "featureMidSpacerRight", "width": "fill_container", "height": 1, "fill": "#00000000" }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "featureConnectorRow",
+              "width": "fill_container",
+              "layout": "horizontal",
+              "children": [
+                { "type": "frame", "id": "featureConnectorLeft", "width": "fill_container", "height": 1, "fill": "#00000000" },
+                { "type": "frame", "id": "featureConnectorLine", "width": 2, "height": 44, "fill": "#D7D1C4", "cornerRadius": 999 },
+                { "type": "frame", "id": "featureConnectorRight", "width": "fill_container", "height": 1, "fill": "#00000000" }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "featureBottomRow",
+              "width": "fill_container",
+              "layout": "horizontal",
+              "gap": 20,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "memoryCard",
+                  "width": 272,
+                  "height": 164,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 28,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [22, 22],
+                  "children": [
+                    { "type": "text", "id": "memoryLabel", "content": "MEMORY", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "memoryTitle", "content": "Graph views", "fontFamily": "Inter", "fontSize": 24, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "memoryBody", "content": "Layered nodes and subject switching.", "fontFamily": "Inter", "fontSize": 13, "fill": "#6E7268" }
+                  ]
+                },
+                { "type": "frame", "id": "featureBottomSpacer", "width": "fill_container", "height": 1, "fill": "#00000000" },
+                {
+                  "type": "frame",
+                  "id": "knowledgeCard",
+                  "width": 272,
+                  "height": 164,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 28,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [22, 22],
+                  "children": [
+                    { "type": "text", "id": "knowledgeLabel", "content": "KNOWLEDGE", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "knowledgeTitle", "content": "Layered libraries", "fontFamily": "Inter", "fontSize": 24, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "knowledgeBody", "content": "External sources and chunked ingestion.", "fontFamily": "Inter", "fontSize": 13, "fill": "#6E7268" }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "featureSettingsRow",
+              "width": "fill_container",
+              "layout": "horizontal",
+              "gap": 20,
+              "children": [
+                { "type": "frame", "id": "featureSettingsSpacerLeft", "width": "fill_container", "height": 1, "fill": "#00000000" },
+                {
+                  "type": "frame",
+                  "id": "featureSettingsCard",
+                  "width": 460,
+                  "height": 160,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 28,
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": [24, 24],
+                  "children": [
+                    { "type": "text", "id": "featureSettingsLabel", "content": "SETTINGS", "fontFamily": "Inter", "fontSize": 12, "fontWeight": "600", "fill": "#6E8760" },
+                    { "type": "text", "id": "featureSettingsTitle", "content": "Editable desktop controls", "fontFamily": "Inter", "fontSize": 28, "fontWeight": "600", "fill": "#1F221D" },
+                    { "type": "text", "id": "featureSettingsBody", "content": "Providers, appearance, and runtime as editable state.", "fontFamily": "Inter", "fontSize": 14, "fill": "#6E7268" }
+                  ]
+                },
+                { "type": "frame", "id": "featureSettingsSpacerRight", "width": "fill_container", "height": 1, "fill": "#00000000" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
