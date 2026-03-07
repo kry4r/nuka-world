@@ -10,6 +10,7 @@ pub fn run() {
             commands::agents::default_agent_tool_bindings,
             commands::app::close_policy_minimizes_to_tray,
             commands::chat::route_world_prompt,
+            commands::tools::integrated_tool_output_policy,
             commands::workflow::start_workflow_session,
         ])
         .on_window_event(|window, event| {
