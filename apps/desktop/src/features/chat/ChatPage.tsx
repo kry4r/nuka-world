@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { NukaLogo } from "@/components/brand/NukaLogo";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import { routeWorldPrompt, type ChatRouteResponse } from "@/lib/chat";
 
 type ChatMessage = {
@@ -12,7 +11,7 @@ type ChatMessage = {
 };
 
 const QUICK_CHOICES = [
-  "Summarize todayâ€™s notes",
+  "Summarize today's notes",
   "Plan my next workflow",
   "Review recent changes",
 ];
@@ -33,6 +32,30 @@ function buildWorldReply(response: ChatRouteResponse | null, prompt: string) {
   }
 }
 
+function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
+  if (!route) {
+    return "Direct reply";
+  }
+
+  switch (route.kind) {
+    case "existing_workflow":
+      return `Existing workflow ¡¤ ${route.workflowId}`;
+    case "new_workflow":
+      return "New workflow";
+    case "direct_reply":
+    default:
+      return "Direct reply";
+  }
+}
+
+function formatSession(sessionId: string | undefined) {
+  if (!sessionId) {
+    return "Pending";
+  }
+
+  return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? "¡­" : ""}`;
+}
+
 export function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
@@ -47,10 +70,11 @@ export function ChatPage() {
     }
 
     return (
-      <Inspector description="Current world route, session state, and context bindings." title="Context Inspector">
-        <Card description={session?.sessionId ?? "Pending"} title="Session" />
-        <Card description={session?.route.kind ?? "direct_reply"} title="Route" />
-        <Card description="Session memory Â· knowledge read Â· workflow ready" title="Bindings" />
+      <Inspector description="Session route, live bindings, and context readiness for the current World conversation." title="Context Inspector">
+        <Card description={`Session ${formatSession(session?.sessionId)}`} title="Session" tone="accent" />
+        <Card description={formatRoute(session?.route)} title="Route" />
+        <Card description="Session memory ¡¤ knowledge read ¡¤ workflow ready" title="Bindings" />
+        <Card description="World can answer directly or promote the thread into a reusable workflow." title="Next Move" />
       </Inspector>
     );
   }, [landing, session]);
@@ -98,62 +122,94 @@ export function ChatPage() {
   };
 
   return (
-    <div className="page-layout">
-      <SectionHeader
-        meta={landing ? "Landing state and composer" : "Context, routing, and conversation state"}
-        status={landing ? "Landing" : "Active"}
-        tag="Chat"
-        title={landing ? "Start a World Chat" : "World Chat"}
-      />
-
-      <div className="page-layout__body">
-        <div className="page-layout__main">
-          {landing ? (
-            <div className="landing-state">
-              <NukaLogo className="landing-state__logo" size={84} />
-              <h2>Nuka</h2>
-              <p>
-                A calm desktop world for chat, workflows, memory, and connected knowledge.
-              </p>
-            </div>
-          ) : (
-            <Card className="chat-feed" tone="soft">
-              {messages.map((message) => (
-                <article className={`chat-bubble chat-bubble--${message.role}`} key={message.id}>
-                  {message.content}
-                </article>
-              ))}
-            </Card>
-          )}
-
-          <div className="composer">
-            {landing ? null : (
-              <div className="composer__choices">
-                {QUICK_CHOICES.map((choice) => (
-                  <button
-                    className="composer__choice"
-                    key={choice}
-                    onClick={() => {
-                      setPrompt(choice);
-                    }}
-                    type="button"
-                  >
-                    {choice}
-                  </button>
-                ))}
+    <div className={`page-layout chat-page ${landing ? "is-landing" : "is-active"}`}>
+      <div className="page-layout__body chat-page__body">
+        <div className="page-layout__main chat-stage">
+          <div className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}>
+            {landing ? (
+              <div className="chat-hero">
+                <div className="chat-hero__mark">
+                  <NukaLogo className="chat-hero__logo" size={96} />
+                </div>
+                <div className="chat-hero__copy">
+                  <span className="chat-hero__eyebrow">World Chat</span>
+                  <h1>Nuka World</h1>
+                  <p>Talk to World and start a new session.</p>
+                </div>
               </div>
+            ) : (
+              <section className="chat-surface" aria-label="World conversation surface">
+                <header className="chat-surface__header">
+                  <div className="chat-surface__identity">
+                    <span className="chat-surface__eyebrow">World Chat</span>
+                    <span className="chat-surface__meta">
+                      Session {formatSession(session?.sessionId)} ¡¤ {formatRoute(session?.route)} ¡¤ Tools ready
+                    </span>
+                  </div>
+                  <span className="chat-surface__status">Session live</span>
+                </header>
+
+                <div className="chat-feed" role="log">
+                  <div className="chat-feed__stack">
+                    {messages.map((message) => (
+                      <article className={`chat-bubble chat-bubble--${message.role}`} key={message.id}>
+                        <span className="chat-bubble__label">
+                          {message.role === "world" ? "World" : "You"}
+                        </span>
+                        <p className="chat-bubble__content">{message.content}</p>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              </section>
             )}
 
-            <div className="composer__bar">
-              <textarea
-                className="composer__input"
-                onChange={(event) => setPrompt(event.target.value)}
-                placeholder="Ask World to reason, route, or start a workflow..."
-                value={prompt}
-              />
-              <button className="composer__send" onClick={() => void handleSend()} type="button">
-                {isRouting ? "..." : "Send"}
-              </button>
+            <div className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}>
+              {landing ? null : (
+                <div aria-label="Conversation quick actions" className="composer__choices">
+                  {QUICK_CHOICES.map((choice) => (
+                    <button
+                      className="composer__choice"
+                      key={choice}
+                      onClick={() => void handleSend(choice)}
+                      type="button"
+                    >
+                      {choice}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="composer__bar">
+                <div className="composer__field">
+                  <textarea
+                    className="composer__input"
+                    onChange={(event) => setPrompt(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleSend();
+                      }
+                    }}
+                    placeholder={landing ? "Message World to start a session..." : "Reply to World..."}
+                    rows={1}
+                    value={prompt}
+                  />
+                  <div className="composer__hint">
+                    {landing
+                      ? "World can answer directly or turn this into a reusable workflow."
+                      : "Quick actions stay attached to the composer, not the transcript."}
+                  </div>
+                </div>
+                <button
+                  className="composer__send"
+                  disabled={isRouting || prompt.trim().length === 0}
+                  onClick={() => void handleSend()}
+                  type="button"
+                >
+                  {isRouting ? "..." : "Send"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
