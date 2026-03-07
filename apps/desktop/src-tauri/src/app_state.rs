@@ -4,6 +4,7 @@ use std::sync::RwLock;
 pub struct AppState {
     settings: RwLock<SettingsState>,
     world_runtime: nuka_runtime::world::WorldRuntime,
+    workflow_world_runtime: nuka_runtime::workflow_world::WorkflowWorldRuntime,
 }
 
 impl AppState {
@@ -14,6 +15,10 @@ impl AppState {
     pub fn world_runtime(&self) -> &nuka_runtime::world::WorldRuntime {
         &self.world_runtime
     }
+
+    pub fn workflow_world_runtime(&self) -> &nuka_runtime::workflow_world::WorkflowWorldRuntime {
+        &self.workflow_world_runtime
+    }
 }
 
 impl Default for AppState {
@@ -21,6 +26,7 @@ impl Default for AppState {
         Self {
             settings: RwLock::new(SettingsState::default()),
             world_runtime: nuka_runtime::world::WorldRuntime::default(),
+            workflow_world_runtime: nuka_runtime::workflow_world::WorkflowWorldRuntime::default(),
         }
     }
 }

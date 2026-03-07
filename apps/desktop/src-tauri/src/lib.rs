@@ -9,6 +9,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app::close_policy_minimizes_to_tray,
             commands::chat::route_world_prompt,
+            commands::workflow::start_workflow_session,
         ])
         .on_window_event(|window, event| {
             crate::tray::handle_window_event(window, event);
