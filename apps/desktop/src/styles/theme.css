@@ -295,6 +295,7 @@ button {
   color: var(--color-text-soft);
   font-size: 12px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .app-inspector__body,
@@ -326,6 +327,173 @@ button {
 
 .ui-card--accent {
   background: var(--color-panel-accent);
+}
+
+.settings-page .app-inspector {
+  width: 360px;
+  min-width: 360px;
+}
+
+.settings-main {
+  overflow: auto;
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 22px;
+  background: #f8f3ec;
+}
+
+.settings-panel.is-active {
+  background: #f5efe6;
+}
+
+.settings-panel__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settings-panel__trigger {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.settings-panel__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-panel__copy h2,
+.settings-option-card__header h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.settings-panel__copy p,
+.settings-option-card__header p,
+.settings-field-row__hint {
+  margin: 0;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.settings-panel__actions,
+.settings-panel__summary,
+.settings-panel__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-panel__actions {
+  justify-content: flex-end;
+}
+
+.settings-chip,
+.settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.settings-chip {
+  background: #fcf8f2;
+  color: #5f584f;
+}
+
+.settings-chip--active {
+  background: #e9ddce;
+  color: #4a423a;
+}
+
+.settings-chip--soft {
+  max-width: 100%;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.settings-button {
+  border: 0;
+  background: #f8f3ec;
+  color: #5f584f;
+}
+
+.settings-button--accent {
+  background: #e9ddce;
+  color: #4a423a;
+}
+
+.settings-panel__body,
+.settings-option-grid,
+.settings-option-card,
+.settings-option-card__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-option-grid {
+  gap: 14px;
+}
+
+.settings-option-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: #fcf8f2;
+}
+
+.settings-field-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.settings-field-row__copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-field-row__label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+@media (max-width: 1180px) {
+  .settings-page .page-layout__body {
+    flex-direction: column;
+  }
+
+  .settings-page .app-inspector {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 .card-grid {
