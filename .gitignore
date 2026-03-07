@@ -19,17 +19,7 @@
 .DS_Store
 Thumbs.db
 
-# Go
-vendor/
-
-# Docker
-neo4j_data/
-pg_data/
-redis_data/
-
-# Node (web frontend)
-web/node_modules/
-web/.next/
+# Node
 apps/desktop/node_modules/
 apps/desktop/dist/
 apps/desktop/.vite/
@@ -38,7 +28,7 @@ apps/desktop/.vite/
 # Rust
 target/
 
-# configs
+# Configs
 /configs
 
 # Design docs (local only)
