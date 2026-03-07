@@ -10,6 +10,9 @@ export type ChatRouteResponse = {
   route: WorldRoute;
 };
 
-export async function routeWorldPrompt(prompt: string): Promise<ChatRouteResponse> {
-  return invoke<ChatRouteResponse>("route_world_prompt", { prompt });
+export async function routeWorldPrompt(
+  prompt: string,
+  sessionId?: string,
+): Promise<ChatRouteResponse> {
+  return invoke<ChatRouteResponse>("route_world_prompt", { prompt, sessionId });
 }

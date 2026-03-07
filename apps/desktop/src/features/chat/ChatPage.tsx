@@ -6,7 +6,7 @@ export function ChatPage() {
   const [result, setResult] = useState<ChatRouteResponse | null>(null);
 
   const handleRoute = async () => {
-    const nextResult = await routeWorldPrompt(prompt);
+    const nextResult = await routeWorldPrompt(prompt, result?.sessionId);
     setResult(nextResult);
   };
 
