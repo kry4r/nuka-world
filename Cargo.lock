@@ -576,6 +576,7 @@ dependencies = [
 name = "desktop-tauri"
 version = "0.1.0"
 dependencies = [
+ "nuka-integrations",
  "nuka-knowledge",
  "nuka-memory",
  "nuka-runtime",

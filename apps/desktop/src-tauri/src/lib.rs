@@ -12,6 +12,7 @@ pub fn run() {
             commands::chat::route_world_prompt,
             commands::knowledge::default_knowledge_library,
             commands::memory::memory_promotion_policy,
+            commands::providers::provider_registry,
             commands::tools::integrated_tool_output_policy,
             commands::workflow::start_workflow_session,
         ])
