@@ -2009,6 +2009,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nuka-integrations"
+version = "0.1.0"
+
+[[package]]
+name = "nuka-knowledge"
+version = "0.1.0"
+
+[[package]]
+name = "nuka-memory"
+version = "0.1.0"
+
+[[package]]
 name = "nuka-runtime"
 version = "0.1.0"
 dependencies = [
@@ -2021,10 +2033,15 @@ name = "nuka-storage"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "nuka-domain",
  "sqlx",
  "tokio",
  "uuid",
 ]
+
+[[package]]
+name = "nuka-tools"
+version = "0.1.0"
 
 [[package]]
 name = "num-bigint-dig"

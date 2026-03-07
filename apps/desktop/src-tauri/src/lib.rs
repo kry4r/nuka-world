@@ -27,4 +27,18 @@ mod tests {
     fn desktop_workspace_bootstrap_placeholder() {
         assert!(std::path::Path::new("../package.json").exists());
     }
+
+    #[test]
+    fn workspace_declares_future_runtime_crates() {
+        let manifest = std::fs::read_to_string("../../../Cargo.toml").unwrap();
+
+        for member in [
+            "crates/nuka-tools",
+            "crates/nuka-integrations",
+            "crates/nuka-memory",
+            "crates/nuka-knowledge",
+        ] {
+            assert!(manifest.contains(member), "missing workspace member: {member}");
+        }
+    }
 }
