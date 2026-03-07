@@ -1,130 +1,49 @@
-<svg width="1440" height="920" viewBox="0 0 1440 920" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="1440" height="1080" viewBox="0 0 1440 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="104" y1="64" x2="1336" y2="856" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FCFBF7"/>
-      <stop offset="1" stop-color="#F5F2EA"/>
-    </linearGradient>
-    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#FFFFFF" stop-opacity="0.98"/>
-      <stop offset="1" stop-color="#F7F4ED" stop-opacity="0.96"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#D6E3C5"/>
-      <stop offset="1" stop-color="#98AD82"/>
-    </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#6F7A61" flood-opacity="0.12"/>
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#81776B" flood-opacity="0.08"/>
     </filter>
   </defs>
 
-  <rect width="1440" height="920" rx="32" fill="url(#bg)"/>
+  <rect width="1440" height="1080" rx="32" fill="#F6F2E9"/>
 
-  <g opacity="0.42">
-    <path d="M100 124H1340" stroke="#E4DED1"/>
-    <path d="M100 204H1340" stroke="#E8E2D6"/>
-    <path d="M100 284H1340" stroke="#E8E2D6"/>
-    <path d="M100 364H1340" stroke="#E8E2D6"/>
-    <path d="M100 444H1340" stroke="#E8E2D6"/>
-    <path d="M100 524H1340" stroke="#E8E2D6"/>
-    <path d="M100 604H1340" stroke="#E8E2D6"/>
-    <path d="M100 684H1340" stroke="#E8E2D6"/>
-    <path d="M100 764H1340" stroke="#E8E2D6"/>
-    <path d="M180 84V844" stroke="#E8E2D6"/>
-    <path d="M340 84V844" stroke="#E8E2D6"/>
-    <path d="M500 84V844" stroke="#E8E2D6"/>
-    <path d="M660 84V844" stroke="#E8E2D6"/>
-    <path d="M820 84V844" stroke="#E8E2D6"/>
-    <path d="M980 84V844" stroke="#E8E2D6"/>
-    <path d="M1140 84V844" stroke="#E8E2D6"/>
-    <path d="M1300 84V844" stroke="#E8E2D6"/>
+  <text x="40" y="40" fill="#1F221D" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="38" font-weight="600" dominant-baseline="hanging">Nuka World Feature Map</text>
+  <text x="40" y="96" fill="#6E7268" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="400" dominant-baseline="hanging">A product-facing map of the current desktop surfaces built around World Chat.</text>
+
+  <rect x="40" y="146" width="1360" height="894" rx="28" fill="#FBF8F1"/>
+
+  <g filter="url(#cardShadow)">
+    <rect x="64" y="170" width="272" height="164" rx="28" fill="#FFFFFF"/>
+    <rect x="1104" y="170" width="272" height="164" rx="28" fill="#FFFFFF"/>
+    <rect x="466" y="350" width="460" height="250" rx="32" fill="#FFFFFF"/>
+    <rect x="64" y="676" width="272" height="164" rx="28" fill="#FFFFFF"/>
+    <rect x="1104" y="676" width="272" height="164" rx="28" fill="#FFFFFF"/>
+    <rect x="466" y="856" width="460" height="160" rx="28" fill="#FFFFFF"/>
   </g>
 
-  <circle cx="1188" cy="166" r="116" fill="#EEF4E6" opacity="0.84"/>
-  <circle cx="246" cy="776" r="124" fill="#EEE8DA" opacity="0.84"/>
+  <rect x="695" y="616" width="2" height="44" rx="999" fill="#D7D1C4"/>
 
-  <text x="96" y="102" fill="#1F221D" font-size="38" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Nuka World Feature Map</text>
-  <text x="96" y="138" fill="#6E7268" font-size="18" font-family="Inter, Segoe UI, Arial, sans-serif">A product-facing view of the current desktop surfaces built around World Chat.</text>
+  <text x="86" y="192" fill="#6E8760" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" dominant-baseline="hanging">WORKFLOW</text>
+  <text x="86" y="217" fill="#1F221D" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="24" font-weight="600" dominant-baseline="hanging">Room-based runs</text>
+  <text x="86" y="256" fill="#6E7268" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" dominant-baseline="hanging">Templates and repeatable execution.</text>
 
-  <g filter="url(#shadow)">
-    <rect x="492" y="254" width="456" height="320" rx="36" fill="url(#panel)" stroke="#D8D1C4"/>
-    <rect x="118" y="222" width="272" height="170" rx="28" fill="url(#panel)" stroke="#D8D1C4"/>
-    <rect x="1050" y="222" width="272" height="170" rx="28" fill="url(#panel)" stroke="#D8D1C4"/>
-    <rect x="118" y="500" width="272" height="170" rx="28" fill="url(#panel)" stroke="#D8D1C4"/>
-    <rect x="1050" y="500" width="272" height="170" rx="28" fill="url(#panel)" stroke="#D8D1C4"/>
-    <rect x="492" y="642" width="456" height="176" rx="28" fill="url(#panel)" stroke="#D8D1C4"/>
-  </g>
+  <text x="1126" y="192" fill="#6E8760" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" dominant-baseline="hanging">AGENTS</text>
+  <text x="1126" y="217" fill="#1F221D" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="24" font-weight="600" dominant-baseline="hanging">Preset builders</text>
+  <text x="1126" y="256" fill="#6E7268" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" dominant-baseline="hanging">One-line creation and tool bindings.</text>
 
-  <path d="M390 306H492" stroke="#9EAF8A" stroke-width="3" stroke-linecap="round"/>
-  <path d="M948 306H1050" stroke="#9EAF8A" stroke-width="3" stroke-linecap="round"/>
-  <path d="M390 584H492" stroke="#9EAF8A" stroke-width="3" stroke-linecap="round"/>
-  <path d="M948 584H1050" stroke="#9EAF8A" stroke-width="3" stroke-linecap="round"/>
-  <path d="M720 574V642" stroke="#9EAF8A" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="441" cy="306" r="6" fill="#9EAF8A"/>
-  <circle cx="999" cy="306" r="6" fill="#9EAF8A"/>
-  <circle cx="441" cy="584" r="6" fill="#9EAF8A"/>
-  <circle cx="999" cy="584" r="6" fill="#9EAF8A"/>
-  <circle cx="720" cy="608" r="6" fill="#9EAF8A"/>
+  <text x="494" y="378" fill="#6E8760" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" dominant-baseline="hanging">CORE SURFACE</text>
+  <text x="494" y="407" fill="#1F221D" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="34" font-weight="600" dominant-baseline="hanging">World Chat</text>
+  <text x="494" y="462" fill="#6E7268" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="400" dominant-baseline="hanging">Prompt-first chat, session flow, and inspection.</text>
 
-  <g>
-    <rect x="530" y="284" width="150" height="34" rx="17" fill="#EEF4E6" stroke="#D0DCC0"/>
-    <text x="556" y="306" fill="#567045" font-size="15" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Core Surface</text>
+  <text x="86" y="698" fill="#6E8760" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" dominant-baseline="hanging">MEMORY</text>
+  <text x="86" y="723" fill="#1F221D" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="24" font-weight="600" dominant-baseline="hanging">Graph views</text>
+  <text x="86" y="762" fill="#6E7268" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" dominant-baseline="hanging">Layered nodes and subject switching.</text>
 
-    <circle cx="720" cy="402" r="68" fill="#EEF4E6"/>
-    <rect x="672" y="354" width="96" height="96" rx="28" fill="#F4F8EE" stroke="#C8D8B8"/>
-    <path d="M704 386C718 372 742 372 756 386" stroke="#587247" stroke-width="5" stroke-linecap="round"/>
-    <path d="M706 420C724 398 740 388 758 372" stroke="#587247" stroke-width="5" stroke-linecap="round"/>
-    <path d="M744 420C750 412 756 404 760 396" stroke="#587247" stroke-width="5" stroke-linecap="round"/>
+  <text x="1126" y="698" fill="#6E8760" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" dominant-baseline="hanging">KNOWLEDGE</text>
+  <text x="1126" y="723" fill="#1F221D" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="24" font-weight="600" dominant-baseline="hanging">Layered libraries</text>
+  <text x="1126" y="762" fill="#6E7268" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" dominant-baseline="hanging">External sources and chunked ingestion.</text>
 
-    <text x="610" y="500" fill="#1F221D" font-size="32" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">World Chat</text>
-    <text x="566" y="530" fill="#6E7268" font-size="15" font-family="Inter, Segoe UI, Arial, sans-serif">Prompt-first chat, sessions, and inspection.</text>
-
-    <rect x="564" y="544" width="108" height="28" rx="14" fill="#F8F5EE" stroke="#D8D1C4"/>
-    <text x="590" y="562" fill="#464942" font-size="13" font-family="Inter, Segoe UI, Arial, sans-serif">Prompt-first</text>
-    <rect x="682" y="544" width="96" height="28" rx="14" fill="#F8F5EE" stroke="#D8D1C4"/>
-    <text x="708" y="562" fill="#464942" font-size="13" font-family="Inter, Segoe UI, Arial, sans-serif">Inspector</text>
-    <rect x="788" y="544" width="106" height="28" rx="14" fill="#F8F5EE" stroke="#D8D1C4"/>
-    <text x="812" y="562" fill="#464942" font-size="13" font-family="Inter, Segoe UI, Arial, sans-serif">Session state</text>
-  </g>
-
-  <g>
-    <rect x="148" y="248" width="104" height="32" rx="16" fill="#EEF4E6" stroke="#D0DCC0"/>
-    <text x="174" y="269" fill="#567045" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Workflow</text>
-    <text x="148" y="322" fill="#1F221D" font-size="26" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Room-based runs</text>
-    <text x="148" y="350" fill="#6E7268" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif">Templates and repeatable runs.</text>
-  </g>
-
-  <g>
-    <rect x="1080" y="248" width="90" height="32" rx="16" fill="#EEF4E6" stroke="#D0DCC0"/>
-    <text x="1108" y="269" fill="#567045" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Agents</text>
-    <text x="1080" y="322" fill="#1F221D" font-size="26" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Preset builders</text>
-    <text x="1080" y="350" fill="#6E7268" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif">One-line creation with tool bindings.</text>
-  </g>
-
-  <g>
-    <rect x="148" y="526" width="96" height="32" rx="16" fill="#EEF4E6" stroke="#D0DCC0"/>
-    <text x="174" y="547" fill="#567045" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Memory</text>
-    <text x="148" y="600" fill="#1F221D" font-size="26" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Graph views</text>
-    <text x="148" y="628" fill="#6E7268" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif">Layered nodes with subject switching.</text>
-  </g>
-
-  <g>
-    <rect x="1080" y="526" width="116" height="32" rx="16" fill="#EEF4E6" stroke="#D0DCC0"/>
-    <text x="1106" y="547" fill="#567045" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Knowledge</text>
-    <text x="1080" y="600" fill="#1F221D" font-size="26" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Layered libraries</text>
-    <text x="1080" y="628" fill="#6E7268" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif">External sources with chunked ingestion.</text>
-  </g>
-
-  <g>
-    <rect x="526" y="672" width="102" height="32" rx="16" fill="#EEF4E6" stroke="#D0DCC0"/>
-    <text x="554" y="693" fill="#567045" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Settings</text>
-    <text x="526" y="742" fill="#1F221D" font-size="28" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">Editable desktop controls</text>
-    <text x="526" y="770" fill="#6E7268" font-size="14" font-family="Inter, Segoe UI, Arial, sans-serif">Providers, appearance, and runtime as editable state.</text>
-
-    <rect x="784" y="690" width="118" height="28" rx="14" fill="#F8F5EE" stroke="#D8D1C4"/>
-    <text x="810" y="708" fill="#464942" font-size="13" font-family="Inter, Segoe UI, Arial, sans-serif">Providers</text>
-    <rect x="784" y="728" width="126" height="28" rx="14" fill="#F8F5EE" stroke="#D8D1C4"/>
-    <text x="810" y="746" fill="#464942" font-size="13" font-family="Inter, Segoe UI, Arial, sans-serif">Appearance</text>
-    <rect x="784" y="766" width="104" height="28" rx="14" fill="#F8F5EE" stroke="#D8D1C4"/>
-    <text x="810" y="784" fill="#464942" font-size="13" font-family="Inter, Segoe UI, Arial, sans-serif">Runtime</text>
-  </g>
+  <text x="490" y="880" fill="#6E8760" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" dominant-baseline="hanging">SETTINGS</text>
+  <text x="490" y="907" fill="#1F221D" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="28" font-weight="600" dominant-baseline="hanging">Editable desktop controls</text>
+  <text x="490" y="953" fill="#6E7268" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" dominant-baseline="hanging">Providers, appearance, and runtime as editable state.</text>
 </svg>
