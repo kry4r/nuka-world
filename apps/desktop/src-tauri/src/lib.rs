@@ -1,5 +1,23 @@
+mod app_state;
+mod commands;
+mod settings;
+mod tray;
+
 pub fn run() {
-    let _builder = tauri::Builder::default();
+    tauri::Builder::default()
+        .manage(app_state::AppState::default())
+        .invoke_handler(tauri::generate_handler![
+            commands::app::close_policy_minimizes_to_tray,
+        ])
+        .on_window_event(|window, event| {
+            crate::tray::handle_window_event(window, event);
+        })
+        .setup(|app| {
+            crate::tray::install(app)?;
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("failed to run tauri app");
 }
 
 #[cfg(test)]
