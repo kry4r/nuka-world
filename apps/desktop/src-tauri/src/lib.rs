@@ -8,6 +8,7 @@ pub fn run() {
         .manage(app_state::AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::app::close_policy_minimizes_to_tray,
+            commands::chat::route_world_prompt,
         ])
         .on_window_event(|window, event| {
             crate::tray::handle_window_event(window, event);
