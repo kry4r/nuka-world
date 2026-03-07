@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { routeWorldPrompt, type WorldRoute } from "@/lib/chat";
+import { routeWorldPrompt, type ChatRouteResponse } from "@/lib/chat";
 
 export function ChatPage() {
   const [prompt, setPrompt] = useState("summarize today's notes");
-  const [route, setRoute] = useState<WorldRoute | null>(null);
+  const [result, setResult] = useState<ChatRouteResponse | null>(null);
 
   const handleRoute = async () => {
-    const nextRoute = await routeWorldPrompt(prompt);
-    setRoute(nextRoute);
+    const nextResult = await routeWorldPrompt(prompt);
+    setResult(nextResult);
   };
 
   return (
@@ -17,7 +17,11 @@ export function ChatPage() {
       <button type="button" onClick={() => void handleRoute()}>
         Route Prompt
       </button>
-      {route ? <p>Route: {route}</p> : null}
+      {result ? <p>Session: {result.sessionId}</p> : null}
+      {result ? <p>Route: {result.route.kind}</p> : null}
+      {result?.route.kind === "existing_workflow" ? (
+        <p>Workflow: {result.route.workflowId}</p>
+      ) : null}
     </section>
   );
 }

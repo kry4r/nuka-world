@@ -4,7 +4,9 @@ pub struct WorldSession {
 }
 
 impl WorldSession {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self { id: id.into() }
+    pub fn new() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+        }
     }
 }

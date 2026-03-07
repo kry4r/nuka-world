@@ -577,6 +577,7 @@ name = "desktop-tauri"
 version = "0.1.0"
 dependencies = [
  "nuka-runtime",
+ "serde",
  "tauri",
  "tauri-build",
 ]
@@ -2026,6 +2027,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

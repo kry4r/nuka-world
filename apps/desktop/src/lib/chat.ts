@@ -1,7 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type WorldRoute = "direct_reply" | "existing_workflow" | "new_workflow";
+export type WorldRoute =
+  | { kind: "direct_reply" }
+  | { kind: "existing_workflow"; workflowId: string }
+  | { kind: "new_workflow" };
 
-export async function routeWorldPrompt(prompt: string): Promise<WorldRoute> {
-  return invoke<WorldRoute>("route_world_prompt", { prompt });
+export type ChatRouteResponse = {
+  sessionId: string;
+  route: WorldRoute;
+};
+
+export async function routeWorldPrompt(prompt: string): Promise<ChatRouteResponse> {
+  return invoke<ChatRouteResponse>("route_world_prompt", { prompt });
 }
