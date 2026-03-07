@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { NukaLogo } from "@/components/brand/NukaLogo";
+ï»¿import { useMemo, useState } from "react";
+import { NukaLockup } from "@/components/brand/NukaLockup";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
 import { routeWorldPrompt, type ChatRouteResponse } from "@/lib/chat";
@@ -39,7 +39,7 @@ function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
 
   switch (route.kind) {
     case "existing_workflow":
-      return `Existing workflow ¡¤ ${route.workflowId}`;
+      return `Existing workflow Â· ${route.workflowId}`;
     case "new_workflow":
       return "New workflow";
     case "direct_reply":
@@ -53,7 +53,7 @@ function formatSession(sessionId: string | undefined) {
     return "Pending";
   }
 
-  return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? "¡­" : ""}`;
+  return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? "â€¦" : ""}`;
 }
 
 export function ChatPage() {
@@ -73,7 +73,7 @@ export function ChatPage() {
       <Inspector description="Session route, live bindings, and context readiness for the current World conversation." title="Context Inspector">
         <Card description={`Session ${formatSession(session?.sessionId)}`} title="Session" tone="accent" />
         <Card description={formatRoute(session?.route)} title="Route" />
-        <Card description="Session memory ¡¤ knowledge read ¡¤ workflow ready" title="Bindings" />
+        <Card description="Session memory Â· knowledge read Â· workflow ready" title="Bindings" />
         <Card description="World can answer directly or promote the thread into a reusable workflow." title="Next Move" />
       </Inspector>
     );
@@ -128,7 +128,7 @@ export function ChatPage() {
           <div className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}>
             {landing ? (
               <div aria-label="World chat landing hero" className="chat-hero">
-                <NukaLogo className="chat-hero__logo" size={84} />
+                <NukaLockup className="chat-hero__lockup" width={220} />
                 <div className="chat-hero__copy">
                   <span className="chat-hero__eyebrow">World Chat</span>
                   <h1>Nuka World</h1>
@@ -141,7 +141,7 @@ export function ChatPage() {
                   <div className="chat-surface__identity">
                     <span className="chat-surface__eyebrow">World Chat</span>
                     <span className="chat-surface__meta">
-                      Session {formatSession(session?.sessionId)} ¡¤ {formatRoute(session?.route)} ¡¤ Tools ready
+                      Session {formatSession(session?.sessionId)} Â· {formatRoute(session?.route)} Â· Tools ready
                     </span>
                   </div>
                   <span aria-label="World chat session status" className="chat-surface__status">
@@ -220,3 +220,4 @@ export function ChatPage() {
     </div>
   );
 }
+

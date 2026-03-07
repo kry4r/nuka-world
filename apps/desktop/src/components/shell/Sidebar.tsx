@@ -1,3 +1,4 @@
+﻿import { NukaLockup } from "@/components/brand/NukaLockup";
 import { NukaLogo } from "@/components/brand/NukaLogo";
 
 type SidebarItem = {
@@ -30,8 +31,7 @@ export function Sidebar({
     <aside className={`app-sidebar${collapsed ? " is-collapsed" : ""}`}>
       <div className="app-sidebar__top">
         <button className="app-sidebar__brand" onClick={() => onNavigate("chat")} type="button">
-          <NukaLogo className="app-sidebar__logo" size={22} />
-          {collapsed ? null : <span>Nuka</span>}
+          {collapsed ? <NukaLogo className="app-sidebar__logo" size={22} /> : <NukaLockup className="app-sidebar__lockup" width={92} />}
         </button>
         <button className="app-sidebar__toggle" onClick={onToggle} type="button">
           {collapsed ? "→" : "←"}

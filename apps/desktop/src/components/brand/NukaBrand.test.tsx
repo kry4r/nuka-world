@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+﻿import { afterEach, describe, expect, it } from "vitest";
 import { NukaLogo } from "./NukaLogo";
 import { NukaLockup } from "./NukaLockup";
 import { renderIntoDocument } from "@/test/render";
@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 describe("Nuka brand assets", () => {
-  it("defaults the in-app mark to the geometric brand family", async () => {
+  it("keeps the compact in-app mark on the geometric family by default", async () => {
     const view = await renderIntoDocument(<NukaLogo />);
     cleanups.push(view.cleanup);
 
@@ -41,21 +41,23 @@ describe("Nuka brand assets", () => {
     expect(naturalPath?.getAttribute("d")).not.toBe(geometricPath?.getAttribute("d"));
   });
 
-  it("renders lockups for both approved brand families", async () => {
+  it("renders the provided PNG lockup asset for expanded branding", async () => {
     const view = await renderIntoDocument(
       <div>
-        <NukaLockup variant="natural" />
-        <NukaLockup variant="geometric" />
+        <NukaLockup variant="natural" width={160} />
+        <NukaLockup variant="geometric" width={180} />
       </div>,
     );
     cleanups.push(view.cleanup);
 
-    const lockups = Array.from(view.container.querySelectorAll('svg[data-brand-kind="lockup"]'));
-    const lockupText = Array.from(view.container.querySelectorAll("text")).map((node) => node.textContent?.trim());
+    const lockups = Array.from(view.container.querySelectorAll('[data-brand-kind="lockup"]'));
+    const images = Array.from(view.container.querySelectorAll(".nuka-lockup img"));
 
     expect(lockups).toHaveLength(2);
     expect(lockups[0]?.getAttribute("data-brand-variant")).toBe("natural");
     expect(lockups[1]?.getAttribute("data-brand-variant")).toBe("geometric");
-    expect(lockupText).toEqual(["Nuka", "Nuka"]);
+    expect(images).toHaveLength(2);
+    expect(images[0]?.getAttribute("src")).toContain("goodlogo");
+    expect(images[1]?.getAttribute("src")).toContain("goodlogo");
   });
 });
