@@ -41,6 +41,10 @@ impl AppState {
         self.settings.read().expect("settings lock poisoned").clone()
     }
 
+    pub fn set_settings(&self, settings: SettingsState) {
+        *self.settings.write().expect("settings lock poisoned") = settings;
+    }
+
     pub fn provider_service(&self) -> &nuka_runtime::providers::ProvidersService {
         &self.provider_service
     }

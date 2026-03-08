@@ -1,16 +1,63 @@
-﻿import { act } from "react";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsPage } from "./SettingsPage";
 import { findText, renderIntoDocument } from "@/test/render";
 
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) => {
+    switch (command) {
+      case "list_providers":
+        return [
+          {
+            id: "provider-local",
+            name: "Local",
+            baseUrl: "http://localhost:11434/v1",
+            model: "gpt-oss",
+            apiKey: "",
+            local: true,
+            enabled: true,
+          },
+        ];
+      case "load_settings":
+        return {
+          defaultProviderId: "provider-local",
+          fallbackProviderId: "provider-local",
+          connectionChecks: true,
+          interfaceFont: "Inter",
+          messageFont: "Inter Text",
+          textSize: "14 px",
+          language: "English (US)",
+          responseLocale: "Follow session",
+          timeFormat: "24-hour",
+          density: "Comfortable",
+          motion: "Standard",
+          windowChrome: "Minimal glass",
+          sidebarDefault: "Expanded",
+          closeBehavior: "Minimize to tray",
+          launchAtLogin: false,
+          trayResident: true,
+          backgroundAdapters: true,
+          logging: "Standard",
+          notifications: true,
+        };
+      case "save_settings":
+        return args?.payload ?? null;
+      case "save_provider":
+        return args?.provider ?? null;
+      default:
+        throw new Error(`unexpected command: ${command}`);
+    }
+  }),
+}));
+
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(async () => ({ count: 3, names: ["OpenAI", "Anthropic", "Ollama"] })),
+  invoke: invokeMock,
 }));
 
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
-  window.localStorage.clear();
+  invokeMock.mockClear();
 
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
@@ -43,7 +90,7 @@ function setCheckboxValue(element: HTMLInputElement, checked: boolean) {
 }
 
 describe("SettingsPage", () => {
-  it("renders the settings hub with editable appearance fields", async () => {
+  it("loads appearance state from the backend and saves through tauri", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
@@ -72,10 +119,15 @@ describe("SettingsPage", () => {
       saveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(window.localStorage.getItem("nuka.settings.appearance")).toContain("简体中文");
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_settings",
+      expect.objectContaining({
+        payload: expect.objectContaining({ language: "简体中文" }),
+      }),
+    );
   });
 
-  it("adds a provider draft and saves provider settings", async () => {
+  it("adds a provider draft and saves it through tauri", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
@@ -93,7 +145,7 @@ describe("SettingsPage", () => {
       addProviderButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(findText(view.container, "4 configured")).toBeTruthy();
+    expect(findText(view.container, "2 configured")).toBeTruthy();
 
     const providerNameInputs = Array.from(
       view.container.querySelectorAll('input[aria-label="Provider name"]'),
@@ -114,10 +166,15 @@ describe("SettingsPage", () => {
       saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(window.localStorage.getItem("nuka.settings.providers")).toContain("OpenRouter");
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_provider",
+      expect.objectContaining({
+        provider: expect.objectContaining({ name: "OpenRouter" }),
+      }),
+    );
   });
 
-  it("switches the expanded section and persists runtime toggles", async () => {
+  it("switches the expanded section and saves runtime toggles through tauri", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
@@ -154,8 +211,11 @@ describe("SettingsPage", () => {
       saveRuntime?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(window.localStorage.getItem("nuka.settings.runtime")).toContain('"launchAtLogin":true');
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_settings",
+      expect.objectContaining({
+        payload: expect.objectContaining({ launchAtLogin: true }),
+      }),
+    );
   });
 });
-
-

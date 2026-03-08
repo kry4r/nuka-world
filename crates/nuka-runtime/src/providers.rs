@@ -1,4 +1,5 @@
 use nuka_domain::provider::ProviderConfig;
+use nuka_integrations::providers::ChatCompletionProvider;
 
 #[derive(Debug, Clone)]
 pub struct ProvidersService {
@@ -50,5 +51,23 @@ impl ProvidersService {
             .into_iter()
             .find(|provider| provider.id == default_provider_id)
             .ok_or_else(|| anyhow::anyhow!("default provider not found: {default_provider_id}"))
+    }
+
+    pub async fn delete_provider(&self, provider_id: &str) -> anyhow::Result<()> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        nuka_storage::providers::ProviderRepository::new(self.pool.clone())
+            .delete(provider_id)
+            .await
+    }
+
+    pub async fn test_provider_connection(
+        &self,
+        provider: &ProviderConfig,
+    ) -> anyhow::Result<nuka_domain::provider::ProviderConnectionStatus> {
+        Ok(
+            nuka_integrations::providers::openai::OpenAiCompatibleProvider::default()
+                .test_connection(provider)
+                .await,
+        )
     }
 }

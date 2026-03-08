@@ -4,5 +4,6 @@ pub mod chat;
 pub mod knowledge;
 pub mod memory;
 pub mod providers;
+pub mod settings;
 pub mod tools;
 pub mod workflow;

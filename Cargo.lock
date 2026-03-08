@@ -594,6 +594,7 @@ name = "desktop-tauri"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "nuka-domain",
  "nuka-integrations",
  "nuka-knowledge",
  "nuka-memory",
@@ -601,6 +602,7 @@ dependencies = [
  "nuka-storage",
  "nuka-tools",
  "serde",
+ "serde_json",
  "sqlx",
  "tauri",
  "tauri-build",

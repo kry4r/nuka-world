@@ -47,6 +47,15 @@ impl ProviderRepository {
 
         rows.into_iter().map(map_provider).collect()
     }
+
+    pub async fn delete(&self, provider_id: &str) -> anyhow::Result<()> {
+        sqlx::query("delete from providers where id = ?1")
+            .bind(provider_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
 }
 
 fn map_provider(row: sqlx::sqlite::SqliteRow) -> anyhow::Result<ProviderConfig> {

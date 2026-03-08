@@ -57,6 +57,8 @@ type RuntimeSettings = {
   notifications: boolean;
 };
 
+type SettingsPayload = Omit<ProviderSettings, "providers"> & AppearanceSettings & RuntimeSettings;
+
 type SettingsSection = {
   key: SettingsSectionKey;
   title: string;
@@ -70,7 +72,7 @@ type SettingsActionButtonProps = {
   children: ReactNode;
   tone?: "default" | "accent" | "danger";
   disabled?: boolean;
-  onClick?: () => void;
+  onClick?: () => void | Promise<void>;
 };
 
 type SettingsFieldShellProps = {
@@ -111,7 +113,7 @@ type ProviderEditorProps = {
   dirty: boolean;
   onAddProvider: () => void;
   onReset: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onUpdate: (updater: (current: ProviderSettings) => ProviderSettings) => void;
 };
 
@@ -119,7 +121,7 @@ type AppearanceEditorProps = {
   settings: AppearanceSettings;
   dirty: boolean;
   onReset: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onUpdate: <Key extends keyof AppearanceSettings>(key: Key, value: AppearanceSettings[Key]) => void;
 };
 
@@ -127,14 +129,10 @@ type RuntimeEditorProps = {
   settings: RuntimeSettings;
   dirty: boolean;
   onReset: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onUpdate: <Key extends keyof RuntimeSettings>(key: Key, value: RuntimeSettings[Key]) => void;
 };
 
-const PROVIDER_STORAGE_KEY = "nuka.settings.providers";
-const APPEARANCE_STORAGE_KEY = "nuka.settings.appearance";
-const RUNTIME_STORAGE_KEY = "nuka.settings.runtime";
-const DEFAULT_PROVIDER_NAMES = ["OpenAI", "Anthropic", "Ollama"];
 
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   interfaceFont: "Inter",
@@ -611,24 +609,38 @@ function RuntimeEditor({ dirty, onReset, onSave, onUpdate, settings }: RuntimeEd
 }
 
 export function SettingsPage() {
-  const [registry, setRegistry] = useState<ProviderRegistryResponse>({ count: DEFAULT_PROVIDER_NAMES.length, names: DEFAULT_PROVIDER_NAMES });
+  const [registry, setRegistry] = useState<ProviderRegistryResponse>({ count: 0, names: [] });
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>("appearance");
-  const [providerSettings, setProviderSettings] = useState<ProviderSettings>(() => buildProviderSettings(DEFAULT_PROVIDER_NAMES));
-  const [savedProviderSettings, setSavedProviderSettings] = useState<ProviderSettings>(() => buildProviderSettings(DEFAULT_PROVIDER_NAMES));
-  const [appearanceSettings, setAppearanceSettings] = useState<AppearanceSettings>(() => readStoredState(APPEARANCE_STORAGE_KEY, DEFAULT_APPEARANCE_SETTINGS));
-  const [savedAppearanceSettings, setSavedAppearanceSettings] = useState<AppearanceSettings>(() => readStoredState(APPEARANCE_STORAGE_KEY, DEFAULT_APPEARANCE_SETTINGS));
-  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(() => readStoredState(RUNTIME_STORAGE_KEY, DEFAULT_RUNTIME_SETTINGS));
-  const [savedRuntimeSettings, setSavedRuntimeSettings] = useState<RuntimeSettings>(() => readStoredState(RUNTIME_STORAGE_KEY, DEFAULT_RUNTIME_SETTINGS));
-  const [registryHydrated, setRegistryHydrated] = useState(false);
+  const [providerSettings, setProviderSettings] = useState<ProviderSettings>(() => emptyProviderSettings());
+  const [savedProviderSettings, setSavedProviderSettings] = useState<ProviderSettings>(() => emptyProviderSettings());
+  const [appearanceSettings, setAppearanceSettings] = useState<AppearanceSettings>(DEFAULT_APPEARANCE_SETTINGS);
+  const [savedAppearanceSettings, setSavedAppearanceSettings] = useState<AppearanceSettings>(DEFAULT_APPEARANCE_SETTINGS);
+  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(DEFAULT_RUNTIME_SETTINGS);
+  const [savedRuntimeSettings, setSavedRuntimeSettings] = useState<RuntimeSettings>(DEFAULT_RUNTIME_SETTINGS);
 
   useEffect(() => {
     let alive = true;
 
-    void invoke<ProviderRegistryResponse>("provider_registry")
-      .then((response) => {
-        if (alive) {
-          setRegistry(response);
+    void Promise.all([
+      invoke<ProviderEntry[]>("list_providers"),
+      invoke<SettingsPayload>("load_settings"),
+    ])
+      .then(([providers, payload]) => {
+        if (!alive) {
+          return;
         }
+
+        const nextProviderSettings = mergeLoadedProviderSettings(providers, payload);
+        const nextAppearanceSettings = extractAppearanceSettings(payload);
+        const nextRuntimeSettings = extractRuntimeSettings(payload);
+
+        setRegistry({ count: providers.length, names: providers.map((provider) => provider.name) });
+        setProviderSettings(nextProviderSettings);
+        setSavedProviderSettings(nextProviderSettings);
+        setAppearanceSettings(nextAppearanceSettings);
+        setSavedAppearanceSettings(nextAppearanceSettings);
+        setRuntimeSettings(nextRuntimeSettings);
+        setSavedRuntimeSettings(nextRuntimeSettings);
       })
       .catch(() => undefined);
 
@@ -636,21 +648,6 @@ export function SettingsPage() {
       alive = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (registryHydrated) {
-      return;
-    }
-
-    const merged = mergeProviderSettings(
-      readStoredState(PROVIDER_STORAGE_KEY, buildProviderSettings(registry.names.length > 0 ? registry.names : DEFAULT_PROVIDER_NAMES)),
-      registry.names.length > 0 ? registry.names : DEFAULT_PROVIDER_NAMES,
-    );
-
-    setProviderSettings(merged);
-    setSavedProviderSettings(merged);
-    setRegistryHydrated(true);
-  }, [registry.names, registryHydrated]);
 
   const providerDirty = useMemo(
     () => serializeState(providerSettings) !== serializeState(savedProviderSettings),
@@ -740,36 +737,46 @@ export function SettingsPage() {
     setActiveSection("providers");
     setProviderSettings((current) => {
       const nextIndex = current.providers.length + 1;
-      const nextProvider = {
-        id: `provider-draft-${nextIndex}`,
-        name: `New Provider ${nextIndex}`,
-        baseUrl: "",
-        model: "",
-        apiKey: "",
-        local: false,
-        enabled: true,
-      } satisfies ProviderEntry;
 
       return {
         ...current,
-        providers: [...current.providers, nextProvider],
+        providers: [...current.providers, createProviderDraft(nextIndex)],
       };
     });
   };
 
-  const saveProviders = () => {
-    writeStoredState(PROVIDER_STORAGE_KEY, providerSettings);
-    setSavedProviderSettings(providerSettings);
+  const saveProviders = async () => {
+    const providers = await Promise.all(
+      providerSettings.providers.map((provider) => invoke<ProviderEntry>("save_provider", { provider })),
+    );
+    const payload = await invoke<SettingsPayload>("save_settings", {
+      payload: buildSettingsPayload({ ...providerSettings, providers }, appearanceSettings, runtimeSettings),
+    });
+    const nextProviderSettings = mergeLoadedProviderSettings(providers, payload);
+
+    setRegistry({ count: providers.length, names: providers.map((provider) => provider.name) });
+    setProviderSettings(nextProviderSettings);
+    setSavedProviderSettings(nextProviderSettings);
   };
 
-  const saveAppearance = () => {
-    writeStoredState(APPEARANCE_STORAGE_KEY, appearanceSettings);
-    setSavedAppearanceSettings(appearanceSettings);
+  const saveAppearance = async () => {
+    const payload = await invoke<SettingsPayload>("save_settings", {
+      payload: buildSettingsPayload(providerSettings, appearanceSettings, runtimeSettings),
+    });
+    const nextAppearanceSettings = extractAppearanceSettings(payload);
+
+    setAppearanceSettings(nextAppearanceSettings);
+    setSavedAppearanceSettings(nextAppearanceSettings);
   };
 
-  const saveRuntime = () => {
-    writeStoredState(RUNTIME_STORAGE_KEY, runtimeSettings);
-    setSavedRuntimeSettings(runtimeSettings);
+  const saveRuntime = async () => {
+    const payload = await invoke<SettingsPayload>("save_settings", {
+      payload: buildSettingsPayload(providerSettings, appearanceSettings, runtimeSettings),
+    });
+    const nextRuntimeSettings = extractRuntimeSettings(payload);
+
+    setRuntimeSettings(nextRuntimeSettings);
+    setSavedRuntimeSettings(nextRuntimeSettings);
   };
 
   return (
@@ -860,60 +867,19 @@ export function SettingsPage() {
   );
 }
 
-function buildProviderSettings(names: string[]): ProviderSettings {
-  const sourceNames = names.length > 0 ? names : DEFAULT_PROVIDER_NAMES;
-  const providers = sourceNames.map((name, index) => createProviderEntry(name, index));
-
+function emptyProviderSettings(): ProviderSettings {
   return {
-    providers,
-    defaultProviderId: providers[0]?.id ?? "",
-    fallbackProviderId: providers[1]?.id ?? providers[0]?.id ?? "",
+    providers: [],
+    defaultProviderId: "",
+    fallbackProviderId: "",
     connectionChecks: true,
   };
 }
 
-function createProviderEntry(name: string, index: number): ProviderEntry {
-  const normalized = name.toLowerCase();
-
-  if (normalized.includes("openai")) {
-    return {
-      id: `provider-openai-${index}`,
-      name,
-      baseUrl: "https://api.openai.com/v1",
-      model: "gpt-4.1-mini",
-      apiKey: "",
-      local: false,
-      enabled: true,
-    };
-  }
-
-  if (normalized.includes("anthropic")) {
-    return {
-      id: `provider-anthropic-${index}`,
-      name,
-      baseUrl: "https://api.anthropic.com",
-      model: "claude-3-7-sonnet",
-      apiKey: "",
-      local: false,
-      enabled: true,
-    };
-  }
-
-  if (normalized.includes("ollama")) {
-    return {
-      id: `provider-ollama-${index}`,
-      name,
-      baseUrl: "http://localhost:11434",
-      model: "llama3.2",
-      apiKey: "",
-      local: true,
-      enabled: true,
-    };
-  }
-
+function createProviderDraft(index: number): ProviderEntry {
   return {
-    id: `provider-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || index}-${index}`,
-    name,
+    id: `provider-draft-${index}`,
+    name: `New Provider ${index}`,
     baseUrl: "",
     model: "",
     apiKey: "",
@@ -922,54 +888,60 @@ function createProviderEntry(name: string, index: number): ProviderEntry {
   };
 }
 
-function mergeProviderSettings(current: ProviderSettings, registryNames: string[]): ProviderSettings {
-  const providers = [...current.providers];
-
-  registryNames.forEach((name, index) => {
-    if (!providers.some((provider) => provider.name.toLowerCase() === name.toLowerCase())) {
-      providers.push(createProviderEntry(name, index + providers.length));
-    }
-  });
-
-  const enabledProviders = providers.filter((provider) => provider.enabled);
-  const defaultProviderId = providers.some((provider) => provider.id === current.defaultProviderId)
-    ? current.defaultProviderId
-    : enabledProviders[0]?.id ?? providers[0]?.id ?? "";
-  const fallbackProviderId = providers.some((provider) => provider.id === current.fallbackProviderId)
-    ? current.fallbackProviderId
-    : enabledProviders[1]?.id ?? enabledProviders[0]?.id ?? providers[1]?.id ?? providers[0]?.id ?? "";
+function mergeLoadedProviderSettings(providers: ProviderEntry[], payload: SettingsPayload): ProviderSettings {
+  const defaultProviderId = providers.some((provider) => provider.id === payload.defaultProviderId)
+    ? payload.defaultProviderId
+    : providers[0]?.id ?? "";
+  const fallbackProviderId = providers.some((provider) => provider.id === payload.fallbackProviderId)
+    ? payload.fallbackProviderId
+    : providers[1]?.id ?? defaultProviderId;
 
   return {
-    ...current,
     providers,
     defaultProviderId,
     fallbackProviderId,
+    connectionChecks: payload.connectionChecks,
   };
 }
 
-function readStoredState<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
-      return fallback;
-    }
-
-    return { ...fallback, ...JSON.parse(raw) } as T;
-  } catch {
-    return fallback;
-  }
+function extractAppearanceSettings(payload: SettingsPayload): AppearanceSettings {
+  return {
+    interfaceFont: payload.interfaceFont,
+    messageFont: payload.messageFont,
+    textSize: payload.textSize,
+    language: payload.language,
+    responseLocale: payload.responseLocale,
+    timeFormat: payload.timeFormat,
+    density: payload.density,
+    motion: payload.motion,
+    windowChrome: payload.windowChrome,
+    sidebarDefault: payload.sidebarDefault,
+  };
 }
 
-function writeStoredState<T>(key: string, value: T) {
-  if (typeof window === "undefined") {
-    return;
-  }
+function extractRuntimeSettings(payload: SettingsPayload): RuntimeSettings {
+  return {
+    closeBehavior: payload.closeBehavior,
+    launchAtLogin: payload.launchAtLogin,
+    trayResident: payload.trayResident,
+    backgroundAdapters: payload.backgroundAdapters,
+    logging: payload.logging,
+    notifications: payload.notifications,
+  };
+}
 
-  window.localStorage.setItem(key, JSON.stringify(value));
+function buildSettingsPayload(
+  providerSettings: ProviderSettings,
+  appearanceSettings: AppearanceSettings,
+  runtimeSettings: RuntimeSettings,
+): SettingsPayload {
+  return {
+    defaultProviderId: providerSettings.defaultProviderId,
+    fallbackProviderId: providerSettings.fallbackProviderId,
+    connectionChecks: providerSettings.connectionChecks,
+    ...appearanceSettings,
+    ...runtimeSettings,
+  };
 }
 
 function serializeState(value: unknown) {

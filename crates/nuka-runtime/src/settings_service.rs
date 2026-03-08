@@ -32,4 +32,18 @@ impl SettingsService {
             .save(settings)
             .await
     }
+
+    pub async fn load_state_value(&self, key: &str) -> anyhow::Result<Option<String>> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        nuka_storage::runtime_state::RuntimeStateRepository::new(self.pool.clone())
+            .get(key)
+            .await
+    }
+
+    pub async fn save_state_value(&self, key: &str, value: &str) -> anyhow::Result<()> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        nuka_storage::runtime_state::RuntimeStateRepository::new(self.pool.clone())
+            .put(key, value)
+            .await
+    }
 }
