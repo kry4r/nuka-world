@@ -1,6 +1,25 @@
 pub mod openai;
 pub mod types;
 
+#[derive(Debug, Clone)]
+pub struct ProviderRegistry(Vec<String>);
+
+impl Default for ProviderRegistry {
+    fn default() -> Self {
+        Self(vec![openai::PROVIDER_ID.to_string()])
+    }
+}
+
+impl ProviderRegistry {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn names(&self) -> Vec<String> {
+        self.0.clone()
+    }
+}
+
 #[async_trait::async_trait]
 pub trait ChatCompletionProvider: Send + Sync {
     fn provider_id(&self) -> &'static str;

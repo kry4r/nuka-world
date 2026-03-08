@@ -1,11 +1,13 @@
 mod app_state;
+mod bootstrap;
 mod commands;
 mod settings;
 mod tray;
 
+use tauri::Manager;
+
 pub fn run() {
     tauri::Builder::default()
-        .manage(app_state::AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::agents::default_agent_tool_bindings,
             commands::app::close_policy_minimizes_to_tray,
@@ -20,6 +22,9 @@ pub fn run() {
             crate::tray::handle_window_event(window, event);
         })
         .setup(|app| {
+            let state = tauri::async_runtime::block_on(crate::bootstrap::build_app_state(app.handle()))
+                .unwrap_or_else(|error| panic!("failed to bootstrap persistent app state: {error}"));
+            app.manage(state);
             crate::tray::install(app)?;
             Ok(())
         })
@@ -29,6 +34,12 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn bootstrap_initializes_database_and_services() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        assert!(state.provider_service().list_providers().await.unwrap().is_empty());
+    }
+
     #[test]
     fn desktop_workspace_bootstrap_placeholder() {
         assert!(std::path::Path::new("../package.json").exists());

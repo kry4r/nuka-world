@@ -16,10 +16,14 @@ path = "src/main.rs"
 tauri-build = { version = "2" }
 
 [dependencies]
+anyhow = "1"
 nuka-integrations = { path = "../../../crates/nuka-integrations" }
 nuka-knowledge = { path = "../../../crates/nuka-knowledge" }
 nuka-memory = { path = "../../../crates/nuka-memory" }
 nuka-runtime = { path = "../../../crates/nuka-runtime" }
+nuka-storage = { path = "../../../crates/nuka-storage" }
 nuka-tools = { path = "../../../crates/nuka-tools" }
 serde = { version = "1", features = ["derive"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
 tauri = { version = "2", features = ["tray-icon"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

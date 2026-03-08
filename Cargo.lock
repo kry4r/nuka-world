@@ -593,14 +593,18 @@ dependencies = [
 name = "desktop-tauri"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "nuka-integrations",
  "nuka-knowledge",
  "nuka-memory",
  "nuka-runtime",
+ "nuka-storage",
  "nuka-tools",
  "serde",
+ "sqlx",
  "tauri",
  "tauri-build",
+ "tokio",
 ]
 
 [[package]]
