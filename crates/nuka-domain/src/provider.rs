@@ -1,0 +1,78 @@
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderKind {
+    OpenAiCompatible,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderConnectionStatus {
+    Unknown,
+    Ready,
+    InvalidUrl,
+    InvalidToken,
+    MissingModel,
+    UnreachableHost,
+    Timeout,
+    UpstreamFailure,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderValidationError {
+    MissingName,
+    MissingBaseUrl,
+    InvalidBaseUrl,
+    MissingModel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderConfig {
+    pub id: String,
+    pub name: String,
+    pub kind: ProviderKind,
+    pub base_url: String,
+    pub token: String,
+    pub model: String,
+    pub enabled: bool,
+}
+
+impl ProviderConfig {
+    pub fn openai_compatible(
+        name: impl Into<String>,
+        base_url: impl Into<String>,
+        token: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: name.into(),
+            kind: ProviderKind::OpenAiCompatible,
+            base_url: base_url.into(),
+            token: token.into(),
+            model: model.into(),
+            enabled: true,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), Vec<ProviderValidationError>> {
+        let mut errors = Vec::new();
+
+        if self.name.trim().is_empty() {
+            errors.push(ProviderValidationError::MissingName);
+        }
+
+        if self.base_url.trim().is_empty() {
+            errors.push(ProviderValidationError::MissingBaseUrl);
+        } else if !self.base_url.starts_with("http://") && !self.base_url.starts_with("https://") {
+            errors.push(ProviderValidationError::InvalidBaseUrl);
+        }
+
+        if self.model.trim().is_empty() {
+            errors.push(ProviderValidationError::MissingModel);
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
