@@ -1,0 +1,122 @@
+use nuka_integrations::providers::{
+    openai::OpenAiCompatibleProvider,
+    types::OpenAiChatMessage,
+    ChatCompletionProvider,
+};
+
+#[derive(Debug, Clone)]
+pub struct ChatTurnRecord {
+    pub session: nuka_domain::chat::ChatSessionSummary,
+    pub user_message: nuka_domain::chat::ChatMessage,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChatService {
+    pool: sqlx::SqlitePool,
+    provider_client: OpenAiCompatibleProvider,
+    seed_provider: Option<nuka_domain::provider::ProviderConfig>,
+}
+
+impl ChatService {
+    pub fn new(pool: sqlx::SqlitePool) -> Self {
+        Self {
+            pool,
+            provider_client: OpenAiCompatibleProvider::default(),
+            seed_provider: None,
+        }
+    }
+
+    pub fn new_for_test_without_provider() -> Self {
+        Self::new(crate::settings_service::test_pool())
+    }
+
+    pub fn new_for_test_with_default_provider() -> Self {
+        Self {
+            pool: crate::settings_service::test_pool(),
+            provider_client: OpenAiCompatibleProvider::default(),
+            seed_provider: Some(nuka_domain::provider::ProviderConfig::openai_compatible(
+                "Local",
+                "http://localhost:11434/v1",
+                "",
+                "gpt-oss",
+            )),
+        }
+    }
+
+    pub async fn send_message(
+        &self,
+        prompt: &str,
+        session_id: Option<&str>,
+    ) -> anyhow::Result<ChatTurnRecord> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        self.ensure_seed_provider().await?;
+
+        let settings = nuka_storage::settings::SettingsRepository::new(self.pool.clone())
+            .load()
+            .await?;
+        let default_provider_id = settings
+            .default_provider_id
+            .ok_or_else(|| anyhow::anyhow!("default provider is not configured"))?;
+        let provider = nuka_storage::providers::ProviderRepository::new(self.pool.clone())
+            .list()
+            .await?
+            .into_iter()
+            .find(|provider| provider.id == default_provider_id)
+            .ok_or_else(|| anyhow::anyhow!("default provider not found: {default_provider_id}"))?;
+
+        self.provider_client.prepare_chat_request(
+            &provider,
+            vec![OpenAiChatMessage::user(prompt.to_string())],
+        )?;
+
+        let repo = nuka_storage::chat::ChatRepository::new(self.pool.clone());
+        let mut session = match session_id {
+            Some(existing_session_id) => repo
+                .list_sessions()
+                .await?
+                .into_iter()
+                .find(|session| session.id == existing_session_id)
+                .ok_or_else(|| anyhow::anyhow!("unknown chat session: {existing_session_id}"))?,
+            None => {
+                let session = nuka_domain::chat::ChatSessionSummary {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    title: prompt.chars().take(48).collect(),
+                    provider_id: Some(provider.id.clone()),
+                    workflow_id: None,
+                    message_count: 0,
+                };
+                repo.create_session(session.clone()).await?;
+                session
+            }
+        };
+
+        let user_message = nuka_domain::chat::ChatMessage {
+            id: uuid::Uuid::new_v4().to_string(),
+            session_id: session.id.clone(),
+            role: nuka_domain::chat::ChatMessageRole::User,
+            content: prompt.to_string(),
+        };
+        repo.append_message(user_message.clone()).await?;
+
+        session.message_count += 1;
+
+        Ok(ChatTurnRecord { session, user_message })
+    }
+
+    async fn ensure_seed_provider(&self) -> anyhow::Result<()> {
+        let Some(provider) = &self.seed_provider else {
+            return Ok(());
+        };
+
+        let provider_repo = nuka_storage::providers::ProviderRepository::new(self.pool.clone());
+        if provider_repo.list().await?.is_empty() {
+            provider_repo.upsert(provider.clone()).await?;
+            let settings_repo = nuka_storage::settings::SettingsRepository::new(self.pool.clone());
+            let mut settings = settings_repo.load().await?;
+            settings.default_provider_id = Some(provider.id.clone());
+            settings_repo.save(&settings).await?;
+        }
+
+        Ok(())
+    }
+}

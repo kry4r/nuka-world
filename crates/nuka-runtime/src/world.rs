@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 #[derive(Debug, Clone)]
 pub enum WorldRoute {
@@ -13,9 +16,19 @@ pub struct WorldTurn {
     pub route: WorldRoute,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct WorldRuntime {
+    chat_service: crate::chat_service::ChatService,
     sessions: Arc<Mutex<HashMap<String, crate::session::WorldSession>>>,
+}
+
+impl Default for WorldRuntime {
+    fn default() -> Self {
+        Self {
+            chat_service: crate::chat_service::ChatService::new_for_test_with_default_provider(),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
 }
 
 impl WorldRuntime {
@@ -32,16 +45,23 @@ impl WorldRuntime {
     }
 
     pub async fn start_session(&self, prompt: &str) -> anyhow::Result<WorldTurn> {
-        let session = crate::session::WorldSession::new();
+        let route = self.route_prompt(prompt).await?;
+        let session = match route {
+            WorldRoute::DirectReply => {
+                let turn = self.chat_service.send_message(prompt, None).await?;
+                crate::session::WorldSession {
+                    id: turn.session.id,
+                }
+            }
+            _ => crate::session::WorldSession::new(),
+        };
+
         self.sessions
             .lock()
             .expect("world sessions lock poisoned")
             .insert(session.id.clone(), session.clone());
 
-        Ok(WorldTurn {
-            session,
-            route: self.route_prompt(prompt).await?,
-        })
+        Ok(WorldTurn { session, route })
     }
 
     pub async fn continue_session(
@@ -57,10 +77,12 @@ impl WorldRuntime {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("unknown world session: {session_id}"))?;
 
-        Ok(WorldTurn {
-            session,
-            route: self.route_prompt(prompt).await?,
-        })
+        let route = self.route_prompt(prompt).await?;
+        if matches!(route, WorldRoute::DirectReply) {
+            self.chat_service.send_message(prompt, Some(&session.id)).await?;
+        }
+
+        Ok(WorldTurn { session, route })
     }
 }
 

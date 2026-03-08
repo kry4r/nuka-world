@@ -2087,6 +2087,11 @@ name = "nuka-runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "nuka-domain",
+ "nuka-integrations",
+ "nuka-knowledge",
+ "nuka-storage",
+ "sqlx",
  "tokio",
  "uuid",
 ]
