@@ -25,4 +25,11 @@ impl AgentsService {
             .list()
             .await
     }
+
+    pub async fn delete_agent(&self, agent_id: &str) -> anyhow::Result<()> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        nuka_storage::agents::AgentRepository::new(self.pool.clone())
+            .delete(agent_id)
+            .await
+    }
 }

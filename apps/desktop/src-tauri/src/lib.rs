@@ -10,6 +10,10 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             commands::agents::default_agent_tool_bindings,
+            commands::agents::delete_agent,
+            commands::agents::generate_agent_draft,
+            commands::agents::list_agents,
+            commands::agents::save_agent,
             commands::app::close_policy_minimizes_to_tray,
             commands::chat::route_world_prompt,
             commands::knowledge::default_knowledge_library,

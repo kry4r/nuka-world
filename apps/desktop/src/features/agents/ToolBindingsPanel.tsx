@@ -1,11 +1,12 @@
 type ToolBindingsPanelProps = {
   toolNames: string[];
+  title?: string;
 };
 
-export function ToolBindingsPanel({ toolNames }: ToolBindingsPanelProps) {
+export function ToolBindingsPanel({ toolNames, title = "Tool Bindings" }: ToolBindingsPanelProps) {
   return (
     <section>
-      <h3>Tool Bindings</h3>
+      <h3>{title}</h3>
       <ul>
         {toolNames.map((toolName) => (
           <li key={toolName}>{toolName}</li>

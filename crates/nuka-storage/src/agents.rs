@@ -97,6 +97,22 @@ impl AgentRepository {
 
         Ok(agents)
     }
+
+    pub async fn delete(&self, agent_id: &str) -> anyhow::Result<()> {
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query("delete from agent_tool_bindings where agent_id = ?1")
+            .bind(agent_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("delete from agents where id = ?1")
+            .bind(agent_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
 }
 
 fn encode_list(items: &[String]) -> String {
