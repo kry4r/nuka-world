@@ -1,4 +1,8 @@
 pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
+    sqlx::query("pragma foreign_keys = on")
+        .execute(pool)
+        .await?;
+
     sqlx::query(include_str!("../migrations/0001_initial.sql"))
         .execute(pool)
         .await?;

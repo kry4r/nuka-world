@@ -1,4 +1,6 @@
-use nuka_domain::workflow::{WorkflowTemplate, WorkflowVisibility};
+use nuka_domain::workflow::{
+    WorkflowInputDefinition, WorkflowInputKind, WorkflowTemplate, WorkflowVisibility,
+};
 use sqlx::Row;
 
 pub struct WorkflowRepository {
@@ -30,24 +32,53 @@ impl WorkflowRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        let items = rows
-            .into_iter()
-            .map(|row| {
-                let visibility = match row.get::<String, _>("visibility").as_str() {
-                    "private" => WorkflowVisibility::Private,
-                    "shared" => WorkflowVisibility::Shared,
-                    other => anyhow::bail!("unknown workflow visibility: {other}"),
-                };
+        let mut items = Vec::with_capacity(rows.len());
+        for row in rows {
+            let id: String = row.get("id");
+            let visibility = match row.get::<String, _>("visibility").as_str() {
+                "private" => WorkflowVisibility::Private,
+                "shared" => WorkflowVisibility::Shared,
+                other => anyhow::bail!("unknown workflow visibility: {other}"),
+            };
 
-                Ok(WorkflowTemplate {
-                    id: row.get("id"),
-                    name: row.get("name"),
-                    saved: row.get::<i64, _>("saved") != 0,
-                    visibility,
-                })
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            items.push(WorkflowTemplate {
+                id: id.clone(),
+                name: row.get("name"),
+                saved: row.get::<i64, _>("saved") != 0,
+                visibility,
+                description: String::new(),
+                inputs: self.list_inputs(&id).await?,
+            });
+        }
 
         Ok(items)
+    }
+
+    async fn list_inputs(&self, workflow_id: &str) -> anyhow::Result<Vec<WorkflowInputDefinition>> {
+        let rows = sqlx::query(
+            "select id, label, kind, required, placeholder from workflow_inputs where workflow_id = ?1 order by rowid asc",
+        )
+        .bind(workflow_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let kind = match row.get::<String, _>("kind").as_str() {
+                    "text" => WorkflowInputKind::Text,
+                    "long_text" => WorkflowInputKind::LongText,
+                    "json" => WorkflowInputKind::Json,
+                    other => anyhow::bail!("unknown workflow input kind: {other}"),
+                };
+
+                Ok(WorkflowInputDefinition {
+                    id: row.get("id"),
+                    label: row.get("label"),
+                    kind,
+                    required: row.get::<i64, _>("required") != 0,
+                    placeholder: row.get("placeholder"),
+                })
+            })
+            .collect()
     }
 }
