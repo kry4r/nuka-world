@@ -1,28 +1,38 @@
-import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-
-type KnowledgeLibraryResponse = {
-  id: string;
-  name: string;
-};
+import {
+  addFolderConnector,
+  listIndexJobs,
+  listKnowledgeLibraries,
+  rebuildKnowledgeLibrary,
+  searchKnowledge,
+  type KnowledgeIndexJobRecord,
+  type KnowledgeLibraryRecord,
+  type KnowledgeSearchResult,
+} from "@/lib/knowledge";
 
 export function KnowledgePage() {
-  const [library, setLibrary] = useState<KnowledgeLibraryResponse>({
-    id: "library-user",
-    name: "Personal Library",
-  });
+  const [libraries, setLibraries] = useState<KnowledgeLibraryRecord[]>([]);
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
+  const [folderPath, setFolderPath] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [indexJobs, setIndexJobs] = useState<KnowledgeIndexJobRecord[]>([]);
+  const [results, setResults] = useState<KnowledgeSearchResult[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
 
-    void invoke<KnowledgeLibraryResponse>("default_knowledge_library")
-      .then((response) => {
-        if (alive) {
-          setLibrary(response);
+    void listKnowledgeLibraries()
+      .then((items) => {
+        if (!alive) {
+          return;
         }
+
+        setLibraries(items);
+        setSelectedLibraryId(items[0]?.id ?? null);
       })
       .catch(() => undefined);
 
@@ -31,65 +41,173 @@ export function KnowledgePage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!selectedLibraryId) {
+      setIndexJobs([]);
+      return;
+    }
+
+    let alive = true;
+    void listIndexJobs(selectedLibraryId)
+      .then((items) => {
+        if (alive) {
+          setIndexJobs(items);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      alive = false;
+    };
+  }, [selectedLibraryId]);
+
+  const selectedLibrary = useMemo(
+    () => libraries.find((library) => library.id === selectedLibraryId) ?? null,
+    [libraries, selectedLibraryId],
+  );
+
+  const handleAddFolder = async () => {
+    const nextPath = folderPath.trim();
+    if (!nextPath) {
+      return;
+    }
+
+    const library = await addFolderConnector(nextPath);
+    const nextLibraries = await listKnowledgeLibraries();
+    setLibraries(nextLibraries);
+    setSelectedLibraryId(library.id);
+    setFolderPath("");
+    const jobs = await listIndexJobs(library.id);
+    setIndexJobs(jobs);
+  };
+
+  const handleRebuild = async () => {
+    if (!selectedLibrary) {
+      return;
+    }
+
+    await rebuildKnowledgeLibrary(selectedLibrary.id);
+    const jobs = await listIndexJobs(selectedLibrary.id);
+    setIndexJobs(jobs);
+  };
+
+  const handleSearch = async () => {
+    setSearchError(null);
+
+    try {
+      const nextResults = await searchKnowledge(searchQuery);
+      setResults(nextResults);
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setSearchError(message);
+      setResults([]);
+    }
+  };
+
   return (
     <div className="page-layout">
       <SectionHeader
-        meta="Connectors and chunked retrieval"
+        meta="Folder connectors, index jobs, and local retrieval"
         status="Connectors"
         tag="Knowledge"
-        title="External Knowledge Connectors"
+        title="Knowledge Libraries"
       />
 
       <div className="page-layout__body">
         <div className="page-layout__main">
           <Card
-            description="Connect GitHub, Notion, web docs, and local vaults, then normalize them into one local library model."
-            title="External Knowledge Connectors"
+            description="Connect a local folder, inspect index jobs, and search the saved library state."
+            title="Local Folder Connectors"
             tone="accent"
           />
 
-          <div className="knowledge-row knowledge-row--four">
-            <Card description="Repos, docs, issues" title="GitHub" />
-            <Card description="Pages and databases" title="Notion" />
-            <Card description="Sites and sitemaps" title="Web Docs" />
-            <Card description="Folders, notes, files" title="Local Vaults" />
+          <div className="split-row">
+            <input
+              aria-label="Folder path"
+              className="field-input"
+              onChange={(event) => setFolderPath(event.target.value)}
+              placeholder="C:/docs/rust"
+              value={folderPath}
+            />
+            <button className="composer__send" onClick={() => void handleAddFolder()} type="button">
+              Add Folder
+            </button>
           </div>
 
-          <Card title="Normalized Library Architecture">
-            <div className="knowledge-row knowledge-row--four">
-              <Card description="Top-level source space" title="Library" tone="soft" />
-              <Card description="Repo, space, or folder" title="Collection" tone="soft" />
-              <Card description="Page, file, or note" title="Item" tone="soft" />
-              <Card description="Retrieval unit with cite" title="Chunk" tone="soft" />
-            </div>
-          </Card>
-
-          <Card title="Sync and Chunk Pipeline">
-            <div className="knowledge-row knowledge-row--five">
-              <Card description="Pull source" title="Sync" tone="soft" />
-              <Card description="Map metadata" title="Normalize" tone="soft" />
-              <Card description="Split content" title="Chunk" tone="soft" />
-              <Card description="Vector and filters" title="Index" tone="soft" />
-              <Card description="Cited search" title="Retrieve" tone="soft" />
-            </div>
-          </Card>
-
-          <div className="knowledge-row">
-            <Card description={`3 collections 路 148 items 路 1240 chunks`} title="Library Snapshot">
-              <p className="ui-card__description">{library.name}</p>
+          {libraries.length === 0 ? (
+            <Card description="Add a local folder connector to create the first knowledge library." title="No folder connectors yet." tone="soft" />
+          ) : (
+            <Card title="Libraries">
+              <div className="workflow-grid">
+                {libraries.map((library) => (
+                  <button
+                    className="settings-panel__trigger"
+                    key={library.id}
+                    onClick={() => setSelectedLibraryId(library.id)}
+                    type="button"
+                  >
+                    <Card description={library.connectors.map((connector) => connector.path).join(" · ")} title={library.name} tone={library.id === selectedLibraryId ? "accent" : "soft"} />
+                  </button>
+                ))}
+              </div>
             </Card>
-            <Card description="GitHub docs synced 24m ago 路 Notion notes queued for chunking" title="Recent Sync" />
-            <Card description="Local vector store + metadata filters" title="Index Layer" />
-          </div>
+          )}
+
+          <Card title="Index Jobs">
+            {indexJobs.length === 0 ? (
+              <p>No index jobs recorded yet.</p>
+            ) : (
+              <div className="knowledge-row">
+                {indexJobs.map((job) => (
+                  <Card description={job.detail ?? "No detail"} key={job.id} title={job.status} tone="soft" />
+                ))}
+              </div>
+            )}
+            <div className="settings-panel__footer">
+              <button className="settings-button settings-button--accent" disabled={!selectedLibrary} onClick={() => void handleRebuild()} type="button">
+                Rebuild Index
+              </button>
+            </div>
+          </Card>
+
+          <Card title="Search">
+            <div className="split-row">
+              <input
+                aria-label="Search knowledge"
+                className="field-input"
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search knowledge"
+                value={searchQuery}
+              />
+              <button className="composer__send" onClick={() => void handleSearch()} type="button">
+                Search
+              </button>
+            </div>
+            {searchError ? <Card description={searchError} title="Search Error" tone="soft" /> : null}
+            {results.length > 0 ? (
+              <div className="knowledge-row">
+                {results.map((result) => (
+                  <Card description={result.path} key={`${result.collectionId}-${result.path}`} title={result.snippet} tone="soft" />
+                ))}
+              </div>
+            ) : null}
+          </Card>
         </div>
 
-        <Inspector description="Check connector scope, chunk strategy, and index health." title="Connection Inspector">
-          <Card description="GitHub 路 product docs repo" title="Selected Connector" />
-          <Card description="Docs folder, release notes, issues" title="Sync Scope" />
-          <Card description="Semantic chunks with source citations" title="Chunking" />
-          <Card description="Local vector and metadata filters" title="Index Layer" />
+        <Inspector description="Shows the selected library, connector scope, and supported extensions from real backend state." title="Library State">
+          {selectedLibrary ? (
+            <>
+              <Card description={selectedLibrary.name} title="Selected Library" tone="accent" />
+              <Card description={selectedLibrary.connectors.map((connector) => connector.path).join(" · ")} title="Connector Paths" tone="soft" />
+              <Card description={selectedLibrary.supportedExtensions.join(", ")} title="Supported Extensions" tone="soft" />
+              <Card description={selectedLibrary.engine} title="Engine" tone="soft" />
+            </>
+          ) : (
+            <Card description="Select or add a library to inspect its real connector state." title="Library State" />
+          )}
         </Inspector>
       </div>
     </div>
   );
 }
+
