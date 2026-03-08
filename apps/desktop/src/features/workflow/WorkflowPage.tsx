@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import { startWorkflowSession, type WorkflowSessionResponse } from "@/lib/workflow";
 
 type WorkflowDraft = {
@@ -33,7 +32,7 @@ const WORKFLOW_DRAFTS: WorkflowDraft[] = [
   {
     id: "workflow-release-notes",
     title: "Release Notes",
-    description: "3 agents ¡¤ review mode",
+    description: "3 agents ï¿½ï¿½ review mode",
     purpose: "Capture the release objective and start a session with the supplied notes scope.",
     inputs: [
       {
@@ -46,7 +45,7 @@ const WORKFLOW_DRAFTS: WorkflowDraft[] = [
   {
     id: "workflow-customer-triage",
     title: "Customer Triage",
-    description: "5 agents ¡¤ tool-heavy",
+    description: "5 agents ï¿½ï¿½ tool-heavy",
     purpose: "Route incoming issues into a real workflow session with the selected triage goal.",
     inputs: [
       {
@@ -96,13 +95,6 @@ export function WorkflowPage() {
 
   return (
     <div className="page-layout">
-      <SectionHeader
-        meta="Saved types, sessions, and shared memory"
-        status="Shared Memory"
-        tag="Workflow"
-        title="Saved Workflows"
-      />
-
       <div className="page-layout__body">
         <div className="page-layout__main">
           <Card
@@ -164,7 +156,7 @@ export function WorkflowPage() {
           {error ? <Card description={error} title="Workflow Error" tone="soft" /> : null}
           {session ? (
             <Card
-              description={`Session ${session.sessionId.slice(0, 8)}¡­ ¡¤ ${session.status}`}
+              description={`Session ${session.sessionId.slice(0, 8)}ï¿½ï¿½ ï¿½ï¿½ ${session.status}`}
               title="Execution State"
               tone="soft"
             />
@@ -173,7 +165,7 @@ export function WorkflowPage() {
 
         <Inspector description="Shows the selected workflow, required inputs, and the latest execution state." title="Workflow Context">
           <Card description={selectedWorkflow?.title ?? "No workflow selected"} title="Selected Workflow" />
-          <Card description={selectedWorkflow?.inputs.map((input) => input.label).join(" ¡¤ ") || "No inputs"} title="Required Inputs" />
+          <Card description={selectedWorkflow?.inputs.map((input) => input.label).join(" ï¿½ï¿½ ") || "No inputs"} title="Required Inputs" />
           <Card description={session ? `${Object.keys(session.inputs).length} input values captured` : "No session started yet"} title="Execution" />
         </Inspector>
       </div>

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import {
   getMemoryNodeDetail,
   listMemoryByWorkflow,
@@ -56,13 +55,6 @@ export function MemoryPage() {
 
   return (
     <div className="page-layout">
-      <SectionHeader
-        meta="Workflow-linked scopes and real node metadata"
-        status="Memory"
-        tag="Memory"
-        title="Workflow Memory"
-      />
-
       <div className="page-layout__body">
         <div className="page-layout__main">
           <Card
@@ -99,7 +91,7 @@ export function MemoryPage() {
                     type="button"
                   >
                     <Card
-                      description={[node.kind, node.workflowId, node.sessionId, node.agentId].filter(Boolean).join(" ¡¤ ")}
+                      description={[node.kind, node.workflowId, node.sessionId, node.agentId].filter(Boolean).join(" ï¿½ï¿½ ")}
                       title={node.title}
                       tone={node.id === selectedNodeId ? "accent" : "soft"}
                     />

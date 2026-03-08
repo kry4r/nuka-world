@@ -22,7 +22,7 @@ function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
 
   switch (route.kind) {
     case "existing_workflow":
-      return `Existing workflow ¡¤ ${route.workflowId}`;
+      return `Existing workflow ï¿½ï¿½ ${route.workflowId}`;
     case "new_workflow":
       return "New workflow";
     case "direct_reply":
@@ -36,7 +36,7 @@ function formatSession(sessionId: string | undefined) {
     return "Pending";
   }
 
-  return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? "¡­" : ""}`;
+  return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? "ï¿½ï¿½" : ""}`;
 }
 
 function formatProvider(provider: ChatProviderInfo | null) {
@@ -44,7 +44,7 @@ function formatProvider(provider: ChatProviderInfo | null) {
     return "No provider selected";
   }
 
-  return `${provider.name} ¡¤ ${provider.model}`;
+  return `${provider.name} ï¿½ï¿½ ${provider.model}`;
 }
 
 function bubbleLabel(role: ChatMessage["role"]) {
@@ -81,7 +81,7 @@ export function ChatPage() {
         <Card description={formatRoute(session.route)} title="Route" />
         <Card description={formatProvider(session.provider)} title="Provider" />
         <Card
-          description={`${messages.length} message${messages.length === 1 ? "" : "s"} ¡¤ ${session.context.attachedAgents.length} agents ¡¤ ${session.context.attachedKnowledgeLibraries.length} libraries`}
+          description={`${messages.length} message${messages.length === 1 ? "" : "s"} ï¿½ï¿½ ${session.context.attachedAgents.length} agents ï¿½ï¿½ ${session.context.attachedKnowledgeLibraries.length} libraries`}
           title="History"
         />
       </Inspector>
@@ -122,18 +122,6 @@ export function ChatPage() {
               </div>
             ) : (
               <section className="chat-surface" aria-label="World conversation surface">
-                <header className="chat-surface__header">
-                  <div className="chat-surface__identity">
-                    <span className="chat-surface__eyebrow">World Chat</span>
-                    <span className="chat-surface__meta">
-                      Session {formatSession(session?.session.id)} ¡¤ {formatRoute(session?.route)}
-                    </span>
-                  </div>
-                  <span aria-label="World chat session status" className="chat-surface__status">
-                    Session live
-                  </span>
-                </header>
-
                 <div className="chat-feed" role="log">
                   <div className="chat-feed__stack">
                     {messages.map((message) => (

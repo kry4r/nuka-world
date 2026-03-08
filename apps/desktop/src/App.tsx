@@ -9,14 +9,18 @@ import { WorkflowPage } from "./features/workflow/WorkflowPage";
 
 type AppPage = "chat" | "workflow" | "agents" | "memory" | "knowledge" | "settings";
 
-const NAVIGATION: Array<{ id: AppPage; label: string }> = [
+const NAVIGATION: Array<{ id: Exclude<AppPage, "settings">; label: string }> = [
   { id: "chat", label: "Chat" },
   { id: "workflow", label: "Workflow" },
   { id: "agents", label: "Agents" },
   { id: "memory", label: "Memory" },
   { id: "knowledge", label: "Knowledge" },
-  { id: "settings", label: "Settings" },
 ];
+
+const SETTINGS_ITEM: { id: Extract<AppPage, "settings">; label: string } = {
+  id: "settings",
+  label: "Settings",
+};
 
 export default function App() {
   const [activePage, setActivePage] = useState<AppPage>("chat");
@@ -41,7 +45,12 @@ export default function App() {
   }, [activePage]);
 
   return (
-    <AppShell activePage={activePage} navigation={NAVIGATION} onNavigate={(id) => setActivePage(id as AppPage)}>
+    <AppShell
+      activePage={activePage}
+      footerItem={SETTINGS_ITEM}
+      navigation={NAVIGATION}
+      onNavigate={(id) => setActivePage(id as AppPage)}
+    >
       {page}
     </AppShell>
   );

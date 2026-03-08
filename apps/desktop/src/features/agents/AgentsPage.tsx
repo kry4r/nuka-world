@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import {
   defaultAgentToolBindings,
   deleteAgent,
@@ -91,13 +90,6 @@ export function AgentsPage() {
 
   return (
     <div className="page-layout">
-      <SectionHeader
-        meta="Quick-create, presets, and tool access"
-        status="Create Flow"
-        tag="Agents"
-        title="Agents"
-      />
-
       <div className="page-layout__body">
         <div className="page-layout__main">
           <Card

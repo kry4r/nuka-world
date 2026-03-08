@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import {
   addFolderConnector,
   listIndexJobs,
@@ -106,13 +105,6 @@ export function KnowledgePage() {
 
   return (
     <div className="page-layout">
-      <SectionHeader
-        meta="Folder connectors, index jobs, and local retrieval"
-        status="Connectors"
-        tag="Knowledge"
-        title="Knowledge Libraries"
-      />
-
       <div className="page-layout__body">
         <div className="page-layout__main">
           <Card
@@ -146,7 +138,7 @@ export function KnowledgePage() {
                     onClick={() => setSelectedLibraryId(library.id)}
                     type="button"
                   >
-                    <Card description={library.connectors.map((connector) => connector.path).join(" ¡¤ ")} title={library.name} tone={library.id === selectedLibraryId ? "accent" : "soft"} />
+                    <Card description={library.connectors.map((connector) => connector.path).join(" ï¿½ï¿½ ")} title={library.name} tone={library.id === selectedLibraryId ? "accent" : "soft"} />
                   </button>
                 ))}
               </div>
@@ -198,7 +190,7 @@ export function KnowledgePage() {
           {selectedLibrary ? (
             <>
               <Card description={selectedLibrary.name} title="Selected Library" tone="accent" />
-              <Card description={selectedLibrary.connectors.map((connector) => connector.path).join(" ¡¤ ")} title="Connector Paths" tone="soft" />
+              <Card description={selectedLibrary.connectors.map((connector) => connector.path).join(" ï¿½ï¿½ ")} title="Connector Paths" tone="soft" />
               <Card description={selectedLibrary.supportedExtensions.join(", ")} title="Supported Extensions" tone="soft" />
               <Card description={selectedLibrary.engine} title="Engine" tone="soft" />
             </>

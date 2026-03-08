@@ -9,14 +9,15 @@ type NavigationItem = {
 type AppShellProps = PropsWithChildren<{
   activePage: string;
   navigation: NavigationItem[];
+  footerItem?: NavigationItem;
   onNavigate: (id: string) => void;
 }>;
 
-export function AppShell({ activePage, children, navigation, onNavigate }: AppShellProps) {
+export function AppShell({ activePage, children, footerItem, navigation, onNavigate }: AppShellProps) {
   return (
     <div className="app-shell">
       <div className="app-shell__body">
-        <Sidebar activePage={activePage} navigation={navigation} onNavigate={onNavigate} />
+        <Sidebar activePage={activePage} footerItem={footerItem} navigation={navigation} onNavigate={onNavigate} />
 
         <div className="app-shell__content">
           <div className="app-shell__page" data-active-page={activePage} key={activePage}>

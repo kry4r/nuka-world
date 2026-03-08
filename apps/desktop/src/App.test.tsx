@@ -62,19 +62,22 @@ afterEach(async () => {
 });
 
 describe("App shell", () => {
-  it("renders sidebar navigation without the old collapse affordance", async () => {
+  it("keeps settings pinned in the sidebar footer and uses a compact centered brand icon", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
     expect(view.container.querySelector(".app-sidebar__toggle")).toBeNull();
-    expect(findText(view.container, "Settings")).toBeTruthy();
+    expect(view.container.querySelector('.app-sidebar__footer button[aria-label="Settings"]')).toBeTruthy();
+    expect(view.container.querySelector('.app-sidebar__nav button[aria-label="Settings"]')).toBeNull();
+    expect(view.container.querySelector('.app-sidebar__logo[data-brand-kind="mark"]')).toBeTruthy();
+    expect(view.container.querySelector('.app-sidebar .nuka-lockup')).toBeNull();
   });
 
-  it("switches pages through a visible active-page transition container", async () => {
+  it("switches pages through a visible active-page transition container without the old page header", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const settingsButton = view.container.querySelector('button[aria-label="Settings"]');
+    const settingsButton = view.container.querySelector('.app-sidebar__footer button[aria-label="Settings"]');
 
     await act(async () => {
       settingsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -84,6 +87,7 @@ describe("App shell", () => {
 
     expect(findText(view.container, "Application Settings")).toBeTruthy();
     expect(view.container.querySelector('.app-shell__page[data-active-page="settings"]')).toBeTruthy();
+    expect(view.container.querySelector('.section-header')).toBeNull();
   });
 
   it("removes obsolete chrome labels and duplicate shell copy", async () => {
@@ -91,7 +95,8 @@ describe("App shell", () => {
     cleanups.push(view.cleanup);
 
     expect(findText(view.container, "Nuka World Desktop")).toBeFalsy();
-    expect(findText(view.container, "Providers ¡¤ App ¡¤ Runtime")).toBeFalsy();
+    expect(findText(view.container, "Providers ï¿½ï¿½ App ï¿½ï¿½ Runtime")).toBeFalsy();
+    expect(findText(view.container, "Providers, appearance, and runtime")).toBeFalsy();
   });
 });
 

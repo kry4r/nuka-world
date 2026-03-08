@@ -1,4 +1,4 @@
-import { NukaLockup } from "@/components/brand/NukaLockup";
+import { NukaLogo } from "@/components/brand/NukaLogo";
 
 type SidebarItem = {
   id: string;
@@ -8,14 +8,15 @@ type SidebarItem = {
 type SidebarProps = {
   activePage: string;
   navigation: SidebarItem[];
+  footerItem?: SidebarItem;
   onNavigate: (id: string) => void;
 };
 
-export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
+export function Sidebar({ activePage, footerItem, navigation, onNavigate }: SidebarProps) {
   return (
     <aside className="app-sidebar">
-      <button className="app-sidebar__brand" onClick={() => onNavigate("chat")} type="button">
-        <NukaLockup className="app-sidebar__lockup" width={104} />
+      <button aria-label="Open Chat" className="app-sidebar__brand" onClick={() => onNavigate("chat")} type="button">
+        <NukaLogo className="app-sidebar__logo" size={24} />
       </button>
 
       <nav className="app-sidebar__nav">
@@ -37,6 +38,21 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
           );
         })}
       </nav>
+
+      {footerItem ? (
+        <div className="app-sidebar__footer">
+          <button
+            aria-label={footerItem.label}
+            className={`app-sidebar__nav-item app-sidebar__nav-item--footer${activePage === footerItem.id ? " is-active" : ""}`}
+            onClick={() => onNavigate(footerItem.id)}
+            title={footerItem.label}
+            type="button"
+          >
+            <span className="app-sidebar__nav-rail" />
+            <span className="app-sidebar__nav-label">{footerItem.label}</span>
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }

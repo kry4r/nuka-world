@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 
 type ProviderRegistryResponse = {
   count: number;
@@ -781,8 +780,6 @@ export function SettingsPage() {
 
   return (
     <div className="page-layout settings-page">
-      <SectionHeader meta="Providers, appearance, and runtime" status="Settings" tag="Settings" title="Application Settings" />
-
       <div className="page-layout__body">
         <div className="page-layout__main settings-main">
           <Card

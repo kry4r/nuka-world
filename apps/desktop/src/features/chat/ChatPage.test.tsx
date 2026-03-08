@@ -103,8 +103,11 @@ describe("ChatPage", () => {
 
     expect(routeWorldPromptMock).toHaveBeenCalledWith("Summarize today's notes", undefined);
     expect(findText(view.container, "Context Inspector")).toBeTruthy();
-    expect(findText(view.container, "Local ¡¤ gpt-oss")).toBeTruthy();
+    expect(findText(view.container, "Local ï¿½ï¿½ gpt-oss")).toBeTruthy();
     expect(findText(view.container, "Summarize today's notes")).toBeTruthy();
+    expect(findText(view.container, "World Chat")).toBeFalsy();
+    expect(findText(view.container, "Session live")).toBeFalsy();
+    expect(view.container.querySelector(".chat-surface__header")).toBeNull();
     expect(
       view.container.querySelector('[aria-label="World chat landing hero"]'),
     ).toBeFalsy();

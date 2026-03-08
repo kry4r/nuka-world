@@ -25,6 +25,17 @@ button {
   cursor: pointer;
 }
 
+.nuka-lockup {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.nuka-lockup img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -84,12 +95,12 @@ button {
 }
 
 .app-sidebar {
-  width: 252px;
-  min-width: 252px;
+  width: 248px;
+  min-width: 248px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
+  gap: 16px;
+  padding: 20px 16px 16px;
   border-radius: var(--radius-panel);
   background: var(--color-panel-soft);
   box-shadow: var(--shadow-panel);
@@ -107,7 +118,6 @@ button {
 }
 
 .app-sidebar__brand,
-.app-sidebar__toggle,
 .app-sidebar__nav-item,
 .app-sidebar__settings {
   border: 0;
@@ -117,28 +127,23 @@ button {
 .app-sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex: 1;
-  color: var(--color-text);
-  font-weight: 600;
-  text-align: left;
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  color: var(--color-brand);
 }
 
 .app-sidebar__logo {
+  display: block;
+  margin: 0 auto;
   color: var(--color-brand);
   flex: 0 0 auto;
 }
 
-.app-sidebar__toggle {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  background: #f4eee5;
-  color: var(--color-text-soft);
-}
-
 .app-sidebar__nav {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 8px;
 }
@@ -177,24 +182,17 @@ button {
 
 .app-sidebar__footer {
   margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(133, 122, 106, 0.14);
 }
 
-.app-sidebar__settings {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-height: 56px;
+.app-sidebar__nav-item--footer {
   background: #f5efe6;
+  box-shadow: inset 0 0 0 1px rgba(133, 122, 106, 0.08);
 }
 
-.app-sidebar__settings-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.app-sidebar__settings-meta {
-  font-size: 12px;
-  color: var(--color-text-soft);
+.app-sidebar__nav-item--footer:hover {
+  background: #f1eadf;
 }
 
 .section-header {
@@ -1307,14 +1305,14 @@ button {
 .app-sidebar {
   width: 248px;
   min-width: 248px;
-  gap: 18px;
-  padding: 18px 16px;
+  gap: 16px;
+  padding: 20px 16px 16px;
 }
 
 .app-sidebar__brand {
-  justify-content: flex-start;
-  min-height: 48px;
-  padding: 0 10px;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0;
 }
 
 .app-sidebar__nav {
@@ -1328,6 +1326,14 @@ button {
 .app-sidebar__nav-item:hover {
   background: #f8f3ea;
   transform: translateX(2px);
+}
+
+.app-sidebar__nav-item--footer {
+  transform: none;
+}
+
+.app-sidebar__nav-item--footer:hover {
+  transform: none;
 }
 
 .app-sidebar__nav-label {
