@@ -8,6 +8,7 @@ use nuka_integrations::providers::{
 pub struct ChatTurnRecord {
     pub session: nuka_domain::chat::ChatSessionSummary,
     pub user_message: nuka_domain::chat::ChatMessage,
+    pub provider: nuka_domain::provider::ProviderConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -100,7 +101,11 @@ impl ChatService {
 
         session.message_count += 1;
 
-        Ok(ChatTurnRecord { session, user_message })
+        Ok(ChatTurnRecord {
+            session,
+            user_message,
+            provider,
+        })
     }
 
     async fn ensure_seed_provider(&self) -> anyhow::Result<()> {

@@ -3,10 +3,39 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "./ChatPage";
 import { findText, renderIntoDocument } from "@/test/render";
 
-const routeWorldPromptMock = vi.fn(async () => ({
-  sessionId: "session-123",
-  route: { kind: "direct_reply" as const },
-}));
+const routeWorldPromptMock = vi.fn(async (prompt: string, sessionId?: string) => {
+  if (prompt === "Broken provider") {
+    throw new Error("default provider is not configured");
+  }
+
+  return {
+    session: {
+      id: sessionId ?? "session-123",
+      title: "Summarize today's notes",
+      providerId: "provider-local",
+      workflowId: null,
+      messageCount: sessionId ? 2 : 1,
+    },
+    route: { kind: "direct_reply" as const },
+    messages: [
+      {
+        id: sessionId ? "message-user-2" : "message-user-1",
+        role: "user" as const,
+        content: prompt,
+      },
+    ],
+    provider: {
+      id: "provider-local",
+      name: "Local",
+      model: "gpt-oss",
+      baseUrl: "http://localhost:11434/v1",
+    },
+    context: {
+      attachedAgents: [],
+      attachedKnowledgeLibraries: [],
+    },
+  };
+});
 
 vi.mock("@/lib/chat", () => ({
   routeWorldPrompt: (...args: Parameters<typeof routeWorldPromptMock>) => routeWorldPromptMock(...args),
@@ -26,11 +55,10 @@ afterEach(async () => {
 });
 
 describe("ChatPage", () => {
-  it("renders the refined landing composer before conversation starts", async () => {
+  it("renders the centered landing composer before conversation starts", async () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
 
-    expect(findText(view.container, "Nuka World")).toBeTruthy();
     expect(
       view.container
         .querySelector("textarea")
@@ -39,13 +67,12 @@ describe("ChatPage", () => {
     expect(
       view.container.querySelector('[aria-label="World chat landing hero"]'),
     ).toBeTruthy();
-    expect(
-      view.container.querySelector('[aria-label="World chat composer"]'),
-    ).toBeTruthy();
+    expect(findText(view.container, "Nuka World")).toBeFalsy();
+    expect(findText(view.container, "Talk to World and start a new session.")).toBeFalsy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
   });
 
-  it("switches into the active chat layout after the first message", async () => {
+  it("switches into the active chat layout after a backend-backed send", async () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
 
@@ -63,7 +90,7 @@ describe("ChatPage", () => {
         window.HTMLTextAreaElement.prototype,
         "value",
       )?.set;
-      valueSetter?.call(textarea, "Plan my next workflow");
+      valueSetter?.call(textarea, "Summarize today's notes");
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
       await Promise.resolve();
     });
@@ -74,16 +101,47 @@ describe("ChatPage", () => {
       await Promise.resolve();
     });
 
-    expect(routeWorldPromptMock).toHaveBeenCalledWith("Plan my next workflow", undefined);
+    expect(routeWorldPromptMock).toHaveBeenCalledWith("Summarize today's notes", undefined);
     expect(findText(view.container, "Context Inspector")).toBeTruthy();
-    expect(
-      view.container.querySelector('[aria-label="Conversation quick actions"]'),
-    ).toBeTruthy();
-    expect(
-      view.container.querySelector('[aria-label="World chat session status"]')?.textContent?.trim(),
-    ).toBe("Session live");
+    expect(findText(view.container, "Local ¡¤ gpt-oss")).toBeTruthy();
+    expect(findText(view.container, "Summarize today's notes")).toBeTruthy();
     expect(
       view.container.querySelector('[aria-label="World chat landing hero"]'),
     ).toBeFalsy();
+  });
+
+  it("renders a truthful backend error state instead of fake fallback text", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    const textarea = view.container.querySelector("textarea") as HTMLTextAreaElement | null;
+    const sendButton = Array.from(view.container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Send",
+    );
+
+    await act(async () => {
+      if (!textarea) {
+        throw new Error("textarea missing");
+      }
+
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      valueSetter?.call(textarea, "Broken provider");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(routeWorldPromptMock).toHaveBeenCalledWith("Broken provider", undefined);
+    expect(findText(view.container, "Backend Error")).toBeTruthy();
+    expect(findText(view.container, "default provider is not configured")).toBeTruthy();
+    expect(findText(view.container, "I have staged your request: Broken provider")).toBeFalsy();
   });
 });

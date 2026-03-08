@@ -14,6 +14,7 @@ pub enum WorldRoute {
 pub struct WorldTurn {
     pub session: crate::session::WorldSession,
     pub route: WorldRoute,
+    pub chat_turn: Option<crate::chat_service::ChatTurnRecord>,
 }
 
 #[derive(Debug, Clone)]
@@ -24,14 +25,18 @@ pub struct WorldRuntime {
 
 impl Default for WorldRuntime {
     fn default() -> Self {
-        Self {
-            chat_service: crate::chat_service::ChatService::new_for_test_with_default_provider(),
-            sessions: Arc::new(Mutex::new(HashMap::new())),
-        }
+        Self::new(crate::chat_service::ChatService::new_for_test_with_default_provider())
     }
 }
 
 impl WorldRuntime {
+    pub fn new(chat_service: crate::chat_service::ChatService) -> Self {
+        Self {
+            chat_service,
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
     pub fn new_for_test() -> Self {
         Self::default()
     }
@@ -46,14 +51,15 @@ impl WorldRuntime {
 
     pub async fn start_session(&self, prompt: &str) -> anyhow::Result<WorldTurn> {
         let route = self.route_prompt(prompt).await?;
-        let session = match route {
-            WorldRoute::DirectReply => {
-                let turn = self.chat_service.send_message(prompt, None).await?;
-                crate::session::WorldSession {
-                    id: turn.session.id,
-                }
-            }
-            _ => crate::session::WorldSession::new(),
+        let chat_turn = match route {
+            WorldRoute::DirectReply => Some(self.chat_service.send_message(prompt, None).await?),
+            _ => None,
+        };
+        let session = match &chat_turn {
+            Some(chat_turn) => crate::session::WorldSession {
+                id: chat_turn.session.id.clone(),
+            },
+            None => crate::session::WorldSession::new(),
         };
 
         self.sessions
@@ -61,7 +67,11 @@ impl WorldRuntime {
             .expect("world sessions lock poisoned")
             .insert(session.id.clone(), session.clone());
 
-        Ok(WorldTurn { session, route })
+        Ok(WorldTurn {
+            session,
+            route,
+            chat_turn,
+        })
     }
 
     pub async fn continue_session(
@@ -78,11 +88,17 @@ impl WorldRuntime {
             .ok_or_else(|| anyhow::anyhow!("unknown world session: {session_id}"))?;
 
         let route = self.route_prompt(prompt).await?;
-        if matches!(route, WorldRoute::DirectReply) {
-            self.chat_service.send_message(prompt, Some(&session.id)).await?;
-        }
+        let chat_turn = if matches!(route, WorldRoute::DirectReply) {
+            Some(self.chat_service.send_message(prompt, Some(&session.id)).await?)
+        } else {
+            None
+        };
 
-        Ok(WorldTurn { session, route })
+        Ok(WorldTurn {
+            session,
+            route,
+            chat_turn,
+        })
     }
 }
 

@@ -1,36 +1,19 @@
-ï»¿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { NukaLockup } from "@/components/brand/NukaLockup";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
-import { routeWorldPrompt, type ChatRouteResponse } from "@/lib/chat";
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "world";
-  content: string;
-};
+import {
+  routeWorldPrompt,
+  type ChatMessage,
+  type ChatProviderInfo,
+  type ChatRouteResponse,
+} from "@/lib/chat";
 
 const QUICK_CHOICES = [
   "Summarize today's notes",
   "Plan my next workflow",
   "Review recent changes",
 ];
-
-function buildWorldReply(response: ChatRouteResponse | null, prompt: string) {
-  if (!response) {
-    return `I have staged your request: ${prompt}`;
-  }
-
-  switch (response.route.kind) {
-    case "existing_workflow":
-      return `I routed this into workflow ${response.route.workflowId} and kept the session resumable.`;
-    case "new_workflow":
-      return "I started a new workflow session for this task and prepared the next collaboration steps.";
-    case "direct_reply":
-    default:
-      return "I can answer directly, or turn this into a workflow when you want broader collaboration.";
-  }
-}
 
 function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
   if (!route) {
@@ -39,7 +22,7 @@ function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
 
   switch (route.kind) {
     case "existing_workflow":
-      return `Existing workflow Â· ${route.workflowId}`;
+      return `Existing workflow ¡¤ ${route.workflowId}`;
     case "new_workflow":
       return "New workflow";
     case "direct_reply":
@@ -53,31 +36,57 @@ function formatSession(sessionId: string | undefined) {
     return "Pending";
   }
 
-  return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? "â€¦" : ""}`;
+  return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? "¡­" : ""}`;
+}
+
+function formatProvider(provider: ChatProviderInfo | null) {
+  if (!provider) {
+    return "No provider selected";
+  }
+
+  return `${provider.name} ¡¤ ${provider.model}`;
+}
+
+function bubbleLabel(role: ChatMessage["role"]) {
+  switch (role) {
+    case "assistant":
+      return "Assistant";
+    case "system":
+      return "System";
+    case "tool":
+      return "Tool";
+    case "user":
+    default:
+      return "You";
+  }
 }
 
 export function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [session, setSession] = useState<ChatRouteResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
 
   const landing = messages.length === 0;
 
   const inspector = useMemo(() => {
-    if (landing) {
+    if (!session) {
       return null;
     }
 
     return (
-      <Inspector description="Session route, live bindings, and context readiness for the current World conversation." title="Context Inspector">
-        <Card description={`Session ${formatSession(session?.sessionId)}`} title="Session" tone="accent" />
-        <Card description={formatRoute(session?.route)} title="Route" />
-        <Card description="Session memory Â· knowledge read Â· workflow ready" title="Bindings" />
-        <Card description="World can answer directly or promote the thread into a reusable workflow." title="Next Move" />
+      <Inspector description="Real session metadata, configured provider, and attached context for the current World conversation." title="Context Inspector">
+        <Card description={`Session ${formatSession(session.session.id)}`} title="Session" tone="accent" />
+        <Card description={formatRoute(session.route)} title="Route" />
+        <Card description={formatProvider(session.provider)} title="Provider" />
+        <Card
+          description={`${messages.length} message${messages.length === 1 ? "" : "s"} ¡¤ ${session.context.attachedAgents.length} agents ¡¤ ${session.context.attachedKnowledgeLibraries.length} libraries`}
+          title="History"
+        />
       </Inspector>
     );
-  }, [landing, session]);
+  }, [messages.length, session]);
 
   const handleSend = async (nextPrompt?: string) => {
     const value = (nextPrompt ?? prompt).trim();
@@ -86,36 +95,17 @@ export function ChatPage() {
       return;
     }
 
-    const userMessage: ChatMessage = {
-      id: `${Date.now()}-user`,
-      role: "user",
-      content: value,
-    };
-
-    setMessages((current) => [...current, userMessage]);
+    setError(null);
     setPrompt("");
     setIsRouting(true);
 
     try {
-      const response = await routeWorldPrompt(value, session?.sessionId);
+      const response = await routeWorldPrompt(value, session?.session.id);
       setSession(response);
-      setMessages((current) => [
-        ...current,
-        {
-          id: `${Date.now()}-world`,
-          role: "world",
-          content: buildWorldReply(response, value),
-        },
-      ]);
-    } catch {
-      setMessages((current) => [
-        ...current,
-        {
-          id: `${Date.now()}-world-fallback`,
-          role: "world",
-          content: buildWorldReply(null, value),
-        },
-      ]);
+      setMessages((current) => [...current, ...response.messages]);
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(message);
     } finally {
       setIsRouting(false);
     }
@@ -129,11 +119,6 @@ export function ChatPage() {
             {landing ? (
               <div aria-label="World chat landing hero" className="chat-hero">
                 <NukaLockup className="chat-hero__lockup" width={220} />
-                <div className="chat-hero__copy">
-                  <span className="chat-hero__eyebrow">World Chat</span>
-                  <h1>Nuka World</h1>
-                  <p>Talk to World and start a new session.</p>
-                </div>
               </div>
             ) : (
               <section className="chat-surface" aria-label="World conversation surface">
@@ -141,7 +126,7 @@ export function ChatPage() {
                   <div className="chat-surface__identity">
                     <span className="chat-surface__eyebrow">World Chat</span>
                     <span className="chat-surface__meta">
-                      Session {formatSession(session?.sessionId)} Â· {formatRoute(session?.route)} Â· Tools ready
+                      Session {formatSession(session?.session.id)} ¡¤ {formatRoute(session?.route)}
                     </span>
                   </div>
                   <span aria-label="World chat session status" className="chat-surface__status">
@@ -153,9 +138,7 @@ export function ChatPage() {
                   <div className="chat-feed__stack">
                     {messages.map((message) => (
                       <article className={`chat-bubble chat-bubble--${message.role}`} key={message.id}>
-                        <span className="chat-bubble__label">
-                          {message.role === "world" ? "World" : "You"}
-                        </span>
+                        <span className="chat-bubble__label">{bubbleLabel(message.role)}</span>
                         <p className="chat-bubble__content">{message.content}</p>
                       </article>
                     ))}
@@ -163,6 +146,8 @@ export function ChatPage() {
                 </div>
               </section>
             )}
+
+            {error ? <Card description={error} title="Backend Error" tone="soft" /> : null}
 
             <div aria-label="World chat composer" className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}>
               {landing ? null : (
@@ -195,11 +180,6 @@ export function ChatPage() {
                     rows={1}
                     value={prompt}
                   />
-                  <div className="composer__hint">
-                    {landing
-                      ? "World can answer directly or turn this into a reusable workflow."
-                      : "Quick actions stay attached to the composer, not the transcript."}
-                  </div>
                 </div>
                 <button
                   aria-label={landing ? "Send to World" : "Send"}
@@ -220,4 +200,3 @@ export function ChatPage() {
     </div>
   );
 }
-

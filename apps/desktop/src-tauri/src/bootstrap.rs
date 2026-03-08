@@ -42,6 +42,7 @@ async fn build_app_state_from_pool(
         pool.clone(),
         Arc::new(nuka_knowledge::pageindex::PageIndexEngine::default()),
     );
+    let chat_service = nuka_runtime::chat_service::ChatService::new(pool.clone());
     let memory_service = nuka_runtime::memory_service::MemoryService::new(pool);
     let settings = settings_service.load().await?;
 
@@ -52,7 +53,7 @@ async fn build_app_state_from_pool(
         agents_service,
         knowledge_service,
         memory_service,
-        nuka_runtime::world::WorldRuntime::default(),
+        nuka_runtime::world::WorldRuntime::new(chat_service),
         nuka_runtime::workflow_world::WorkflowWorldRuntime::default(),
     ))
 }
