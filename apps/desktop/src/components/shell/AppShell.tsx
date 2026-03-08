@@ -10,42 +10,19 @@ type AppShellProps = PropsWithChildren<{
   activePage: string;
   navigation: NavigationItem[];
   onNavigate: (id: string) => void;
-  onToggleSidebar: () => void;
-  settingsItem: NavigationItem;
-  sidebarCollapsed: boolean;
 }>;
 
-export function AppShell({
-  activePage,
-  children,
-  navigation,
-  onNavigate,
-  onToggleSidebar,
-  settingsItem,
-  sidebarCollapsed,
-}: AppShellProps) {
+export function AppShell({ activePage, children, navigation, onNavigate }: AppShellProps) {
   return (
     <div className="app-shell">
-      <div className="app-shell__chrome">
-        <div className="window-controls" aria-hidden="true">
-          <span className="window-controls__dot" />
-          <span className="window-controls__dot" />
-          <span className="window-controls__dot" />
-        </div>
-        <span className="app-shell__chrome-label">Nuka World Desktop</span>
-      </div>
-
       <div className="app-shell__body">
-        <Sidebar
-          activePage={activePage}
-          collapsed={sidebarCollapsed}
-          navigation={navigation}
-          onNavigate={onNavigate}
-          onToggle={onToggleSidebar}
-          settingsItem={settingsItem}
-        />
+        <Sidebar activePage={activePage} navigation={navigation} onNavigate={onNavigate} />
 
-        <div className="app-shell__content">{children}</div>
+        <div className="app-shell__content">
+          <div className="app-shell__page" data-active-page={activePage} key={activePage}>
+            {children}
+          </div>
+        </div>
       </div>
     </div>
   );

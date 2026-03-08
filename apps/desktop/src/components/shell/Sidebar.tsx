@@ -1,5 +1,4 @@
-﻿import { NukaLockup } from "@/components/brand/NukaLockup";
-import { NukaLogo } from "@/components/brand/NukaLogo";
+import { NukaLockup } from "@/components/brand/NukaLockup";
 
 type SidebarItem = {
   id: string;
@@ -8,35 +7,16 @@ type SidebarItem = {
 
 type SidebarProps = {
   activePage: string;
-  collapsed: boolean;
   navigation: SidebarItem[];
   onNavigate: (id: string) => void;
-  onToggle: () => void;
-  settingsItem: SidebarItem;
 };
 
-function itemLabel(item: SidebarItem, collapsed: boolean) {
-  return collapsed ? item.label.slice(0, 1) : item.label;
-}
-
-export function Sidebar({
-  activePage,
-  collapsed,
-  navigation,
-  onNavigate,
-  onToggle,
-  settingsItem,
-}: SidebarProps) {
+export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
   return (
-    <aside className={`app-sidebar${collapsed ? " is-collapsed" : ""}`}>
-      <div className="app-sidebar__top">
-        <button className="app-sidebar__brand" onClick={() => onNavigate("chat")} type="button">
-          {collapsed ? <NukaLogo className="app-sidebar__logo" size={22} /> : <NukaLockup className="app-sidebar__lockup" width={92} />}
-        </button>
-        <button className="app-sidebar__toggle" onClick={onToggle} type="button">
-          {collapsed ? "→" : "←"}
-        </button>
-      </div>
+    <aside className="app-sidebar">
+      <button className="app-sidebar__brand" onClick={() => onNavigate("chat")} type="button">
+        <NukaLockup className="app-sidebar__lockup" width={104} />
+      </button>
 
       <nav className="app-sidebar__nav">
         {navigation.map((item) => {
@@ -52,24 +32,11 @@ export function Sidebar({
               type="button"
             >
               <span className="app-sidebar__nav-rail" />
-              <span>{itemLabel(item, collapsed)}</span>
+              <span className="app-sidebar__nav-label">{item.label}</span>
             </button>
           );
         })}
       </nav>
-
-      <div className="app-sidebar__footer">
-        <button
-          aria-label={settingsItem.label}
-          className={`app-sidebar__settings${activePage === settingsItem.id ? " is-active" : ""}`}
-          onClick={() => onNavigate(settingsItem.id)}
-          title={settingsItem.label}
-          type="button"
-        >
-          <span className="app-sidebar__settings-title">{itemLabel(settingsItem, collapsed)}</span>
-          {collapsed ? null : <span className="app-sidebar__settings-meta">Providers · App · Runtime</span>}
-        </button>
-      </div>
     </aside>
   );
 }

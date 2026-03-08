@@ -9,19 +9,17 @@ import { WorkflowPage } from "./features/workflow/WorkflowPage";
 
 type AppPage = "chat" | "workflow" | "agents" | "memory" | "knowledge" | "settings";
 
-const PRIMARY_NAVIGATION: Array<{ id: AppPage; label: string }> = [
+const NAVIGATION: Array<{ id: AppPage; label: string }> = [
   { id: "chat", label: "Chat" },
   { id: "workflow", label: "Workflow" },
   { id: "agents", label: "Agents" },
   { id: "memory", label: "Memory" },
   { id: "knowledge", label: "Knowledge" },
+  { id: "settings", label: "Settings" },
 ];
-
-const SETTINGS_ITEM = { id: "settings" as const, label: "Settings" };
 
 export default function App() {
   const [activePage, setActivePage] = useState<AppPage>("chat");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const page = useMemo(() => {
     switch (activePage) {
@@ -43,14 +41,7 @@ export default function App() {
   }, [activePage]);
 
   return (
-    <AppShell
-      activePage={activePage}
-      navigation={PRIMARY_NAVIGATION}
-      onNavigate={(id) => setActivePage(id as AppPage)}
-      onToggleSidebar={() => setSidebarCollapsed((current) => !current)}
-      settingsItem={SETTINGS_ITEM}
-      sidebarCollapsed={sidebarCollapsed}
-    >
+    <AppShell activePage={activePage} navigation={NAVIGATION} onNavigate={(id) => setActivePage(id as AppPage)}>
       {page}
     </AppShell>
   );
