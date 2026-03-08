@@ -1,110 +1,129 @@
-import { invoke } from "@tauri-apps/api/core";
-import { type CSSProperties, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-
-type MemoryPromotionResponse = {
-  canPromote: boolean;
-};
-
-type MemoryNodeProps = {
-  className?: string;
-  description?: string;
-  meta?: string;
-  style: CSSProperties;
-  title: string;
-};
-
-function MemoryNode({ className, description, meta, style, title }: MemoryNodeProps) {
-  return (
-    <article className={["memory-node", className].filter(Boolean).join(" ")} style={style}>
-      <span className="memory-node__title">{title}</span>
-      {meta ? <span className="memory-node__meta">{meta}</span> : null}
-      {description ? <span className="memory-node__text">{description}</span> : null}
-    </article>
-  );
-}
+import {
+  getMemoryNodeDetail,
+  listMemoryByWorkflow,
+  listMemoryScopes,
+  type MemoryNodeDetail,
+  type MemoryScopeRecord,
+} from "@/lib/memory";
 
 export function MemoryPage() {
-  const [canPromote, setCanPromote] = useState(false);
+  const [workflowFilter, setWorkflowFilter] = useState("");
+  const [nodes, setNodes] = useState<MemoryScopeRecord[]>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<MemoryNodeDetail | null>(null);
+
+  const loadNodes = async (workflowId?: string) => {
+    const nextWorkflowId = workflowId?.trim() ?? "";
+    const nextNodes = nextWorkflowId
+      ? await listMemoryByWorkflow(nextWorkflowId)
+      : await listMemoryScopes();
+
+    setNodes(nextNodes);
+    setSelectedNodeId(nextNodes[0]?.id ?? null);
+  };
 
   useEffect(() => {
-    let alive = true;
+    void loadNodes();
+  }, []);
 
-    void invoke<MemoryPromotionResponse>("memory_promotion_policy", { savedWorkflow: true })
-      .then((response) => {
+  useEffect(() => {
+    if (!selectedNodeId) {
+      setSelectedDetail(null);
+      return;
+    }
+
+    let alive = true;
+    void getMemoryNodeDetail(selectedNodeId)
+      .then((detail) => {
         if (alive) {
-          setCanPromote(response.canPromote);
+          setSelectedDetail(detail);
         }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (alive) {
+          setSelectedDetail(null);
+        }
+      });
 
     return () => {
       alive = false;
     };
-  }, []);
+  }, [selectedNodeId]);
 
   return (
     <div className="page-layout">
       <SectionHeader
-        meta="Layered graph view"
-        status="Graph View"
+        meta="Workflow-linked scopes and real node metadata"
+        status="Memory"
         tag="Memory"
-        title="Schema Memory Graph"
+        title="Workflow Memory"
       />
 
       <div className="page-layout__body">
         <div className="page-layout__main">
           <Card
-            description="Inspect how memory nodes connect across layers and subjects."
-            title="Schema Memory Graph"
+            description="Browse saved memory scopes by workflow and inspect their real workflow, session, and agent links."
+            title="Workflow-linked Memory"
             tone="accent"
           />
 
-          <div className="memory-graph">
-            <span className="memory-graph__hint memory-graph__hint--top">
-              Layers 路 Global User 路 Main World 路 Workflow 路 Session 路 Agent
-            </span>
-            <span className="memory-graph__hint memory-graph__hint--second">
-              Subjects 路 World 路 Workflow 路 Researcher 路 Reviewer
-            </span>
+          <Card title="Browse Memory">
+            <div className="split-row">
+              <input
+                aria-label="Workflow filter"
+                className="field-input"
+                onChange={(event) => setWorkflowFilter(event.target.value)}
+                placeholder="Filter by workflow id"
+                value={workflowFilter}
+              />
+              <button className="composer__send" onClick={() => void loadNodes(workflowFilter)} type="button">
+                Load Workflow Memory
+              </button>
+            </div>
+          </Card>
 
-            <div className="memory-graph__edge" style={{ height: 2, left: 236, top: 92, width: 110 }} />
-            <div className="memory-graph__edge" style={{ height: 2, left: 236, top: 216, width: 124 }} />
-            <div className="memory-graph__edge" style={{ height: 78, left: 410, top: 250, width: 2 }} />
-            <div className="memory-graph__edge" style={{ height: 2, left: 534, top: 216, width: 126 }} />
-            <div className="memory-graph__edge" style={{ height: 2, left: 534, top: 92, width: 124 }} />
-            <div className="memory-graph__edge" style={{ height: 2, left: 534, top: 338, width: 124 }} />
-
-            <MemoryNode meta="Patterns and long-term prefs" style={{ left: 58, top: 58, width: 176 }} title="Global User" />
-            <MemoryNode meta="Shared world memory" style={{ left: 58, top: 182, width: 184 }} title="Main World" />
-            <MemoryNode meta="Reusable workflow facts" style={{ left: 244, top: 316, width: 184 }} title="Workflow Shared" />
-            <MemoryNode
-              className="memory-node--focus"
-              description="Active inside Session with links to user, workflow, and agents."
-              meta="Selected subject"
-              style={{ left: 350, top: 152, width: 192 }}
-              title="World"
-            />
-            <MemoryNode className="memory-node--session" meta="Current conversation state" style={{ left: 548, top: 182, width: 178 }} title="Session" />
-            <MemoryNode meta="Recall and notes" style={{ left: 668, top: 56, width: 170 }} title="Agent 路 Researcher" />
-            <MemoryNode meta="Checks and traces" style={{ left: 668, top: 316, width: 170 }} title="Agent 路 Reviewer" />
-          </div>
+          {nodes.length === 0 ? (
+            <Card description="Save a workflow, session, or agent-linked scope to inspect it here." title="No memory nodes yet." tone="soft" />
+          ) : (
+            <Card title="Memory Nodes">
+              <div className="workflow-grid">
+                {nodes.map((node) => (
+                  <button
+                    className="settings-panel__trigger"
+                    key={node.id}
+                    onClick={() => setSelectedNodeId(node.id)}
+                    type="button"
+                  >
+                    <Card
+                      description={[node.kind, node.workflowId, node.sessionId, node.agentId].filter(Boolean).join(" · ")}
+                      title={node.title}
+                      tone={node.id === selectedNodeId ? "accent" : "soft"}
+                    />
+                  </button>
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
 
-        <Inspector description="Switch layer first, then change subject focus." title="Node Details">
-          <Card description="World" title="Selected Subject" />
-          <Card description="Session" title="Active Layer" />
-          <Card description="User, Main World, Workflow, Researcher, Reviewer" title="Related Nodes" />
-          <Card
-            description={
-              canPromote
-                ? "Session facts can promote into workflow or world memory."
-                : "Promotion is disabled for this workflow."
-            }
-            title="Promotion Rule"
-          />
+        <Inspector description="Shows the selected memory node and its real workflow/session/agent metadata." title="Node Details">
+          {selectedDetail ? (
+            <>
+              <Card description={selectedDetail.title} title="Selected Node" tone="accent" />
+              <Card description={selectedDetail.kind} title="Node Kind" tone="soft" />
+              <Card description={selectedDetail.workflowId ?? "Not linked"} title="Workflow" tone="soft" />
+              <Card description={selectedDetail.sessionId ?? "Not linked"} title="Session" tone="soft" />
+              <Card description={selectedDetail.agentId ?? "Not linked"} title="Agent" tone="soft" />
+              <Card description={selectedDetail.relatedIds.join(", ") || "No related ids"} title="Related IDs" tone="soft" />
+              {selectedDetail.body ? <Card description={selectedDetail.body} title="Summary" tone="soft" /> : null}
+            </>
+          ) : (
+            <Card description="Select a memory node to inspect its workflow-linked metadata." title="Node Details" tone="soft" />
+          )}
         </Inspector>
       </div>
     </div>

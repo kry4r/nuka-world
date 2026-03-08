@@ -19,6 +19,21 @@ impl MemoryService {
             .await
     }
 
+    pub async fn list_scopes(&self) -> anyhow::Result<Vec<nuka_domain::memory::MemoryScope>> {
+        self.list_all().await
+    }
+
+    pub async fn get_scope(
+        &self,
+        scope_id: &str,
+    ) -> anyhow::Result<Option<nuka_domain::memory::MemoryScope>> {
+        Ok(self
+            .list_all()
+            .await?
+            .into_iter()
+            .find(|scope| scope.id == scope_id))
+    }
+
     pub async fn list_by_workflow(
         &self,
         workflow_id: &str,

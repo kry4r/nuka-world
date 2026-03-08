@@ -22,6 +22,9 @@ pub fn run() {
             commands::knowledge::list_knowledge_libraries,
             commands::knowledge::rebuild_knowledge_library,
             commands::knowledge::search_knowledge,
+            commands::memory::get_memory_node_detail,
+            commands::memory::list_memory_by_workflow,
+            commands::memory::list_memory_scopes,
             commands::memory::memory_promotion_policy,
             commands::providers::delete_provider,
             commands::providers::list_providers,
@@ -74,3 +77,4 @@ mod tests {
         }
     }
 }
+
