@@ -62,19 +62,26 @@ afterEach(async () => {
 });
 
 describe("App shell", () => {
-  it("renders sidebar navigation without the old collapse affordance", async () => {
+  it("renders a persistent left rail with the Nuka SVG lockup", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    expect(view.container.querySelector(".app-sidebar__toggle")).toBeNull();
+    const sidebar = view.container.querySelector('.app-sidebar[aria-label="Primary"]');
+    const brandLockup = view.container.querySelector(".app-sidebar__brand .nuka-lockup");
+
+    expect(sidebar).toBeTruthy();
+    expect(brandLockup?.getAttribute("data-brand-source")).toBe("nuka-svg");
     expect(findText(view.container, "Settings")).toBeTruthy();
   });
 
-  it("switches pages through a visible active-page transition container", async () => {
+  it("renders a top status strip that tracks the active page", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
+    const statusStrip = view.container.querySelector('[data-testid="status-strip"]');
     const settingsButton = view.container.querySelector('button[aria-label="Settings"]');
+
+    expect(statusStrip?.textContent).toContain("Chat");
 
     await act(async () => {
       settingsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -82,16 +89,31 @@ describe("App shell", () => {
       await Promise.resolve();
     });
 
-    expect(findText(view.container, "Application Settings")).toBeTruthy();
+    expect(settingsButton?.getAttribute("aria-current")).toBe("page");
+    expect(statusStrip?.textContent).toContain("Settings");
     expect(view.container.querySelector('.app-shell__page[data-active-page="settings"]')).toBeTruthy();
   });
 
-  it("removes obsolete chrome labels and duplicate shell copy", async () => {
+  it("opens the inspector only when the current page has contextual details", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    expect(findText(view.container, "Nuka World Desktop")).toBeFalsy();
-    expect(findText(view.container, "Providers ¡¤ App ¡¤ Runtime")).toBeFalsy();
+    const settingsButton = view.container.querySelector('button[aria-label="Settings"]');
+    const shellInspector = () => view.container.querySelector(".app-shell__inspector");
+
+    expect(shellInspector()?.getAttribute("data-inspector-state")).toBe("closed");
+
+    await act(async () => {
+      settingsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(shellInspector()?.getAttribute("data-inspector-state")).toBe("open");
+    expect(
+      shellInspector()
+        ?.textContent?.includes("Workspace Guide"),
+    ).toBe(true);
   });
 });
 

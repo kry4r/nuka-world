@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { NukaLogo } from "./NukaLogo";
 import { NukaLockup } from "./NukaLockup";
 import { renderIntoDocument } from "@/test/render";
@@ -41,23 +41,19 @@ describe("Nuka brand assets", () => {
     expect(naturalPath?.getAttribute("d")).not.toBe(geometricPath?.getAttribute("d"));
   });
 
-  it("renders the provided PNG lockup asset for expanded branding", async () => {
+  it("renders the new lockup source for expanded branding", async () => {
     const view = await renderIntoDocument(
       <div>
-        <NukaLockup variant="natural" width={160} />
-        <NukaLockup variant="geometric" width={180} />
+        <NukaLockup width={160} />
+        <NukaLockup width={180} />
       </div>,
     );
     cleanups.push(view.cleanup);
 
     const lockups = Array.from(view.container.querySelectorAll('[data-brand-kind="lockup"]'));
-    const images = Array.from(view.container.querySelectorAll(".nuka-lockup img"));
 
     expect(lockups).toHaveLength(2);
-    expect(lockups[0]?.getAttribute("data-brand-variant")).toBe("natural");
-    expect(lockups[1]?.getAttribute("data-brand-variant")).toBe("geometric");
-    expect(images).toHaveLength(2);
-    expect(images[0]?.getAttribute("src")).toContain("goodlogo");
-    expect(images[1]?.getAttribute("src")).toContain("goodlogo");
+    expect(lockups[0]?.getAttribute("data-brand-source")).toBe("nuka-svg");
+    expect(lockups[1]?.getAttribute("data-brand-source")).toBe("nuka-svg");
   });
 });
