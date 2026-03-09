@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,9 +20,31 @@ pub struct MemoryNodeDetailResponse {
     pub kind: String,
     pub body: Option<String>,
     pub related_ids: Vec<String>,
-    pub workflow_id: Option<String>,
-    pub session_id: Option<String>,
-    pub agent_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryGraphNodeResponse {
+    pub id: String,
+    pub kind: String,
+    pub title: String,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryGraphEdgeResponse {
+    pub id: String,
+    pub source_id: String,
+    pub target_id: String,
+    pub relation: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryGraphResponse {
+    pub nodes: Vec<MemoryGraphNodeResponse>,
+    pub edges: Vec<MemoryGraphEdgeResponse>,
 }
 
 #[derive(Debug, Serialize)]
@@ -66,6 +89,60 @@ pub async fn get_memory_node_detail(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub async fn load_memory_graph(
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<MemoryGraphResponse, String> {
+    load_memory_graph_inner(&state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn update_memory_node(
+    node_id: String,
+    title: String,
+    body: Option<String>,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<MemoryGraphNodeResponse, String> {
+    update_memory_node_inner(node_id, title, body, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_memory_node(
+    node_id: String,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<(), String> {
+    delete_memory_node_inner(node_id, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn create_memory_edge(
+    edge_id: String,
+    source_id: String,
+    target_id: String,
+    relation: String,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<MemoryGraphEdgeResponse, String> {
+    create_memory_edge_inner(edge_id, source_id, target_id, relation, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_memory_edge(
+    edge_id: String,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<(), String> {
+    delete_memory_edge_inner(edge_id, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 async fn list_memory_scopes_inner(
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<Vec<MemoryScopeResponse>> {
@@ -95,11 +172,78 @@ async fn get_memory_node_detail_inner(
     node_id: String,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<Option<MemoryNodeDetailResponse>> {
-    Ok(state
+    let graph = state.memory_service().load_graph().await?;
+    let node = graph.nodes.into_iter().find(|entry| entry.id == node_id);
+
+    Ok(node.map(|node| MemoryNodeDetailResponse {
+        related_ids: graph
+            .edges
+            .iter()
+            .filter_map(|edge| {
+                if edge.source_id == node.id {
+                    Some(edge.target_id.clone())
+                } else if edge.target_id == node.id {
+                    Some(edge.source_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
+        ..node.into()
+    }))
+}
+
+async fn load_memory_graph_inner(
+    state: &crate::app_state::AppState,
+) -> anyhow::Result<MemoryGraphResponse> {
+    Ok(state.memory_service().load_graph().await?.into())
+}
+
+async fn update_memory_node_inner(
+    node_id: String,
+    title: String,
+    body: Option<String>,
+    state: &crate::app_state::AppState,
+) -> anyhow::Result<MemoryGraphNodeResponse> {
+    state
         .memory_service()
-        .get_scope(&node_id)
+        .update_node(&node_id, title, body)
         .await?
-        .map(MemoryNodeDetailResponse::from))
+        .map(Into::into)
+        .ok_or_else(|| anyhow::anyhow!("memory node not found: {node_id}"))
+}
+
+async fn delete_memory_node_inner(
+    node_id: String,
+    state: &crate::app_state::AppState,
+) -> anyhow::Result<()> {
+    state.memory_service().delete_node(&node_id).await
+}
+
+async fn create_memory_edge_inner(
+    edge_id: String,
+    source_id: String,
+    target_id: String,
+    relation: String,
+    state: &crate::app_state::AppState,
+) -> anyhow::Result<MemoryGraphEdgeResponse> {
+    let edge = nuka_domain::memory::MemoryGraphEdge {
+        id: edge_id,
+        source_id,
+        target_id,
+        relation,
+    };
+
+    Ok(state.memory_service().create_edge(edge).await?.into())
+}
+
+async fn delete_memory_edge_inner(
+    edge_id: String,
+    state: &crate::app_state::AppState,
+) -> anyhow::Result<()> {
+    state.memory_service().delete_edge(&edge_id).await
 }
 
 impl From<nuka_domain::memory::MemoryScope> for MemoryScopeResponse {
@@ -117,26 +261,14 @@ impl From<nuka_domain::memory::MemoryScope> for MemoryScopeResponse {
     }
 }
 
-impl From<nuka_domain::memory::MemoryScope> for MemoryNodeDetailResponse {
-    fn from(scope: nuka_domain::memory::MemoryScope) -> Self {
-        let kind = memory_scope_kind(&scope).to_string();
-        let workflow_id = scope.workflow_id.clone();
-        let session_id = scope.session_id.clone();
-        let agent_id = scope.agent_id.clone();
-        let related_ids = [workflow_id.clone(), session_id.clone(), agent_id.clone()]
-            .into_iter()
-            .flatten()
-            .collect();
-
+impl From<nuka_domain::memory::MemoryGraphNode> for MemoryNodeDetailResponse {
+    fn from(node: nuka_domain::memory::MemoryGraphNode) -> Self {
         Self {
-            id: scope.id,
-            title: scope.name,
-            kind,
-            body: Some("Workflow-linked scope stored in local memory state.".to_string()),
-            related_ids,
-            workflow_id,
-            session_id,
-            agent_id,
+            id: node.id,
+            title: node.title,
+            kind: node.kind.as_str().to_string(),
+            body: node.body,
+            related_ids: Vec::new(),
         }
     }
 }
@@ -156,39 +288,78 @@ fn memory_scope_kind(scope: &nuka_domain::memory::MemoryScope) -> &'static str {
 #[cfg(test)]
 mod tests {
     #[tokio::test]
-    async fn memory_lists_scopes_by_workflow() {
+    async fn memory_load_graph_returns_nodes_and_edges() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         state
             .memory_service()
-            .save_scope(nuka_domain::memory::MemoryScope {
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
                 id: "memory-review".to_string(),
-                name: "Review Memory".to_string(),
-                workflow_id: Some("workflow-review".to_string()),
-                session_id: Some("session-review".to_string()),
-                agent_id: Some("agent-reviewer".to_string()),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: "Review Memory".to_string(),
+                body: Some("Tracks the latest review conclusions.".to_string()),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "workflow-review".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Workflow,
+                title: "Release Workflow".to_string(),
+                body: Some("Coordinates release validation.".to_string()),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .create_edge(nuka_domain::memory::MemoryGraphEdge {
+                id: "edge-review".to_string(),
+                source_id: "workflow-review".to_string(),
+                target_id: "memory-review".to_string(),
+                relation: "captures".to_string(),
             })
             .await
             .unwrap();
 
-        let scopes = super::list_memory_by_workflow_inner("workflow-review".to_string(), &state)
+        let graph = super::load_memory_graph_inner(&state)
             .await
             .unwrap();
 
-        assert_eq!(scopes.len(), 1);
-        assert_eq!(scopes[0].workflow_id.as_deref(), Some("workflow-review"));
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(graph.edges[0].relation, "captures");
     }
 
     #[tokio::test]
-    async fn memory_detail_shows_real_metadata() {
+    async fn memory_detail_reads_graph_node_metadata() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         state
             .memory_service()
-            .save_scope(nuka_domain::memory::MemoryScope {
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
                 id: "memory-review".to_string(),
-                name: "Review Memory".to_string(),
-                workflow_id: Some("workflow-review".to_string()),
-                session_id: Some("session-review".to_string()),
-                agent_id: Some("agent-reviewer".to_string()),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: "Release Review Memory".to_string(),
+                body: Some("Tracks blockers, owners, and sign-off notes.".to_string()),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "workflow-review".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Workflow,
+                title: "Release Workflow".to_string(),
+                body: Some("Coordinates release validation.".to_string()),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .create_edge(nuka_domain::memory::MemoryGraphEdge {
+                id: "edge-review".to_string(),
+                source_id: "workflow-review".to_string(),
+                target_id: "memory-review".to_string(),
+                relation: "captures".to_string(),
             })
             .await
             .unwrap();
@@ -198,15 +369,145 @@ mod tests {
             .unwrap()
             .expect("detail should exist");
 
-        assert_eq!(detail.workflow_id.as_deref(), Some("workflow-review"));
-        assert_eq!(detail.session_id.as_deref(), Some("session-review"));
-        assert_eq!(detail.agent_id.as_deref(), Some("agent-reviewer"));
+        assert_eq!(detail.title, "Release Review Memory");
+        assert_eq!(detail.kind, "fact");
+        assert_eq!(
+            detail.body.as_deref(),
+            Some("Tracks blockers, owners, and sign-off notes."),
+        );
+        assert_eq!(detail.related_ids, vec!["workflow-review".to_string()]);
     }
 
     #[tokio::test]
-    async fn memory_lists_empty_scopes_honestly_when_no_nodes_exist() {
+    async fn memory_detail_deduplicates_related_ids_for_multiple_relations_to_same_peer() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
-        let scopes = super::list_memory_scopes_inner(&state).await.unwrap();
-        assert!(scopes.is_empty());
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "memory-review".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: "Release Review Memory".to_string(),
+                body: Some("Tracks blockers, owners, and sign-off notes.".to_string()),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "workflow-review".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Workflow,
+                title: "Release Workflow".to_string(),
+                body: Some("Coordinates release validation.".to_string()),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .create_edge(nuka_domain::memory::MemoryGraphEdge {
+                id: "edge-review-captures".to_string(),
+                source_id: "workflow-review".to_string(),
+                target_id: "memory-review".to_string(),
+                relation: "captures".to_string(),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .create_edge(nuka_domain::memory::MemoryGraphEdge {
+                id: "edge-review-blocks".to_string(),
+                source_id: "workflow-review".to_string(),
+                target_id: "memory-review".to_string(),
+                relation: "blocks".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let detail = super::get_memory_node_detail_inner("memory-review".to_string(), &state)
+            .await
+            .unwrap()
+            .expect("detail should exist");
+
+        assert_eq!(detail.related_ids, vec!["workflow-review".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn memory_create_edge_is_idempotent_for_same_relation() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "memory-review".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: "Release Review Memory".to_string(),
+                body: Some("Tracks blockers, owners, and sign-off notes.".to_string()),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "workflow-review".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Workflow,
+                title: "Release Workflow".to_string(),
+                body: Some("Coordinates release validation.".to_string()),
+            })
+            .await
+            .unwrap();
+
+        let first = super::create_memory_edge_inner(
+            "edge-review-a".to_string(),
+            "workflow-review".to_string(),
+            "memory-review".to_string(),
+            "captures".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+        let second = super::create_memory_edge_inner(
+            "edge-review-b".to_string(),
+            "workflow-review".to_string(),
+            "memory-review".to_string(),
+            "captures".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let graph = super::load_memory_graph_inner(&state).await.unwrap();
+
+        assert_eq!(first.id, "edge-review-a");
+        assert_eq!(second.id, "edge-review-a");
+        assert_eq!(graph.edges.len(), 1);
+    }
+}
+
+impl From<nuka_domain::memory::MemoryGraphNode> for MemoryGraphNodeResponse {
+    fn from(node: nuka_domain::memory::MemoryGraphNode) -> Self {
+        Self {
+            id: node.id,
+            kind: node.kind.as_str().to_string(),
+            title: node.title,
+            body: node.body,
+        }
+    }
+}
+
+impl From<nuka_domain::memory::MemoryGraphEdge> for MemoryGraphEdgeResponse {
+    fn from(edge: nuka_domain::memory::MemoryGraphEdge) -> Self {
+        Self {
+            id: edge.id,
+            source_id: edge.source_id,
+            target_id: edge.target_id,
+            relation: edge.relation,
+        }
+    }
+}
+
+impl From<nuka_domain::memory::MemoryGraph> for MemoryGraphResponse {
+    fn from(graph: nuka_domain::memory::MemoryGraph) -> Self {
+        Self {
+            nodes: graph.nodes.into_iter().map(Into::into).collect(),
+            edges: graph.edges.into_iter().map(Into::into).collect(),
+        }
     }
 }

@@ -3,40 +3,159 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryPage } from "./MemoryPage";
 import { findText, renderIntoDocument } from "@/test/render";
 
-const { invokeMock, resetMocks, scopes, details } = vi.hoisted(() => {
-  const scopes: Array<{
+const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
+  const initialNodes: Array<{
+    body: string | null;
     id: string;
-    title: string;
     kind: string;
-    workflowId: string | null;
-    sessionId: string | null;
-    agentId: string | null;
-  }> = [];
-  const details = new Map<
-    string,
-    {
-      id: string;
-      title: string;
-      kind: string;
-      body: string | null;
-      relatedIds: string[];
-      workflowId: string | null;
-      sessionId: string | null;
-      agentId: string | null;
-    }
-  >();
+    title: string;
+  }> = [
+      {
+        id: "workflow-review",
+        kind: "workflow",
+        title: "Release Workflow",
+        body: "Coordinates release validation.",
+      },
+      {
+        id: "fact-archive",
+        kind: "fact",
+        title: "Archive Fact",
+        body: "Older note kept for comparison.",
+      },
+      {
+        id: "memory-review",
+        kind: "fact",
+        title: "Review Memory",
+        body: "Tracks the latest review conclusions.",
+      },
+      {
+        id: "session-sync",
+        kind: "session",
+        title: "Review Session",
+        body: "Tracks the active review conversation.",
+      },
+      {
+        id: "agent-scout",
+        kind: "agent",
+        title: "Scout Agent",
+        body: "Flags follow-up work.",
+      },
+    ];
+
+  const initialEdges = [
+      {
+        id: "edge-review",
+        sourceId: "workflow-review",
+        targetId: "memory-review",
+        relation: "captures",
+      },
+      {
+        id: "edge-session",
+        sourceId: "memory-review",
+        targetId: "session-sync",
+        relation: "informs",
+      },
+      {
+        id: "edge-agent",
+        sourceId: "session-sync",
+        targetId: "agent-scout",
+        relation: "routes_to",
+      },
+    ];
+
+  const graphState: {
+    edges: typeof initialEdges;
+    nodes: typeof initialNodes;
+  } = {
+    nodes: structuredClone(initialNodes),
+    edges: structuredClone(initialEdges),
+  };
 
   const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
     switch (command) {
+      case "load_memory_graph":
+        return structuredClone(graphState);
       case "list_memory_scopes":
-        return scopes;
+        return graphState.nodes.map((node) => ({
+          id: node.id,
+          title: node.title,
+          kind: node.kind,
+          workflowId: node.kind === "workflow" ? node.id : null,
+          sessionId: null,
+          agentId: null,
+        }));
       case "list_memory_by_workflow": {
         const workflowId = String(args?.workflowId ?? "");
-        return scopes.filter((scope) => scope.workflowId === workflowId);
+        return graphState.nodes
+          .filter((node) => node.id === workflowId || node.kind !== "workflow")
+          .map((node) => ({
+            id: node.id,
+            title: node.title,
+            kind: node.kind,
+            workflowId: workflowId || null,
+            sessionId: null,
+            agentId: null,
+          }));
       }
       case "get_memory_node_detail": {
         const nodeId = String(args?.nodeId ?? "");
-        return details.get(nodeId) ?? null;
+        const node = graphState.nodes.find((entry) => entry.id === nodeId);
+        if (!node) {
+          return null;
+        }
+        return {
+          id: node.id,
+          title: node.title,
+          kind: node.kind,
+          body: node.body,
+          relatedIds: graphState.edges
+            .filter((edge) => edge.sourceId === node.id || edge.targetId === node.id)
+            .flatMap((edge) => [edge.sourceId, edge.targetId].filter((id) => id !== node.id)),
+          workflowId: node.kind === "workflow" ? node.id : null,
+          sessionId: null,
+          agentId: null,
+        };
+      }
+      case "update_memory_node": {
+        const nodeId = String(args?.nodeId ?? "");
+        const title = String(args?.title ?? "");
+        const bodyArg = args?.body;
+        const body = typeof bodyArg === "string" ? bodyArg : bodyArg == null ? null : String(bodyArg);
+        const node = graphState.nodes.find((entry) => entry.id === nodeId);
+        if (!node) {
+          throw new Error(`unknown node: ${nodeId}`);
+        }
+        node.title = title;
+        node.body = body;
+        return { ...node };
+      }
+      case "delete_memory_node": {
+        const nodeId = String(args?.nodeId ?? "");
+        graphState.nodes = graphState.nodes.filter((entry) => entry.id !== nodeId);
+        graphState.edges = graphState.edges.filter(
+          (edge) => edge.sourceId !== nodeId && edge.targetId !== nodeId,
+        );
+        return null;
+      }
+      case "create_memory_edge": {
+        const sourceId = String(args?.sourceId ?? "");
+        const targetId = String(args?.targetId ?? "");
+        const relation = String(args?.relation ?? "");
+        const existingEdge = graphState.edges.find(
+          (edge) => edge.sourceId === sourceId && edge.targetId === targetId && edge.relation === relation,
+        );
+        if (existingEdge) {
+          return { ...existingEdge };
+        }
+
+        const edge = {
+          id: String(args?.edgeId ?? ""),
+          sourceId,
+          targetId,
+          relation,
+        };
+        graphState.edges = [...graphState.edges, edge];
+        return edge;
       }
       default:
         throw new Error(`unexpected command: ${command}`);
@@ -44,12 +163,12 @@ const { invokeMock, resetMocks, scopes, details } = vi.hoisted(() => {
   });
 
   const resetMocks = () => {
-    scopes.length = 0;
-    details.clear();
+    graphState.nodes = structuredClone(initialNodes);
+    graphState.edges = structuredClone(initialEdges);
     invokeMock.mockClear();
   };
 
-  return { invokeMock, resetMocks, scopes, details };
+  return { invokeMock, resetMocks, graphState };
 });
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -59,6 +178,9 @@ vi.mock("@tauri-apps/api/core", () => ({
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
     if (cleanup) {
@@ -69,6 +191,7 @@ afterEach(async () => {
 
 beforeEach(() => {
   resetMocks();
+  vi.unstubAllGlobals();
 });
 
 function findButton(container: HTMLElement, text: string) {
@@ -77,64 +200,124 @@ function findButton(container: HTMLElement, text: string) {
   );
 }
 
+function setFormValue(
+  element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
+  value: string,
+) {
+  const prototype =
+    element instanceof HTMLSelectElement
+      ? HTMLSelectElement.prototype
+      : element instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  setter?.call(element, value);
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 describe("MemoryPage", () => {
-  it("renders an honest empty state when no memory nodes exist", async () => {
+  it("renders utility controls with search, filter, legend, and view mode affordances beside the graph canvas", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
-    expect(findText(view.container, "No memory nodes yet.")).toBeTruthy();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector('[data-testid="memory-graph-utilities"]')).toBeTruthy();
+    expect(view.container.querySelector('input[aria-label="Search graph"]')).toBeTruthy();
+    expect(view.container.querySelector('select[aria-label="Filter kind"]')).toBeTruthy();
+    expect(view.container.querySelector('select[aria-label="View mode"]')).toBeTruthy();
+    expect(findText(view.container, "Legend")).toBeTruthy();
+    expect(findText(view.container, "workflow")).toBeTruthy();
+    expect(findText(view.container, "session")).toBeTruthy();
+    expect(findText(view.container, "fact")).toBeTruthy();
+    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    expect(canvas).toBeTruthy();
+    expect(canvas?.getAttribute("data-focus-target-id")).toBe("workflow-review");
+    expect(canvas?.getAttribute("data-pan-x")).toBe("318");
+    expect(canvas?.getAttribute("data-pan-y")).toBe("168");
+    expect(findText(view.container, "Memory Nodes")).toBeFalsy();
   });
 
-  it("queries memory by workflow", async () => {
-    scopes.push({
-      id: "memory-review",
-      title: "Review Memory",
-      kind: "session",
-      workflowId: "workflow-review",
-      sessionId: "session-review",
-      agentId: "agent-reviewer",
-    });
-
+  it("opens editable inspector fields and marks focused neighbor depth when selecting a node", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
-    const workflowInput = view.container.querySelector('input[aria-label="Workflow filter"]') as HTMLInputElement | null;
-    const loadButton = findButton(view.container, "Load Workflow Memory");
-
     await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-      valueSetter?.call(workflowInput, "workflow-review");
-      workflowInput?.dispatchEvent(new Event("input", { bubbles: true }));
-      workflowInput?.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
-    await act(async () => {
-      loadButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(findText(view.container, "Review Memory")).toBeTruthy();
+    const nodeButton = findButton(view.container, "Review Memory");
+
+    await act(async () => {
+      nodeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(nodeButton?.getAttribute("aria-pressed")).toBe("true");
+
+    const titleInput = view.container.querySelector('input[aria-label="Node title"]') as HTMLInputElement | null;
+    const bodyInput = view.container.querySelector('textarea[aria-label="Node body"]') as HTMLTextAreaElement | null;
+    const selectedNode = findButton(view.container, "Review Memory");
+    const firstDegreeNode = findButton(view.container, "Review Session");
+    const secondDegreeNode = findButton(view.container, "Scout Agent");
+
+    expect(titleInput?.value).toBe("Review Memory");
+    expect(bodyInput?.value).toBe("Tracks the latest review conclusions.");
+    expect(selectedNode?.getAttribute("data-node-depth")).toBe("0");
+    expect(firstDegreeNode?.getAttribute("data-node-depth")).toBe("1");
+    expect(secondDegreeNode?.getAttribute("data-node-depth")).toBe("2");
   });
 
-  it("shows real metadata in the detail inspector", async () => {
-    scopes.push({
-      id: "memory-review",
-      title: "Review Memory",
-      kind: "session",
-      workflowId: "workflow-review",
-      sessionId: "session-review",
-      agentId: "agent-reviewer",
+  it("shows delete impact details before confirming node removal", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    details.set("memory-review", {
-      id: "memory-review",
-      title: "Review Memory",
-      kind: "session",
-      body: "Keeps the latest review conclusions.",
-      relatedIds: ["workflow-review", "session-review", "agent-reviewer"],
-      workflowId: "workflow-review",
-      sessionId: "session-review",
-      agentId: "agent-reviewer",
+
+    const nodeButton = findButton(view.container, "Review Memory");
+
+    await act(async () => {
+      nodeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const deleteButton = findButton(view.container, "Delete node");
+
+    await act(async () => {
+      deleteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Delete impact")).toBeTruthy();
+    expect(findText(view.container, "2 connected links will be removed.")).toBeTruthy();
+    expect(findText(view.container, "Release Workflow")).toBeTruthy();
+    expect(findText(view.container, "Review Session")).toBeTruthy();
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_memory_node", expect.anything());
+
+    const confirmDelete = findButton(view.container, "Confirm delete");
+
+    await act(async () => {
+      confirmDelete?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "delete_memory_node",
+      expect.objectContaining({ nodeId: "memory-review" }),
+    );
+  });
+
+  it("shows load errors instead of falling back to the empty graph state", async () => {
+    invokeMock.mockImplementationOnce(async () => {
+      throw new Error("memory graph offline");
     });
 
     const view = await renderIntoDocument(<MemoryPage />);
@@ -145,9 +328,167 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    expect(findText(view.container, "workflow-review")).toBeTruthy();
-    expect(findText(view.container, "session-review")).toBeTruthy();
-    expect(findText(view.container, "agent-reviewer")).toBeTruthy();
+    expect(findText(view.container, "Memory graph unavailable")).toBeTruthy();
+    expect(findText(view.container, "memory graph offline")).toBeTruthy();
+    expect(findText(view.container, "No graph nodes yet")).toBeFalsy();
+  });
+
+  it("shows a no-match empty state when search removes every visible node", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const searchInput = view.container.querySelector(
+      'input[aria-label="Search graph"]',
+    ) as HTMLInputElement | null;
+
+    await act(async () => {
+      if (!searchInput) {
+        throw new Error("search input missing");
+      }
+
+      setFormValue(searchInput, "missing node");
+    });
+
+    expect(findText(view.container, "No graph nodes yet")).toBeTruthy();
+    expect(findButton(view.container, "Release Workflow")).toBeFalsy();
+    expect(view.container.querySelector('input[aria-label="Node title"]')).toBeFalsy();
+  });
+
+  it("recenters the viewport when search changes the visible selection", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const searchInput = view.container.querySelector(
+      'input[aria-label="Search graph"]',
+    ) as HTMLInputElement | null;
+
+    await act(async () => {
+      if (!searchInput) {
+        throw new Error("search input missing");
+      }
+
+      setFormValue(searchInput, "Review Session");
+      await Promise.resolve();
+    });
+
+    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+
+    expect(canvas?.getAttribute("data-focus-target-id")).toBe("session-sync");
+    expect(canvas?.getAttribute("data-pan-x")).toBe("130");
+    expect(canvas?.getAttribute("data-pan-y")).toBe("168");
+  });
+
+  it("recenters when the selected node keeps the same id but moves to a new layout row", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const viewModeSelect = view.container.querySelector(
+      'select[aria-label="View mode"]',
+    ) as HTMLSelectElement | null;
+
+    await act(async () => {
+      if (!viewModeSelect) {
+        throw new Error("view mode select missing");
+      }
+
+      setFormValue(viewModeSelect, "full");
+    });
+
+    const memoryNode = findButton(view.container, "Review Memory");
+
+    await act(async () => {
+      memoryNode?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    let canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    expect(canvas?.getAttribute("data-focus-target-id")).toBe("memory-review");
+    expect(canvas?.getAttribute("data-pan-x")).toBe("-434");
+    expect(canvas?.getAttribute("data-pan-y")).toBe("20");
+
+    const searchInput = view.container.querySelector(
+      'input[aria-label="Search graph"]',
+    ) as HTMLInputElement | null;
+
+    await act(async () => {
+      if (!searchInput) {
+        throw new Error("search input missing");
+      }
+
+      setFormValue(searchInput, "Review Memory");
+      await Promise.resolve();
+    });
+
+    canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    expect(canvas?.getAttribute("data-focus-target-id")).toBe("memory-review");
+    expect(canvas?.getAttribute("data-pan-x")).toBe("-434");
+    expect(canvas?.getAttribute("data-pan-y")).toBe("168");
+  });
+
+  it("uses distinct fallback edge ids for different relations when random uuid is unavailable", async () => {
+    vi.stubGlobal("crypto", undefined);
+    vi.spyOn(Date, "now").mockReturnValue(1_701_000_000_000);
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const relationInput = view.container.querySelector('input[aria-label="Edge relation"]') as HTMLInputElement | null;
+    const createButton = findButton(view.container, "Create link");
+
+    await act(async () => {
+      if (!relationInput) {
+        throw new Error("relation input missing");
+      }
+
+      setFormValue(relationInput, "supports");
+    });
+
+    await act(async () => {
+      createButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      if (!relationInput) {
+        throw new Error("relation input missing");
+      }
+
+      setFormValue(relationInput, "blocks");
+    });
+
+    await act(async () => {
+      createButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const createEdgeCalls = invokeMock.mock.calls.filter(
+      ([command]) => command === "create_memory_edge",
+    );
+    const edgeIds = createEdgeCalls.map(([, args]) => String(args?.edgeId ?? ""));
+
+    expect(createEdgeCalls).toHaveLength(2);
+    expect(edgeIds[0]).not.toBe(edgeIds[1]);
+    expect(edgeIds[0]).toContain("supports");
+    expect(edgeIds[1]).toContain("blocks");
   });
 });
-
