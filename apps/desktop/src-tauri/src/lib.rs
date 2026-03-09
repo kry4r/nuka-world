@@ -22,10 +22,15 @@ pub fn run() {
             commands::knowledge::list_knowledge_libraries,
             commands::knowledge::rebuild_knowledge_library,
             commands::knowledge::search_knowledge,
+            commands::memory::create_memory_edge,
+            commands::memory::delete_memory_edge,
+            commands::memory::delete_memory_node,
             commands::memory::get_memory_node_detail,
             commands::memory::list_memory_by_workflow,
             commands::memory::list_memory_scopes,
+            commands::memory::load_memory_graph,
             commands::memory::memory_promotion_policy,
+            commands::memory::update_memory_node,
             commands::providers::delete_provider,
             commands::providers::list_providers,
             commands::providers::provider_registry,
@@ -34,6 +39,7 @@ pub fn run() {
             commands::settings::load_settings,
             commands::settings::save_settings,
             commands::tools::integrated_tool_output_policy,
+            commands::workflow::continue_workflow_session,
             commands::workflow::start_workflow_session,
         ])
         .on_window_event(|window, event| {
@@ -74,6 +80,29 @@ mod tests {
             "crates/nuka-knowledge",
         ] {
             assert!(manifest.contains(member), "missing workspace member: {member}");
+        }
+    }
+
+    #[test]
+    fn tauri_lib_registers_memory_and_workflow_room_commands() {
+        let lib_rs = std::fs::read_to_string("src/lib.rs").unwrap();
+        let invoke_handler_region = lib_rs
+            .split("#[cfg(test)]")
+            .next()
+            .expect("lib.rs should contain a non-test region");
+
+        for command in [
+            "commands::memory::load_memory_graph",
+            "commands::memory::update_memory_node",
+            "commands::memory::delete_memory_node",
+            "commands::memory::create_memory_edge",
+            "commands::memory::delete_memory_edge",
+            "commands::workflow::continue_workflow_session",
+        ] {
+            assert!(
+                invoke_handler_region.contains(command),
+                "missing invoke handler registration for {command}"
+            );
         }
     }
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState, type JSX } from "react";
+import { useState, type JSX } from "react";
 import { AppShell } from "./components/shell/AppShell";
 import type { ShellNavigationItem, ShellPageId } from "./components/shell/shellNavigation";
 import { Card } from "./components/ui/Card";
@@ -9,6 +9,7 @@ import { MemoryPage } from "./features/memory/MemoryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { WorkflowPage } from "./features/workflow/WorkflowPage";
 import { Inspector } from "./components/shell/Inspector";
+import type { WorkflowLaunchIntent } from "./lib/workflow";
 
 type AppPage = ShellPageId;
 
@@ -19,55 +20,74 @@ type AppPageDefinition = {
   render: () => JSX.Element;
 };
 
-const PAGE_DEFINITIONS: Record<AppPage, AppPageDefinition> = {
-  chat: {
-    label: "Chat",
-    contextLabel: "World chat is the front door for new work.",
-    runtimeLabel: "Local-first runtime",
-    render: () => <ChatPage />,
-  },
-  workflow: {
-    label: "Workflow",
-    contextLabel: "Structured sessions move into workflow rooms.",
-    runtimeLabel: "Workflow state ready",
-    render: () => <WorkflowPage />,
-  },
-  agents: {
-    label: "Agents",
-    contextLabel: "Saved agents, drafts, and tool policy live here.",
-    runtimeLabel: "Agent registry synced",
-    render: () => <AgentsPage />,
-  },
-  memory: {
-    label: "Memory",
-    contextLabel: "Graph workbench for nodes, relations, and context.",
-    runtimeLabel: "Memory graph available",
-    render: () => <MemoryPage />,
-  },
-  knowledge: {
-    label: "Knowledge",
-    contextLabel: "Libraries, sources, jobs, and engines share one workbench.",
-    runtimeLabel: "Knowledge index idle",
-    render: () => <KnowledgePage />,
-  },
-  settings: {
-    label: "Settings",
-    contextLabel: "Providers, appearance, and runtime controls stay in one place.",
-    runtimeLabel: "Settings stored locally",
-    render: () => <SettingsPage />,
-  },
-};
-
-const NAVIGATION: ShellNavigationItem[] = (Object.entries(PAGE_DEFINITIONS) as Array<[AppPage, AppPageDefinition]>).map(
-  ([id, definition]) => ({
-    id,
-    label: definition.label,
-  }),
-);
-
 export default function App() {
   const [activePage, setActivePage] = useState<AppPage>("chat");
-  const pageDefinition = PAGE_DEFINITIONS[activePage];
+  const [workflowIntent, setWorkflowIntent] = useState<WorkflowLaunchIntent | null>(null);
+
+  const handleWorkflowHandoff = (handoff: WorkflowLaunchIntent) => {
+    setWorkflowIntent(handoff);
+    setActivePage("workflow");
+  };
+
+  const pageDefinitions: Record<AppPage, AppPageDefinition> = {
+    chat: {
+      label: "Chat",
+      contextLabel: "World chat is the front door for new work.",
+      runtimeLabel: "Local-first runtime",
+      render: () => (
+        <ChatPage
+          onWorkflowHandoff={(handoff) => {
+            handleWorkflowHandoff(handoff);
+          }}
+        />
+      ),
+    },
+    workflow: {
+      label: "Workflow",
+      contextLabel: "Structured sessions move into workflow rooms.",
+      runtimeLabel: "Workflow state ready",
+      render: () => (
+        <WorkflowPage
+          intent={workflowIntent}
+          onIntentHandled={() => {
+            setWorkflowIntent(null);
+          }}
+        />
+      ),
+    },
+    agents: {
+      label: "Agents",
+      contextLabel: "Saved agents, drafts, and tool policy live here.",
+      runtimeLabel: "Agent registry synced",
+      render: () => <AgentsPage />,
+    },
+    memory: {
+      label: "Memory",
+      contextLabel: "Graph workbench for nodes, relations, and context.",
+      runtimeLabel: "Memory graph available",
+      render: () => <MemoryPage />,
+    },
+    knowledge: {
+      label: "Knowledge",
+      contextLabel: "Libraries, sources, jobs, and engines share one workbench.",
+      runtimeLabel: "Knowledge index idle",
+      render: () => <KnowledgePage />,
+    },
+    settings: {
+      label: "Settings",
+      contextLabel: "Providers, appearance, and runtime controls stay in one place.",
+      runtimeLabel: "Settings stored locally",
+      render: () => <SettingsPage />,
+    },
+  };
+
+  const navigation: ShellNavigationItem[] = (
+    Object.entries(pageDefinitions) as Array<[AppPage, AppPageDefinition]>
+  ).map(([id, definition]) => ({
+    id,
+    label: definition.label,
+  }));
+  const pageDefinition = pageDefinitions[activePage];
   const pageLabel = pageDefinition.label;
   const shellInspector =
     activePage === "settings" ? (
@@ -77,15 +97,22 @@ export default function App() {
         <Card description="Contextual utility panel" title="Role" tone="soft" />
       </Inspector>
     ) : null;
-  const page = useMemo(() => pageDefinition.render(), [pageDefinition]);
+  const page = pageDefinition.render();
 
   return (
     <AppShell
       activePage={activePage}
       contextLabel={pageDefinition.contextLabel}
       inspector={shellInspector}
-      navigation={NAVIGATION}
-      onNavigate={setActivePage}
+      navigation={navigation}
+      onNavigate={(page) => {
+        if (page === "chat") {
+          setActivePage("chat");
+          return;
+        }
+
+        setActivePage(page);
+      }}
       pageLabel={pageLabel}
       runtimeLabel={pageDefinition.runtimeLabel}
     >
