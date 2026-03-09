@@ -124,10 +124,7 @@ function pickSettingsFields(
   settings: SettingsPayload,
   keys: Array<keyof SettingsPayload>,
 ): Partial<SettingsPayload> {
-  return keys.reduce<Partial<SettingsPayload>>((result, key) => {
-    result[key] = settings[key];
-    return result;
-  }, {});
+  return Object.fromEntries(keys.map((key) => [key, settings[key]])) as Partial<SettingsPayload>;
 }
 
 function createProviderDraft(index: number): ProviderRecord {
