@@ -1,28 +1,45 @@
-import type { PropsWithChildren } from "react";
+import type { PropsWithChildren, ReactNode } from "react";
+import { PageSurface } from "./PageSurface";
 import { Sidebar } from "./Sidebar";
-
-type NavigationItem = {
-  id: string;
-  label: string;
-};
+import { StatusStrip } from "./StatusStrip";
+import type { ShellNavigationItem, ShellPageId } from "./shellNavigation";
 
 type AppShellProps = PropsWithChildren<{
-  activePage: string;
-  navigation: NavigationItem[];
-  footerItem?: NavigationItem;
-  onNavigate: (id: string) => void;
+  activePage: ShellPageId;
+  contextLabel?: string;
+  inspector?: ReactNode;
+  navigation: ShellNavigationItem[];
+  onNavigate: (id: ShellPageId) => void;
+  pageLabel: string;
+  runtimeLabel?: string;
 }>;
 
-export function AppShell({ activePage, children, footerItem, navigation, onNavigate }: AppShellProps) {
+export function AppShell({
+  activePage,
+  children,
+  contextLabel,
+  inspector,
+  navigation,
+  onNavigate,
+  pageLabel,
+  runtimeLabel,
+}: AppShellProps) {
   return (
     <div className="app-shell">
-      <div className="app-shell__body">
-        <Sidebar activePage={activePage} footerItem={footerItem} navigation={navigation} onNavigate={onNavigate} />
+      <Sidebar activePage={activePage} navigation={navigation} onNavigate={onNavigate} />
 
-        <div className="app-shell__content">
-          <div className="app-shell__page" data-active-page={activePage} key={activePage}>
-            {children}
-          </div>
+      <div className="app-shell__workspace">
+        <StatusStrip contextLabel={contextLabel} pageLabel={pageLabel} runtimeLabel={runtimeLabel} />
+        <div className="app-shell__frame" data-inspector-state={inspector ? "open" : "closed"}>
+          <PageSurface activePage={activePage}>{children}</PageSurface>
+          <aside
+            aria-label="Workspace inspector"
+            aria-hidden={inspector ? undefined : true}
+            className="app-shell__inspector"
+            data-inspector-state={inspector ? "open" : "closed"}
+          >
+            {inspector}
+          </aside>
         </div>
       </div>
     </div>

@@ -3,8 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsPage } from "./SettingsPage";
 import { findText, renderIntoDocument } from "@/test/render";
 
-const { invokeMock } = vi.hoisted(() => ({
-  invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) => {
+const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
+  defaultInvokeImplementation: async (
+    command: string,
+    args?: Record<string, unknown>,
+  ) => {
     switch (command) {
       case "list_providers":
         return [
@@ -47,7 +50,10 @@ const { invokeMock } = vi.hoisted(() => ({
       default:
         throw new Error(`unexpected command: ${command}`);
     }
-  }),
+  },
+  invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) =>
+    defaultInvokeImplementation(command, args),
+  ),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -58,6 +64,7 @@ const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
   invokeMock.mockClear();
+  invokeMock.mockImplementation(defaultInvokeImplementation);
 
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
@@ -74,7 +81,10 @@ function findButton(container: HTMLElement, text: string) {
 }
 
 function setFormValue(element: HTMLInputElement | HTMLSelectElement, value: string) {
-  const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const prototype =
+    element instanceof HTMLSelectElement
+      ? HTMLSelectElement.prototype
+      : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
   setter?.call(element, value);
   element.dispatchEvent(new Event("input", { bubbles: true }));
@@ -90,6 +100,32 @@ function setCheckboxValue(element: HTMLInputElement, checked: boolean) {
 }
 
 describe("SettingsPage", () => {
+  it("renders a desktop settings tri-pane with section nav, control surface, and contextual guide", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    expect(view.container.querySelector('[data-testid="settings-section-nav"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="settings-control-surface"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="settings-context-guide"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="settings-accordion-stack"]')).toBeFalsy();
+  });
+
+  it("renders provider status truthfully in the redesigned provider surface", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(findText(view.container, "Local runtime")).toBeTruthy();
+    expect(findText(view.container, "Enabled")).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="provider-status-badge"]')).toBeTruthy();
+  });
+
   it("loads appearance state from the backend and saves through tauri", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
@@ -99,7 +135,9 @@ describe("SettingsPage", () => {
     expect(findText(view.container, "+ Add Provider")).toBeTruthy();
     expect(findText(view.container, "Language")).toBeTruthy();
 
-    const languageSelect = view.container.querySelector('select[aria-label="Language"]') as HTMLSelectElement | null;
+    const languageSelect = view.container.querySelector(
+      'select[aria-label="Language"]',
+    ) as HTMLSelectElement | null;
     const saveButton = findButton(view.container, "Save Appearance");
 
     expect(languageSelect?.value).toBe("English (US)");
@@ -109,10 +147,10 @@ describe("SettingsPage", () => {
       if (!languageSelect) {
         throw new Error("Language select missing");
       }
-      setFormValue(languageSelect, "简体中文");
+      setFormValue(languageSelect, "Chinese (Simplified)");
     });
 
-    expect(languageSelect?.value).toBe("简体中文");
+    expect(languageSelect?.value).toBe("Chinese (Simplified)");
     expect(saveButton?.hasAttribute("disabled")).toBe(false);
 
     await act(async () => {
@@ -122,7 +160,7 @@ describe("SettingsPage", () => {
     expect(invokeMock).toHaveBeenCalledWith(
       "save_settings",
       expect.objectContaining({
-        payload: expect.objectContaining({ language: "简体中文" }),
+        payload: expect.objectContaining({ language: "Chinese (Simplified)" }),
       }),
     );
   });
@@ -174,6 +212,167 @@ describe("SettingsPage", () => {
     );
   });
 
+  it("enables provider save when only the fallback selection changes", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const fallbackSelect = view.container.querySelector(
+      'select[aria-label="Fallback Provider"]',
+    ) as HTMLSelectElement | null;
+    const saveProviders = findButton(view.container, "Save Provider Changes");
+
+    expect(fallbackSelect?.value).toBe("provider-local");
+    expect(saveProviders?.hasAttribute("disabled")).toBe(true);
+
+    await act(async () => {
+      if (!fallbackSelect) {
+        throw new Error("Fallback provider select missing");
+      }
+      setFormValue(fallbackSelect, "");
+    });
+
+    expect(saveProviders?.hasAttribute("disabled")).toBe(false);
+
+    await act(async () => {
+      saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_settings",
+      expect.objectContaining({
+        payload: expect.objectContaining({ fallbackProviderId: "" }),
+      }),
+    );
+  });
+
+  it("preserves partially saved providers and retries only the remaining unsaved draft", async () => {
+    let openRouterFailures = 0;
+
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "save_provider") {
+        const provider = args?.provider as
+          | { name: string; id: string; enabled: boolean }
+          | undefined;
+
+        if (provider?.name === "Local Revised") {
+          return {
+            id: provider.id,
+            name: provider.name,
+            baseUrl: "http://localhost:11434/v1",
+            model: "gpt-oss",
+            apiKey: "",
+            local: true,
+            enabled: provider.enabled,
+          };
+        }
+
+        if (provider?.name === "OpenRouter") {
+          openRouterFailures += 1;
+
+          if (openRouterFailures === 1) {
+            throw new Error("save provider failed");
+          }
+
+          return {
+            id: provider.id,
+            name: provider.name,
+            baseUrl: "",
+            model: "",
+            apiKey: "",
+            local: false,
+            enabled: provider.enabled,
+          };
+        }
+      }
+
+      return defaultInvokeImplementation(command, args);
+    });
+
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const initialSaveProviderCalls = invokeMock.mock.calls.filter(
+      ([command]) => command === "save_provider",
+    ).length;
+
+    const existingProviderName = view.container.querySelector(
+      'input[aria-label="Provider name"]',
+    ) as HTMLInputElement | null;
+
+    await act(async () => {
+      if (!existingProviderName) {
+        throw new Error("Existing provider name input missing");
+      }
+      setFormValue(existingProviderName, "Local Revised");
+    });
+
+    const addProviderButton = findButton(view.container, "+ Add Provider");
+    expect(addProviderButton).toBeTruthy();
+
+    await act(async () => {
+      addProviderButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const providerNameInputs = Array.from(
+      view.container.querySelectorAll('input[aria-label="Provider name"]'),
+    ) as HTMLInputElement[];
+    const newestProvider = providerNameInputs[providerNameInputs.length - 1] ?? null;
+
+    await act(async () => {
+      if (!newestProvider) {
+        throw new Error("Newest provider input missing");
+      }
+      setFormValue(newestProvider, "OpenRouter");
+    });
+
+    const saveProviders = findButton(view.container, "Save Provider Changes");
+    expect(saveProviders).toBeTruthy();
+
+    await act(async () => {
+      saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "save provider failed")).toBeTruthy();
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_settings",
+      expect.objectContaining({
+        payload: expect.anything(),
+      }),
+    );
+
+    await act(async () => {
+      saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const saveProviderCalls = invokeMock.mock.calls.filter(
+      ([command]) => command === "save_provider",
+    );
+    const retryCalls = saveProviderCalls.slice(initialSaveProviderCalls + 2);
+
+    expect(retryCalls).toHaveLength(1);
+    expect(retryCalls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        provider: expect.objectContaining({ name: "OpenRouter" }),
+      }),
+    );
+  });
+
   it("switches the expanded section and saves runtime toggles through tauri", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
@@ -193,7 +392,9 @@ describe("SettingsPage", () => {
       ),
     ).toBeTruthy();
 
-    const launchToggle = view.container.querySelector('input[aria-label="Launch at login"]') as HTMLInputElement | null;
+    const launchToggle = view.container.querySelector(
+      'input[aria-label="Launch at login"]',
+    ) as HTMLInputElement | null;
     const saveRuntime = findButton(view.container, "Save Runtime");
 
     expect(launchToggle?.checked).toBe(false);

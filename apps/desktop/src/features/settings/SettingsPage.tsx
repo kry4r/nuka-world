@@ -1,40 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
+import { SectionHeader } from "@/components/ui/SectionHeader";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
-type ProviderRegistryResponse = {
-  count: number;
-  names: string[];
-};
+type SettingsSectionId = "appearance" | "providers" | "runtime";
 
-type SettingsSectionKey = "providers" | "appearance" | "runtime";
-
-type SectionGuide = {
-  focused: string;
-  appliesTo: string;
-  whatYouEdit: string;
-  recommendedDefault: string;
-};
-
-type ProviderEntry = {
-  id: string;
-  name: string;
-  baseUrl: string;
-  model: string;
-  apiKey: string;
-  local: boolean;
-  enabled: boolean;
-};
-
-type ProviderSettings = {
-  providers: ProviderEntry[];
+type SettingsPayload = {
   defaultProviderId: string;
   fallbackProviderId: string;
   connectionChecks: boolean;
-};
-
-type AppearanceSettings = {
   interfaceFont: string;
   messageFont: string;
   textSize: string;
@@ -45,9 +21,6 @@ type AppearanceSettings = {
   motion: string;
   windowChrome: string;
   sidebarDefault: string;
-};
-
-type RuntimeSettings = {
   closeBehavior: string;
   launchAtLogin: boolean;
   trayResident: boolean;
@@ -56,84 +29,51 @@ type RuntimeSettings = {
   notifications: boolean;
 };
 
-type SettingsPayload = Omit<ProviderSettings, "providers"> & AppearanceSettings & RuntimeSettings;
-
-type SettingsSection = {
-  key: SettingsSectionKey;
-  title: string;
-  description: string;
-  summary: string[];
-  guide: SectionGuide;
-  dirty: boolean;
+type ProviderRecord = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  local: boolean;
+  enabled: boolean;
 };
 
-type SettingsActionButtonProps = {
-  children: ReactNode;
-  tone?: "default" | "accent" | "danger";
-  disabled?: boolean;
-  onClick?: () => void | Promise<void>;
-};
-
-type SettingsFieldShellProps = {
+type SettingsSectionDefinition = {
+  id: SettingsSectionId;
   label: string;
-  hint: string;
-  children: ReactNode;
-  full?: boolean;
+  summary: string;
+  guide: string;
 };
 
-type SettingsTextFieldProps = {
-  label: string;
-  hint: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  type?: string;
-  full?: boolean;
-};
+const SECTION_DEFINITIONS: SettingsSectionDefinition[] = [
+  {
+    id: "appearance",
+    label: "Appearance",
+    summary: "Fonts, density, and language defaults for the shell.",
+    guide:
+      "Appearance controls the baseline reading rhythm, voice, and window chrome used across every page.",
+  },
+  {
+    id: "providers",
+    label: "Providers",
+    summary: "Manage fallback policy and saved model endpoints.",
+    guide:
+      "Providers define which runtimes Nuka can reach, which model acts as fallback, and whether connection checks stay active.",
+  },
+  {
+    id: "runtime",
+    label: "Runtime",
+    summary: "Desktop lifecycle, tray behavior, and background services.",
+    guide:
+      "Runtime keeps the desktop shell responsive while longer-lived tasks continue safely.",
+  },
+];
 
-type SettingsSelectFieldProps = {
-  label: string;
-  hint: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-  full?: boolean;
-};
-
-type SettingsToggleFieldProps = {
-  label: string;
-  hint: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-};
-
-type ProviderEditorProps = {
-  settings: ProviderSettings;
-  dirty: boolean;
-  onAddProvider: () => void;
-  onReset: () => void;
-  onSave: () => void | Promise<void>;
-  onUpdate: (updater: (current: ProviderSettings) => ProviderSettings) => void;
-};
-
-type AppearanceEditorProps = {
-  settings: AppearanceSettings;
-  dirty: boolean;
-  onReset: () => void;
-  onSave: () => void | Promise<void>;
-  onUpdate: <Key extends keyof AppearanceSettings>(key: Key, value: AppearanceSettings[Key]) => void;
-};
-
-type RuntimeEditorProps = {
-  settings: RuntimeSettings;
-  dirty: boolean;
-  onReset: () => void;
-  onSave: () => void | Promise<void>;
-  onUpdate: <Key extends keyof RuntimeSettings>(key: Key, value: RuntimeSettings[Key]) => void;
-};
-
-
-const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
+const EMPTY_SETTINGS: SettingsPayload = {
+  defaultProviderId: "",
+  fallbackProviderId: "",
+  connectionChecks: true,
   interfaceFont: "Inter",
   messageFont: "Inter Text",
   textSize: "14 px",
@@ -144,9 +84,6 @@ const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   motion: "Standard",
   windowChrome: "Minimal glass",
   sidebarDefault: "Expanded",
-};
-
-const DEFAULT_RUNTIME_SETTINGS: RuntimeSettings = {
   closeBehavior: "Minimize to tray",
   launchAtLogin: false,
   trayResident: true,
@@ -155,792 +92,749 @@ const DEFAULT_RUNTIME_SETTINGS: RuntimeSettings = {
   notifications: true,
 };
 
-const APPEARANCE_OPTIONS = {
-  interfaceFont: ["Inter", "SF Pro Display", "IBM Plex Sans"],
-  messageFont: ["Inter Text", "System UI", "IBM Plex Sans"],
-  textSize: ["13 px", "14 px", "16 px"],
-  language: ["English (US)", "简体中文", "日本語"],
-  responseLocale: ["Follow session", "English (US)", "简体中文"],
-  timeFormat: ["24-hour", "12-hour"],
-  density: ["Compact", "Comfortable", "Relaxed"],
-  motion: ["Reduced", "Standard", "Lively"],
-  windowChrome: ["Minimal glass", "Native frame", "Hidden titlebar"],
-  sidebarDefault: ["Expanded", "Collapsed"],
-} as const;
+const APPEARANCE_FIELDS: Array<keyof SettingsPayload> = [
+  "interfaceFont",
+  "messageFont",
+  "textSize",
+  "language",
+  "responseLocale",
+  "timeFormat",
+  "density",
+  "motion",
+  "windowChrome",
+  "sidebarDefault",
+];
 
-const RUNTIME_OPTIONS = {
-  closeBehavior: ["Minimize to tray", "Hide window", "Quit app"],
-  logging: ["Quiet", "Standard", "Verbose"],
-} as const;
+const RUNTIME_FIELDS: Array<keyof SettingsPayload> = [
+  "closeBehavior",
+  "launchAtLogin",
+  "trayResident",
+  "backgroundAdapters",
+  "logging",
+  "notifications",
+];
 
-function SettingsActionButton({ children, tone = "default", disabled, onClick }: SettingsActionButtonProps) {
-  return (
-    <button className={`settings-button settings-button--${tone}`} disabled={disabled} onClick={onClick} type="button">
-      {children}
-    </button>
-  );
+const PROVIDER_SCOPE_FIELDS: Array<keyof SettingsPayload> = [
+  "defaultProviderId",
+  "fallbackProviderId",
+  "connectionChecks",
+];
+
+function pickSettingsFields(
+  settings: SettingsPayload,
+  keys: Array<keyof SettingsPayload>,
+): Partial<SettingsPayload> {
+  return Object.fromEntries(keys.map((key) => [key, settings[key]])) as Partial<SettingsPayload>;
 }
 
-function SettingsChip({
-  children,
-  tone = "default",
-}: {
-  children: ReactNode;
-  tone?: "default" | "active" | "soft" | "warning";
-}) {
-  return <span className={`settings-chip settings-chip--${tone}`}>{children}</span>;
+function createProviderDraft(index: number): ProviderRecord {
+  return {
+    id: `provider-draft-${index + 1}`,
+    name: "New Provider",
+    baseUrl: "",
+    model: "",
+    apiKey: "",
+    local: false,
+    enabled: false,
+  };
 }
 
-function SettingsFieldShell({ children, full, hint, label }: SettingsFieldShellProps) {
-  return (
-    <label className={`settings-form-field${full ? " settings-form-field--full" : ""}`}>
-      <div className="settings-form-field__copy">
-        <span className="settings-form-field__label">{label}</span>
-        <span className="settings-form-field__hint">{hint}</span>
-      </div>
-      {children}
-    </label>
-  );
+function providerRuntimeLabel(provider: ProviderRecord) {
+  return provider.local ? "Local runtime" : "Remote provider";
 }
 
-function SettingsTextField({ full, hint, label, onChange, placeholder, type = "text", value }: SettingsTextFieldProps) {
-  return (
-    <SettingsFieldShell full={full} hint={hint} label={label}>
-      <input
-        aria-label={label}
-        className="settings-input"
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        type={type}
-        value={value}
-      />
-    </SettingsFieldShell>
-  );
-}
-
-function SettingsSelectField({ full, hint, label, onChange, options, value }: SettingsSelectFieldProps) {
-  return (
-    <SettingsFieldShell full={full} hint={hint} label={label}>
-      <select aria-label={label} className="settings-select" onChange={(event) => onChange(event.target.value)} value={value}>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </SettingsFieldShell>
-  );
-}
-
-function SettingsToggleField({ checked, hint, label, onChange }: SettingsToggleFieldProps) {
-  return (
-    <label className="settings-toggle-row">
-      <div className="settings-form-field__copy">
-        <span className="settings-form-field__label">{label}</span>
-        <span className="settings-form-field__hint">{hint}</span>
-      </div>
-      <input aria-label={label} checked={checked} className="settings-checkbox" onChange={(event) => onChange(event.target.checked)} type="checkbox" />
-    </label>
-  );
-}
-
-function SettingsOptionCard({ children, description, title }: { children: ReactNode; description: string; title: string }) {
-  return (
-    <section className="settings-option-card">
-      <div className="settings-option-card__header">
-        <h3>{title}</h3>
-        <p>{description}</p>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function ProviderEditor({ dirty, onAddProvider, onReset, onSave, onUpdate, settings }: ProviderEditorProps) {
-  const activeProviders = settings.providers.filter((provider) => provider.enabled);
-  const providerOptions = activeProviders.map((provider) => provider.name || "Untitled provider");
-  const defaultProviderName = settings.providers.find((provider) => provider.id === settings.defaultProviderId)?.name ?? providerOptions[0] ?? "Not configured";
-  const fallbackProviderName = settings.providers.find((provider) => provider.id === settings.fallbackProviderId)?.name ?? providerOptions[1] ?? providerOptions[0] ?? "Add a fallback";
+function sameProviderRecord(
+  left: ProviderRecord | undefined,
+  right: ProviderRecord | undefined,
+) {
+  if (!left || !right) {
+    return false;
+  }
 
   return (
-    <div className="settings-panel__body">
-      <SettingsOptionCard description="Default routing, fallback behavior, and connection checks are editable here." title="Routing Defaults">
-        <div className="settings-form-grid">
-          <SettingsSelectField
-            hint="Which provider chat, agents, and workflows prefer by default."
-            label="Default provider"
-            onChange={(value) =>
-              onUpdate((current) => ({
-                ...current,
-                defaultProviderId:
-                  current.providers.find((provider) => provider.name === value)?.id ?? current.defaultProviderId,
-              }))
-            }
-            options={providerOptions}
-            value={defaultProviderName}
-          />
-          <SettingsSelectField
-            hint="Fallback kicks in when the primary provider is unavailable."
-            label="Fallback provider"
-            onChange={(value) =>
-              onUpdate((current) => ({
-                ...current,
-                fallbackProviderId:
-                  current.providers.find((provider) => provider.name === value)?.id ?? current.fallbackProviderId,
-              }))
-            }
-            options={providerOptions}
-            value={fallbackProviderName}
-          />
-        </div>
-        <SettingsToggleField
-          checked={settings.connectionChecks}
-          hint="Validate keys, host reachability, and model availability before saving defaults."
-          label="Connection checks"
-          onChange={(checked) => onUpdate((current) => ({ ...current, connectionChecks: checked }))}
-        />
-      </SettingsOptionCard>
-
-      <SettingsOptionCard description="Add, rename, and tune each provider entry without leaving Settings." title="Provider Entries">
-        <div className="settings-provider-list">
-          {settings.providers.map((provider, index) => (
-            <section className="settings-provider-card" key={provider.id}>
-              <div className="settings-provider-card__header">
-                <div className="settings-provider-card__title">
-                  <strong>{provider.name || `Provider ${index + 1}`}</strong>
-                  <span>{provider.local ? "Local runtime" : "Remote provider"}</span>
-                </div>
-                <SettingsActionButton
-                  onClick={() =>
-                    onUpdate((current) => {
-                      const providers = current.providers.filter((entry) => entry.id !== provider.id);
-                      const nextDefault = providers.some((entry) => entry.id === current.defaultProviderId)
-                        ? current.defaultProviderId
-                        : providers[0]?.id ?? "";
-                      const nextFallback = providers.some((entry) => entry.id === current.fallbackProviderId)
-                        ? current.fallbackProviderId
-                        : providers[1]?.id ?? providers[0]?.id ?? "";
-
-                      return {
-                        ...current,
-                        providers,
-                        defaultProviderId: nextDefault,
-                        fallbackProviderId: nextFallback,
-                      };
-                    })
-                  }
-                  tone="danger"
-                >
-                  Remove
-                </SettingsActionButton>
-              </div>
-
-              <div className="settings-form-grid">
-                <SettingsTextField
-                  hint="Friendly label shown in routing and summaries."
-                  label="Provider name"
-                  onChange={(value) =>
-                    onUpdate((current) => ({
-                      ...current,
-                      providers: current.providers.map((entry) =>
-                        entry.id === provider.id ? { ...entry, name: value } : entry,
-                      ),
-                    }))
-                  }
-                  value={provider.name}
-                />
-                <SettingsTextField
-                  hint="Base endpoint used for requests and health checks."
-                  label="Base URL"
-                  onChange={(value) =>
-                    onUpdate((current) => ({
-                      ...current,
-                      providers: current.providers.map((entry) =>
-                        entry.id === provider.id ? { ...entry, baseUrl: value } : entry,
-                      ),
-                    }))
-                  }
-                  value={provider.baseUrl}
-                />
-                <SettingsTextField
-                  hint="Preferred model or deployment name for this provider."
-                  label="Default model"
-                  onChange={(value) =>
-                    onUpdate((current) => ({
-                      ...current,
-                      providers: current.providers.map((entry) =>
-                        entry.id === provider.id ? { ...entry, model: value } : entry,
-                      ),
-                    }))
-                  }
-                  value={provider.model}
-                />
-                <SettingsTextField
-                  hint="Stored locally in the browser layer for now; replace with secure storage later."
-                  label="API key"
-                  onChange={(value) =>
-                    onUpdate((current) => ({
-                      ...current,
-                      providers: current.providers.map((entry) =>
-                        entry.id === provider.id ? { ...entry, apiKey: value } : entry,
-                      ),
-                    }))
-                  }
-                  placeholder="sk-..."
-                  type="password"
-                  value={provider.apiKey}
-                />
-              </div>
-
-              <div className="settings-provider-card__toggles">
-                <SettingsToggleField
-                  checked={provider.local}
-                  hint="Marks this provider as a local runtime option."
-                  label="Local runtime"
-                  onChange={(checked) =>
-                    onUpdate((current) => ({
-                      ...current,
-                      providers: current.providers.map((entry) =>
-                        entry.id === provider.id ? { ...entry, local: checked } : entry,
-                      ),
-                    }))
-                  }
-                />
-                <SettingsToggleField
-                  checked={provider.enabled}
-                  hint="Disabled providers stay visible but do not appear in routing defaults."
-                  label="Enabled"
-                  onChange={(checked) =>
-                    onUpdate((current) => ({
-                      ...current,
-                      providers: current.providers.map((entry) =>
-                        entry.id === provider.id ? { ...entry, enabled: checked } : entry,
-                      ),
-                    }))
-                  }
-                />
-              </div>
-            </section>
-          ))}
-        </div>
-      </SettingsOptionCard>
-
-      <div className="settings-panel__footer">
-        <SettingsActionButton onClick={onAddProvider}>+ Add Provider</SettingsActionButton>
-        <SettingsActionButton disabled={!dirty} onClick={onReset}>
-          Reset Providers
-        </SettingsActionButton>
-        <SettingsActionButton disabled={!dirty} onClick={onSave} tone="accent">
-          Save Provider Changes
-        </SettingsActionButton>
-      </div>
-    </div>
-  );
-}
-
-function AppearanceEditor({ dirty, onReset, onSave, onUpdate, settings }: AppearanceEditorProps) {
-  return (
-    <div className="settings-panel__body">
-      <div className="settings-option-grid">
-        <SettingsOptionCard description="Common typography settings for the shell, transcript, and inspector panels." title="Reading & Type">
-          <div className="settings-form-grid">
-            <SettingsSelectField
-              hint="Used in navigation, cards, section headers, and buttons."
-              label="Interface font"
-              onChange={(value) => onUpdate("interfaceFont", value)}
-              options={[...APPEARANCE_OPTIONS.interfaceFont]}
-              value={settings.interfaceFont}
-            />
-            <SettingsSelectField
-              hint="Used in message bubbles, notes, and generated content blocks."
-              label="Message font"
-              onChange={(value) => onUpdate("messageFont", value)}
-              options={[...APPEARANCE_OPTIONS.messageFont]}
-              value={settings.messageFont}
-            />
-            <SettingsSelectField
-              hint="Base font size across the app shell and conversation view."
-              label="Text size"
-              onChange={(value) => onUpdate("textSize", value)}
-              options={[...APPEARANCE_OPTIONS.textSize]}
-              value={settings.textSize}
-            />
-          </div>
-        </SettingsOptionCard>
-
-        <SettingsOptionCard description="Language and locale defaults for the app chrome and generated output." title="Localization">
-          <div className="settings-form-grid">
-            <SettingsSelectField
-              hint="Primary language for labels, actions, and system copy."
-              label="Language"
-              onChange={(value) => onUpdate("language", value)}
-              options={[...APPEARANCE_OPTIONS.language]}
-              value={settings.language}
-            />
-            <SettingsSelectField
-              hint="Whether the model should follow the current session or a fixed locale."
-              label="Response locale"
-              onChange={(value) => onUpdate("responseLocale", value)}
-              options={[...APPEARANCE_OPTIONS.responseLocale]}
-              value={settings.responseLocale}
-            />
-            <SettingsSelectField
-              hint="Controls timestamp formatting in chat, tasks, and logs."
-              label="Time format"
-              onChange={(value) => onUpdate("timeFormat", value)}
-              options={[...APPEARANCE_OPTIONS.timeFormat]}
-              value={settings.timeFormat}
-            />
-          </div>
-        </SettingsOptionCard>
-
-        <SettingsOptionCard description="Calibrate comfort, motion, and sidebar behavior for daily use." title="Window & Motion">
-          <div className="settings-form-grid">
-            <SettingsSelectField
-              hint="Changes spacing and surface density across the app."
-              label="Density"
-              onChange={(value) => onUpdate("density", value)}
-              options={[...APPEARANCE_OPTIONS.density]}
-              value={settings.density}
-            />
-            <SettingsSelectField
-              hint="Controls the intensity of transitions and panel motion."
-              label="Motion"
-              onChange={(value) => onUpdate("motion", value)}
-              options={[...APPEARANCE_OPTIONS.motion]}
-              value={settings.motion}
-            />
-            <SettingsSelectField
-              hint="Desktop titlebar presentation for the Tauri shell."
-              label="Window chrome"
-              onChange={(value) => onUpdate("windowChrome", value)}
-              options={[...APPEARANCE_OPTIONS.windowChrome]}
-              value={settings.windowChrome}
-            />
-            <SettingsSelectField
-              hint="Whether navigation should start expanded or collapsed."
-              label="Sidebar default"
-              onChange={(value) => onUpdate("sidebarDefault", value)}
-              options={[...APPEARANCE_OPTIONS.sidebarDefault]}
-              value={settings.sidebarDefault}
-            />
-          </div>
-        </SettingsOptionCard>
-      </div>
-
-      <div className="settings-panel__footer">
-        <SettingsActionButton disabled={!dirty} onClick={onReset}>
-          Reset Appearance
-        </SettingsActionButton>
-        <SettingsActionButton disabled={!dirty} onClick={onSave} tone="accent">
-          Save Appearance
-        </SettingsActionButton>
-      </div>
-    </div>
-  );
-}
-
-function RuntimeEditor({ dirty, onReset, onSave, onUpdate, settings }: RuntimeEditorProps) {
-  return (
-    <div className="settings-panel__body">
-      <SettingsOptionCard description="Decide what the desktop shell does when the window closes or the user signs in." title="Shell Lifecycle">
-        <div className="settings-form-grid">
-          <SettingsSelectField
-            hint="Controls whether close hides the app, minimizes to tray, or fully exits."
-            label="Close behavior"
-            onChange={(value) => onUpdate("closeBehavior", value)}
-            options={[...RUNTIME_OPTIONS.closeBehavior]}
-            value={settings.closeBehavior}
-          />
-        </div>
-        <div className="settings-provider-card__toggles">
-          <SettingsToggleField
-            checked={settings.launchAtLogin}
-            hint="Launch the Tauri shell automatically after login."
-            label="Launch at login"
-            onChange={(checked) => onUpdate("launchAtLogin", checked)}
-          />
-          <SettingsToggleField
-            checked={settings.trayResident}
-            hint="Keep the app alive in the tray when the main window hides."
-            label="Tray resident"
-            onChange={(checked) => onUpdate("trayResident", checked)}
-          />
-        </div>
-      </SettingsOptionCard>
-
-      <SettingsOptionCard description="Background services, diagnostics, and desktop prompts stay configurable here." title="Background Work">
-        <div className="settings-provider-card__toggles">
-          <SettingsToggleField
-            checked={settings.backgroundAdapters}
-            hint="Lets connectors and integrations keep running in the background."
-            label="Background adapters"
-            onChange={(checked) => onUpdate("backgroundAdapters", checked)}
-          />
-          <SettingsToggleField
-            checked={settings.notifications}
-            hint="Show lightweight desktop notifications for important events."
-            label="Notifications"
-            onChange={(checked) => onUpdate("notifications", checked)}
-          />
-        </div>
-        <div className="settings-form-grid">
-          <SettingsSelectField
-            hint="Controls how much diagnostic data the UI stores locally."
-            label="Logging"
-            onChange={(value) => onUpdate("logging", value)}
-            options={[...RUNTIME_OPTIONS.logging]}
-            value={settings.logging}
-          />
-        </div>
-      </SettingsOptionCard>
-
-      <div className="settings-panel__footer">
-        <SettingsActionButton disabled={!dirty} onClick={onReset}>
-          Reset Runtime
-        </SettingsActionButton>
-        <SettingsActionButton disabled={!dirty} onClick={onSave} tone="accent">
-          Save Runtime
-        </SettingsActionButton>
-      </div>
-    </div>
+    left.id === right.id &&
+    left.name === right.name &&
+    left.baseUrl === right.baseUrl &&
+    left.model === right.model &&
+    left.apiKey === right.apiKey &&
+    left.local === right.local &&
+    left.enabled === right.enabled
   );
 }
 
 export function SettingsPage() {
-  const [registry, setRegistry] = useState<ProviderRegistryResponse>({ count: 0, names: [] });
-  const [activeSection, setActiveSection] = useState<SettingsSectionKey>("appearance");
-  const [providerSettings, setProviderSettings] = useState<ProviderSettings>(() => emptyProviderSettings());
-  const [savedProviderSettings, setSavedProviderSettings] = useState<ProviderSettings>(() => emptyProviderSettings());
-  const [appearanceSettings, setAppearanceSettings] = useState<AppearanceSettings>(DEFAULT_APPEARANCE_SETTINGS);
-  const [savedAppearanceSettings, setSavedAppearanceSettings] = useState<AppearanceSettings>(DEFAULT_APPEARANCE_SETTINGS);
-  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings>(DEFAULT_RUNTIME_SETTINGS);
-  const [savedRuntimeSettings, setSavedRuntimeSettings] = useState<RuntimeSettings>(DEFAULT_RUNTIME_SETTINGS);
+  const [activeSection, setActiveSection] =
+    useState<SettingsSectionId>("appearance");
+  const [settings, setSettings] = useState<SettingsPayload>(EMPTY_SETTINGS);
+  const [initialSettings, setInitialSettings] =
+    useState<SettingsPayload>(EMPTY_SETTINGS);
+  const [providers, setProviders] = useState<ProviderRecord[]>([]);
+  const [initialProviders, setInitialProviders] = useState<ProviderRecord[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isSavingAppearance, setIsSavingAppearance] = useState(false);
+  const [isSavingProviders, setIsSavingProviders] = useState(false);
+  const [isSavingRuntime, setIsSavingRuntime] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
 
     void Promise.all([
-      invoke<ProviderEntry[]>("list_providers"),
+      invoke<ProviderRecord[]>("list_providers"),
       invoke<SettingsPayload>("load_settings"),
     ])
-      .then(([providers, payload]) => {
+      .then(([loadedProviders, loadedSettings]) => {
         if (!alive) {
           return;
         }
 
-        const nextProviderSettings = mergeLoadedProviderSettings(providers, payload);
-        const nextAppearanceSettings = extractAppearanceSettings(payload);
-        const nextRuntimeSettings = extractRuntimeSettings(payload);
-
-        setRegistry({ count: providers.length, names: providers.map((provider) => provider.name) });
-        setProviderSettings(nextProviderSettings);
-        setSavedProviderSettings(nextProviderSettings);
-        setAppearanceSettings(nextAppearanceSettings);
-        setSavedAppearanceSettings(nextAppearanceSettings);
-        setRuntimeSettings(nextRuntimeSettings);
-        setSavedRuntimeSettings(nextRuntimeSettings);
+        setProviders(loadedProviders);
+        setInitialProviders(loadedProviders);
+        setSettings(loadedSettings);
+        setInitialSettings(loadedSettings);
+        setError(null);
+        setIsLoaded(true);
       })
-      .catch(() => undefined);
+      .catch((caughtError) => {
+        if (!alive) {
+          return;
+        }
+
+        const message =
+          caughtError instanceof Error ? caughtError.message : String(caughtError);
+        setError(message);
+        setIsLoaded(true);
+      });
 
     return () => {
       alive = false;
     };
   }, []);
 
-  const providerDirty = useMemo(
-    () => serializeState(providerSettings) !== serializeState(savedProviderSettings),
-    [providerSettings, savedProviderSettings],
-  );
+  const activeDefinition =
+    SECTION_DEFINITIONS.find((section) => section.id === activeSection) ??
+    SECTION_DEFINITIONS[0];
+
   const appearanceDirty = useMemo(
-    () => serializeState(appearanceSettings) !== serializeState(savedAppearanceSettings),
-    [appearanceSettings, savedAppearanceSettings],
+    () =>
+      JSON.stringify(pickSettingsFields(settings, APPEARANCE_FIELDS)) !==
+      JSON.stringify(pickSettingsFields(initialSettings, APPEARANCE_FIELDS)),
+    [initialSettings, settings],
   );
+
   const runtimeDirty = useMemo(
-    () => serializeState(runtimeSettings) !== serializeState(savedRuntimeSettings),
-    [runtimeSettings, savedRuntimeSettings],
+    () =>
+      JSON.stringify(pickSettingsFields(settings, RUNTIME_FIELDS)) !==
+      JSON.stringify(pickSettingsFields(initialSettings, RUNTIME_FIELDS)),
+    [initialSettings, settings],
   );
 
-  const providerSummary = useMemo(() => {
-    const defaultProvider =
-      providerSettings.providers.find((provider) => provider.id === providerSettings.defaultProviderId)?.name ??
-      "Not configured";
-    const fallbackProvider =
-      providerSettings.providers.find((provider) => provider.id === providerSettings.fallbackProviderId)?.name ??
-      "Add a fallback";
+  const providersDirty = useMemo(
+    () => JSON.stringify(providers) !== JSON.stringify(initialProviders),
+    [initialProviders, providers],
+  );
 
-    return [
-      `${providerSettings.providers.length} configured`,
-      `${defaultProvider} default`,
-      `${fallbackProvider} fallback`,
-    ];
-  }, [providerSettings]);
+  const providerScopeDirty = useMemo(
+    () =>
+      JSON.stringify(pickSettingsFields(settings, PROVIDER_SCOPE_FIELDS)) !==
+      JSON.stringify(pickSettingsFields(initialSettings, PROVIDER_SCOPE_FIELDS)),
+    [initialSettings, settings],
+  );
 
-  const appearanceSummary = [
-    appearanceSettings.interfaceFont,
-    appearanceSettings.textSize,
-    appearanceSettings.language,
-    appearanceSettings.density,
-  ];
-  const runtimeSummary = [
-    runtimeSettings.trayResident ? "Tray enabled" : "Tray off",
-    runtimeSettings.launchAtLogin ? "Launch on" : "Launch off",
-    runtimeSettings.backgroundAdapters ? "Adapters background" : "Adapters manual",
-  ];
+  const updateSetting = <K extends keyof SettingsPayload>(
+    key: K,
+    value: SettingsPayload[K],
+  ) => {
+    setSettings((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
 
-  const sections: SettingsSection[] = [
-    {
-      key: "providers",
-      title: "Providers",
-      description: "Model access, routing, and fallback behavior live here now.",
-      summary: providerSummary,
-      dirty: providerDirty,
-      guide: {
-        focused: "Providers connects chat, agents, workflows, and ingestion to the right model stack.",
-        appliesTo: "Chat, Agents, Workflows, Knowledge ingestion.",
-        whatYouEdit: "Keys, base URLs, defaults, routing, model checks, and fallbacks.",
-        recommendedDefault: "Keep one primary provider and one fallback provider enabled.",
-      },
-    },
-    {
-      key: "appearance",
-      title: "Appearance",
-      description: "Typography, language, density, motion, and chrome defaults.",
-      summary: appearanceSummary,
-      dirty: appearanceDirty,
-      guide: {
-        focused: "Appearance shapes reading comfort, localization, and the overall desktop tone.",
-        appliesTo: "Chat, workflow panes, sidebars, shared controls, and app chrome.",
-        whatYouEdit: "Fonts, text size, language, density, window chrome, motion, and sidebar defaults.",
-        recommendedDefault: "Use Inter, 14 px text, English (US), and comfortable density.",
-      },
-    },
-    {
-      key: "runtime",
-      title: "Runtime",
-      description: "Tray behavior, startup policy, adapters, and diagnostics.",
-      summary: runtimeSummary,
-      dirty: runtimeDirty,
-      guide: {
-        focused: "Runtime keeps the desktop shell responsive while longer-lived tasks continue safely.",
-        appliesTo: "Tray behavior, startup lifecycle, background connectors, and local diagnostics.",
-        whatYouEdit: "Close policy, startup behavior, tray residency, background adapters, and logging.",
-        recommendedDefault: "Enable tray residency, keep launch at login off, and keep logging concise.",
-      },
-    },
-  ];
-
-  const activeSectionConfig = sections.find((section) => section.key === activeSection) ?? sections[1];
+  const updateProvider = <K extends keyof ProviderRecord>(
+    index: number,
+    key: K,
+    value: ProviderRecord[K],
+  ) => {
+    setProviders((current) =>
+      current.map((provider, providerIndex) =>
+        providerIndex === index
+          ? {
+              ...provider,
+              [key]: value,
+              ...(key === "baseUrl"
+                ? {
+                    local:
+                      String(value).toLowerCase().includes("localhost") ||
+                      String(value).includes("127.0.0.1"),
+                  }
+                : {}),
+            }
+          : provider,
+      ),
+    );
+  };
 
   const handleAddProvider = () => {
+    setProviders((current) => [...current, createProviderDraft(current.length)]);
     setActiveSection("providers");
-    setProviderSettings((current) => {
-      const nextIndex = current.providers.length + 1;
-
-      return {
-        ...current,
-        providers: [...current.providers, createProviderDraft(nextIndex)],
-      };
-    });
   };
 
-  const saveProviders = async () => {
-    const providers = await Promise.all(
-      providerSettings.providers.map((provider) => invoke<ProviderEntry>("save_provider", { provider })),
-    );
-    const payload = await invoke<SettingsPayload>("save_settings", {
-      payload: buildSettingsPayload({ ...providerSettings, providers }, appearanceSettings, runtimeSettings),
-    });
-    const nextProviderSettings = mergeLoadedProviderSettings(providers, payload);
+  const handleSaveSettings = async (
+    setSaving: (value: boolean) => void,
+  ) => {
+    setSaving(true);
+    setError(null);
 
-    setRegistry({ count: providers.length, names: providers.map((provider) => provider.name) });
-    setProviderSettings(nextProviderSettings);
-    setSavedProviderSettings(nextProviderSettings);
+    try {
+      const saved = await invoke<SettingsPayload>("save_settings", {
+        payload: settings,
+      });
+      setSettings(saved);
+      setInitialSettings(saved);
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(message);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const saveAppearance = async () => {
-    const payload = await invoke<SettingsPayload>("save_settings", {
-      payload: buildSettingsPayload(providerSettings, appearanceSettings, runtimeSettings),
-    });
-    const nextAppearanceSettings = extractAppearanceSettings(payload);
+  const handleSaveProviders = async () => {
+    setIsSavingProviders(true);
+    setError(null);
 
-    setAppearanceSettings(nextAppearanceSettings);
-    setSavedAppearanceSettings(nextAppearanceSettings);
-  };
+    const nextProviders = [...providers];
+    const nextInitialProviders = [...initialProviders];
 
-  const saveRuntime = async () => {
-    const payload = await invoke<SettingsPayload>("save_settings", {
-      payload: buildSettingsPayload(providerSettings, appearanceSettings, runtimeSettings),
-    });
-    const nextRuntimeSettings = extractRuntimeSettings(payload);
+    try {
+      for (const [index, provider] of providers.entries()) {
+        if (sameProviderRecord(provider, initialProviders[index])) {
+          continue;
+        }
 
-    setRuntimeSettings(nextRuntimeSettings);
-    setSavedRuntimeSettings(nextRuntimeSettings);
+        const savedProvider = await invoke<ProviderRecord>("save_provider", {
+          provider,
+        });
+        nextProviders[index] = savedProvider;
+        nextInitialProviders[index] = savedProvider;
+      }
+
+      const savedSettings = await invoke<SettingsPayload>("save_settings", {
+        payload: settings,
+      });
+
+      setProviders(nextProviders);
+      setInitialProviders(nextInitialProviders);
+      setSettings(savedSettings);
+      setInitialSettings(savedSettings);
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setProviders(nextProviders);
+      setInitialProviders(nextInitialProviders);
+      setError(message);
+    } finally {
+      setIsSavingProviders(false);
+    }
   };
 
   return (
     <div className="page-layout settings-page">
+      <SectionHeader
+        meta="Providers, shell defaults, and runtime policy"
+        status="Local Settings"
+        tag="Settings"
+        title="Application Settings"
+      />
+
       <div className="page-layout__body">
-        <div className="page-layout__main settings-main">
-          <Card
-            description="One settings hub for providers, typography, localization, and desktop runtime defaults."
-            title="Application Settings"
-            tone="accent"
-          />
+        <div
+          className="page-layout__main settings-main"
+          style={{
+            display: "grid",
+            gap: "1rem",
+            gridTemplateColumns: "minmax(14rem, 16rem) minmax(0, 1fr)",
+          }}
+        >
+          <aside
+            aria-label="Settings section navigation"
+            data-testid="settings-section-nav"
+            style={{ display: "grid", gap: "0.85rem", alignContent: "start" }}
+          >
+            {SECTION_DEFINITIONS.map((section) => {
+              const isActive = section.id === activeSection;
 
-          {sections.map((section) => {
-            const isActive = section.key === activeSection;
+              return (
+                <section
+                  className={`settings-panel${isActive ? " is-active" : ""}`}
+                  key={section.id}
+                >
+                  <div className="settings-panel__top">
+                    <button
+                      className="settings-panel__trigger"
+                      onClick={() => setActiveSection(section.id)}
+                      type="button"
+                    >
+                      <div className="settings-panel__copy">
+                        <h2>{section.label}</h2>
+                        <p>{section.summary}</p>
+                      </div>
+                    </button>
+                    <StatusBadge tone={isActive ? "accent" : "soft"}>
+                      {isActive ? "Open" : "View"}
+                    </StatusBadge>
+                  </div>
+                </section>
+              );
+            })}
+          </aside>
 
-            return (
-              <section className={`settings-panel${isActive ? " is-active" : ""}`} key={section.key}>
-                <div className="settings-panel__top">
-                  <button
-                    aria-expanded={isActive}
-                    className="settings-panel__trigger"
-                    onClick={() => setActiveSection(section.key)}
-                    type="button"
-                  >
-                    <div className="settings-panel__copy">
-                      <h2>{section.title}</h2>
-                      <p>{section.description}</p>
-                    </div>
-                  </button>
+          <section
+            aria-label="Settings control surface"
+            data-testid="settings-control-surface"
+            style={{ display: "grid", gap: "1rem", alignContent: "start" }}
+          >
+            <Card
+              description={activeDefinition.summary}
+              title={activeDefinition.label}
+              tone="accent"
+            >
+              <div
+                className="settings-panel__actions"
+                style={{ marginTop: "1rem", justifyContent: "space-between" }}
+              >
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                  <StatusBadge tone="soft">{providers.length} configured</StatusBadge>
+                  <StatusBadge tone="soft">
+                    {settings.defaultProviderId || "No default provider"}
+                  </StatusBadge>
+                </div>
+                <button
+                  className="settings-button settings-button--accent"
+                  onClick={handleAddProvider}
+                  type="button"
+                >
+                  + Add Provider
+                </button>
+              </div>
+            </Card>
 
-                  <div className="settings-panel__actions">
-                    {section.key === "providers" ? <SettingsActionButton onClick={handleAddProvider}>+ Add Provider</SettingsActionButton> : null}
-                    {section.dirty ? <SettingsChip tone="warning">Unsaved</SettingsChip> : <SettingsChip tone="soft">Saved</SettingsChip>}
-                    <SettingsChip tone={isActive ? "active" : "default"}>{isActive ? "Active" : "Collapsed"}</SettingsChip>
+            {error ? <Card description={error} title="Settings Error" tone="soft" /> : null}
+            {!isLoaded ? <Card description="Loading local settings..." title="Working" /> : null}
+
+            {isLoaded && activeSection === "appearance" ? (
+              <Card
+                description="Set the reading tone, language, and shell density for the desktop client."
+                title="Appearance Defaults"
+                tone="soft"
+              >
+                <div className="settings-option-grid">
+                  <div className="settings-form-grid">
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Interface Font</span>
+                      <select
+                        aria-label="Interface Font"
+                        className="settings-select"
+                        onChange={(event) =>
+                          updateSetting("interfaceFont", event.target.value)
+                        }
+                        value={settings.interfaceFont}
+                      >
+                        <option value="Inter">Inter</option>
+                        <option value="IBM Plex Sans">IBM Plex Sans</option>
+                        <option value="Suisse Intl">Suisse Intl</option>
+                      </select>
+                    </label>
+
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Message Font</span>
+                      <select
+                        aria-label="Message Font"
+                        className="settings-select"
+                        onChange={(event) =>
+                          updateSetting("messageFont", event.target.value)
+                        }
+                        value={settings.messageFont}
+                      >
+                        <option value="Inter Text">Inter Text</option>
+                        <option value="IBM Plex Sans">IBM Plex Sans</option>
+                        <option value="Geist">Geist</option>
+                      </select>
+                    </label>
+
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Language</span>
+                      <select
+                        aria-label="Language"
+                        className="settings-select"
+                        onChange={(event) => updateSetting("language", event.target.value)}
+                        value={settings.language}
+                      >
+                        <option value="English (US)">English (US)</option>
+                        <option value="Chinese (Simplified)">
+                          Chinese (Simplified)
+                        </option>
+                        <option value="Japanese">Japanese</option>
+                      </select>
+                    </label>
+
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Text Size</span>
+                      <select
+                        aria-label="Text Size"
+                        className="settings-select"
+                        onChange={(event) => updateSetting("textSize", event.target.value)}
+                        value={settings.textSize}
+                      >
+                        <option value="14 px">14 px</option>
+                        <option value="15 px">15 px</option>
+                        <option value="16 px">16 px</option>
+                      </select>
+                    </label>
+
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Density</span>
+                      <select
+                        aria-label="Density"
+                        className="settings-select"
+                        onChange={(event) => updateSetting("density", event.target.value)}
+                        value={settings.density}
+                      >
+                        <option value="Comfortable">Comfortable</option>
+                        <option value="Compact">Compact</option>
+                      </select>
+                    </label>
+
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Window Chrome</span>
+                      <select
+                        aria-label="Window Chrome"
+                        className="settings-select"
+                        onChange={(event) =>
+                          updateSetting("windowChrome", event.target.value)
+                        }
+                        value={settings.windowChrome}
+                      >
+                        <option value="Minimal glass">Minimal glass</option>
+                        <option value="System native">System native</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="settings-panel__footer">
+                    <button
+                      className="settings-button settings-button--accent"
+                      disabled={!appearanceDirty || isSavingAppearance}
+                      onClick={() => void handleSaveSettings(setIsSavingAppearance)}
+                      type="button"
+                    >
+                      {isSavingAppearance ? "Saving..." : "Save Appearance"}
+                    </button>
                   </div>
                 </div>
+              </Card>
+            ) : null}
 
-                <div className="settings-panel__summary">
-                  {section.summary.map((item) => (
-                    <SettingsChip key={`${section.key}-${item}`}>{item}</SettingsChip>
-                  ))}
+            {isLoaded && activeSection === "providers" ? (
+              <Card
+                description="Choose default routing and maintain every model endpoint from one surface."
+                title="Provider Registry"
+                tone="soft"
+              >
+                <div className="settings-option-grid">
+                  <div className="settings-form-grid">
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Default Provider</span>
+                      <select
+                        aria-label="Default Provider"
+                        className="settings-select"
+                        onChange={(event) =>
+                          updateSetting("defaultProviderId", event.target.value)
+                        }
+                        value={settings.defaultProviderId}
+                      >
+                        <option value="">No default provider</option>
+                        {providers.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Fallback Provider</span>
+                      <select
+                        aria-label="Fallback Provider"
+                        className="settings-select"
+                        onChange={(event) =>
+                          updateSetting("fallbackProviderId", event.target.value)
+                        }
+                        value={settings.fallbackProviderId}
+                      >
+                        <option value="">No fallback provider</option>
+                        {providers.map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="settings-provider-list">
+                    {providers.map((provider, index) => (
+                      <section className="settings-provider-card" key={provider.id}>
+                        <div className="settings-provider-card__header">
+                          <div className="settings-provider-card__title">
+                            <strong>{provider.name || "Untitled Provider"}</strong>
+                            <span>{providerRuntimeLabel(provider)}</span>
+                          </div>
+                          <div className="settings-panel__summary">
+                            <StatusBadge tone="soft">
+                              {provider.local ? "Local runtime" : "Remote provider"}
+                            </StatusBadge>
+                            <StatusBadge
+                              data-testid="provider-status-badge"
+                              tone={provider.enabled ? "accent" : "warning"}
+                            >
+                              {provider.enabled ? "Enabled" : "Disabled"}
+                            </StatusBadge>
+                          </div>
+                        </div>
+
+                        <div className="settings-form-grid">
+                          <label className="settings-form-field">
+                            <span className="settings-form-field__label">Provider name</span>
+                            <input
+                              aria-label="Provider name"
+                              className="settings-input"
+                              onChange={(event) =>
+                                updateProvider(index, "name", event.target.value)
+                              }
+                              value={provider.name}
+                            />
+                          </label>
+
+                          <label className="settings-form-field">
+                            <span className="settings-form-field__label">Model</span>
+                            <input
+                              aria-label="Provider model"
+                              className="settings-input"
+                              onChange={(event) =>
+                                updateProvider(index, "model", event.target.value)
+                              }
+                              value={provider.model}
+                            />
+                          </label>
+
+                          <label className="settings-form-field settings-form-field--full">
+                            <span className="settings-form-field__label">Base URL</span>
+                            <input
+                              aria-label="Provider base URL"
+                              className="settings-input"
+                              onChange={(event) =>
+                                updateProvider(index, "baseUrl", event.target.value)
+                              }
+                              value={provider.baseUrl}
+                            />
+                          </label>
+
+                          <label className="settings-form-field settings-form-field--full">
+                            <span className="settings-form-field__label">API Key</span>
+                            <input
+                              aria-label="Provider API Key"
+                              className="settings-input"
+                              onChange={(event) =>
+                                updateProvider(index, "apiKey", event.target.value)
+                              }
+                              type="password"
+                              value={provider.apiKey}
+                            />
+                          </label>
+                        </div>
+
+                        <label className="settings-toggle-row">
+                          <span className="settings-form-field__copy">
+                            <strong>Enabled</strong>
+                            <span className="settings-form-field__hint">
+                              Disabled providers stay in the registry but are not selected for new work.
+                            </span>
+                          </span>
+                          <input
+                            aria-label={`Enable ${provider.name}`}
+                            checked={provider.enabled}
+                            className="settings-checkbox"
+                            onChange={(event) =>
+                              updateProvider(index, "enabled", event.target.checked)
+                            }
+                            type="checkbox"
+                          />
+                        </label>
+                      </section>
+                    ))}
+                  </div>
+
+                  <div className="settings-panel__footer">
+                    <button
+                      className="settings-button settings-button--accent"
+                      disabled={(!providersDirty && !providerScopeDirty) || isSavingProviders}
+                      onClick={() => void handleSaveProviders()}
+                      type="button"
+                    >
+                      {isSavingProviders ? "Saving..." : "Save Provider Changes"}
+                    </button>
+                  </div>
                 </div>
+              </Card>
+            ) : null}
 
-                {isActive ? (
-                  section.key === "providers" ? (
-                    <ProviderEditor
-                      dirty={providerDirty}
-                      onAddProvider={handleAddProvider}
-                      onReset={() => setProviderSettings(savedProviderSettings)}
-                      onSave={saveProviders}
-                      onUpdate={(updater) => setProviderSettings((current) => updater(current))}
-                      settings={providerSettings}
+            {isLoaded && activeSection === "runtime" ? (
+              <Card
+                description="Shape how the desktop app stays alive, surfaces notifications, and closes."
+                title="Runtime Controls"
+                tone="soft"
+              >
+                <div className="settings-option-grid">
+                  <div className="settings-form-grid">
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Close behavior</span>
+                      <select
+                        aria-label="Close behavior"
+                        className="settings-select"
+                        onChange={(event) =>
+                          updateSetting("closeBehavior", event.target.value)
+                        }
+                        value={settings.closeBehavior}
+                      >
+                        <option value="Minimize to tray">Minimize to tray</option>
+                        <option value="Quit app">Quit app</option>
+                      </select>
+                    </label>
+
+                    <label className="settings-form-field">
+                      <span className="settings-form-field__label">Logging</span>
+                      <select
+                        aria-label="Logging"
+                        className="settings-select"
+                        onChange={(event) => updateSetting("logging", event.target.value)}
+                        value={settings.logging}
+                      >
+                        <option value="Standard">Standard</option>
+                        <option value="Verbose">Verbose</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <label className="settings-toggle-row">
+                    <span className="settings-form-field__copy">
+                      <strong>Launch at login</strong>
+                      <span className="settings-form-field__hint">
+                        Restore the desktop shell when the operating system starts.
+                      </span>
+                    </span>
+                    <input
+                      aria-label="Launch at login"
+                      checked={settings.launchAtLogin}
+                      className="settings-checkbox"
+                      onChange={(event) =>
+                        updateSetting("launchAtLogin", event.target.checked)
+                      }
+                      type="checkbox"
                     />
-                  ) : section.key === "appearance" ? (
-                    <AppearanceEditor
-                      dirty={appearanceDirty}
-                      onReset={() => setAppearanceSettings(savedAppearanceSettings)}
-                      onSave={saveAppearance}
-                      onUpdate={(key, value) => setAppearanceSettings((current) => ({ ...current, [key]: value }))}
-                      settings={appearanceSettings}
+                  </label>
+
+                  <label className="settings-toggle-row">
+                    <span className="settings-form-field__copy">
+                      <strong>Tray resident</strong>
+                      <span className="settings-form-field__hint">
+                        Keep the app available from the system tray after the main window closes.
+                      </span>
+                    </span>
+                    <input
+                      aria-label="Tray resident"
+                      checked={settings.trayResident}
+                      className="settings-checkbox"
+                      onChange={(event) =>
+                        updateSetting("trayResident", event.target.checked)
+                      }
+                      type="checkbox"
                     />
-                  ) : (
-                    <RuntimeEditor
-                      dirty={runtimeDirty}
-                      onReset={() => setRuntimeSettings(savedRuntimeSettings)}
-                      onSave={saveRuntime}
-                      onUpdate={(key, value) => setRuntimeSettings((current) => ({ ...current, [key]: value }))}
-                      settings={runtimeSettings}
+                  </label>
+
+                  <label className="settings-toggle-row">
+                    <span className="settings-form-field__copy">
+                      <strong>Background adapters</strong>
+                      <span className="settings-form-field__hint">
+                        Let longer-running adapters keep processing after the initiating page changes.
+                      </span>
+                    </span>
+                    <input
+                      aria-label="Background adapters"
+                      checked={settings.backgroundAdapters}
+                      className="settings-checkbox"
+                      onChange={(event) =>
+                        updateSetting("backgroundAdapters", event.target.checked)
+                      }
+                      type="checkbox"
                     />
-                  )
-                ) : null}
-              </section>
-            );
-          })}
+                  </label>
+
+                  <label className="settings-toggle-row">
+                    <span className="settings-form-field__copy">
+                      <strong>Notifications</strong>
+                      <span className="settings-form-field__hint">
+                        Surface completion and warning events outside the focused page.
+                      </span>
+                    </span>
+                    <input
+                      aria-label="Notifications"
+                      checked={settings.notifications}
+                      className="settings-checkbox"
+                      onChange={(event) =>
+                        updateSetting("notifications", event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                  </label>
+
+                  <div className="settings-panel__footer">
+                    <button
+                      className="settings-button settings-button--accent"
+                      disabled={!runtimeDirty || isSavingRuntime}
+                      onClick={() => void handleSaveSettings(setIsSavingRuntime)}
+                      type="button"
+                    >
+                      {isSavingRuntime ? "Saving..." : "Save Runtime"}
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            ) : null}
+          </section>
         </div>
 
-        <Inspector description="Explains what the selected settings area controls." title="Section Guide">
-          <Card description={activeSectionConfig.guide.focused} title="Focused Section" />
-          <Card description={activeSectionConfig.guide.appliesTo} title="Applies To" tone="soft" />
-          <Card description={activeSectionConfig.guide.whatYouEdit} title="What You Edit" tone="soft" />
-          <Card description={activeSectionConfig.guide.recommendedDefault} title="Recommended Default" tone="soft" />
-          <Card description={`Registry discovered ${registry.count} provider${registry.count === 1 ? "" : "s"}.`} title="Registry Snapshot" tone="soft" />
-        </Inspector>
+        <div data-testid="settings-context-guide">
+          <Inspector
+            description="Context for the active settings section and its effect on the desktop shell."
+            title="Section Guide"
+          >
+            <Card
+              description={activeDefinition.summary}
+              title={activeDefinition.label}
+              tone="accent"
+            />
+            <Card description={activeDefinition.guide} title="Why It Matters" tone="soft" />
+            <Card
+              description="Settings remain local-first and should not alter page-level workflow unless explicitly saved."
+              title="Guardrail"
+              tone="soft"
+            />
+          </Inspector>
+        </div>
       </div>
     </div>
   );
-}
-
-function emptyProviderSettings(): ProviderSettings {
-  return {
-    providers: [],
-    defaultProviderId: "",
-    fallbackProviderId: "",
-    connectionChecks: true,
-  };
-}
-
-function createProviderDraft(index: number): ProviderEntry {
-  return {
-    id: `provider-draft-${index}`,
-    name: `New Provider ${index}`,
-    baseUrl: "",
-    model: "",
-    apiKey: "",
-    local: false,
-    enabled: true,
-  };
-}
-
-function mergeLoadedProviderSettings(providers: ProviderEntry[], payload: SettingsPayload): ProviderSettings {
-  const defaultProviderId = providers.some((provider) => provider.id === payload.defaultProviderId)
-    ? payload.defaultProviderId
-    : providers[0]?.id ?? "";
-  const fallbackProviderId = providers.some((provider) => provider.id === payload.fallbackProviderId)
-    ? payload.fallbackProviderId
-    : providers[1]?.id ?? defaultProviderId;
-
-  return {
-    providers,
-    defaultProviderId,
-    fallbackProviderId,
-    connectionChecks: payload.connectionChecks,
-  };
-}
-
-function extractAppearanceSettings(payload: SettingsPayload): AppearanceSettings {
-  return {
-    interfaceFont: payload.interfaceFont,
-    messageFont: payload.messageFont,
-    textSize: payload.textSize,
-    language: payload.language,
-    responseLocale: payload.responseLocale,
-    timeFormat: payload.timeFormat,
-    density: payload.density,
-    motion: payload.motion,
-    windowChrome: payload.windowChrome,
-    sidebarDefault: payload.sidebarDefault,
-  };
-}
-
-function extractRuntimeSettings(payload: SettingsPayload): RuntimeSettings {
-  return {
-    closeBehavior: payload.closeBehavior,
-    launchAtLogin: payload.launchAtLogin,
-    trayResident: payload.trayResident,
-    backgroundAdapters: payload.backgroundAdapters,
-    logging: payload.logging,
-    notifications: payload.notifications,
-  };
-}
-
-function buildSettingsPayload(
-  providerSettings: ProviderSettings,
-  appearanceSettings: AppearanceSettings,
-  runtimeSettings: RuntimeSettings,
-): SettingsPayload {
-  return {
-    defaultProviderId: providerSettings.defaultProviderId,
-    fallbackProviderId: providerSettings.fallbackProviderId,
-    connectionChecks: providerSettings.connectionChecks,
-    ...appearanceSettings,
-    ...runtimeSettings,
-  };
-}
-
-function serializeState(value: unknown) {
-  return JSON.stringify(value);
 }

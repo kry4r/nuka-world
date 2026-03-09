@@ -1,73 +1,104 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
-import { startWorkflowSession, type WorkflowSessionResponse } from "@/lib/workflow";
+import { SectionHeader } from "@/components/ui/SectionHeader";
+import {
+  WORKFLOW_DEFINITIONS,
+  continueWorkflowSession,
+  formatWorkflowSourceSession,
+  seedWorkflowInputs,
+  startWorkflowSession,
+  type WorkflowEvent,
+  type WorkflowLaunchIntent,
+  type WorkflowSessionResponse,
+} from "@/lib/workflow";
+import { AgentColumn } from "./AgentColumn";
+import { WorkflowLobby } from "./WorkflowLobby";
+import { WorkflowRoom } from "./WorkflowRoom";
 
-type WorkflowDraft = {
-  id: string;
-  title: string;
-  description: string;
-  purpose: string;
-  inputs: Array<{
-    id: string;
-    label: string;
-    placeholder: string;
-  }>;
+type WorkflowPageProps = {
+  intent?: WorkflowLaunchIntent | null;
+  onIntentHandled?: () => void;
 };
 
-const WORKFLOW_DRAFTS: WorkflowDraft[] = [
-  {
-    id: "workflow-research-brief",
-    title: "Research Brief",
-    description: "Agent + shared memory map",
-    purpose: "Collect the goal, frame the research task, and begin a real workflow session.",
-    inputs: [
-      {
-        id: "goal",
-        label: "Goal",
-        placeholder: "What should this workflow produce?",
-      },
-    ],
-  },
-  {
-    id: "workflow-release-notes",
-    title: "Release Notes",
-    description: "3 agents �� review mode",
-    purpose: "Capture the release objective and start a session with the supplied notes scope.",
-    inputs: [
-      {
-        id: "releaseScope",
-        label: "Release scope",
-        placeholder: "Which changes belong in this release?",
-      },
-    ],
-  },
-  {
-    id: "workflow-customer-triage",
-    title: "Customer Triage",
-    description: "5 agents �� tool-heavy",
-    purpose: "Route incoming issues into a real workflow session with the selected triage goal.",
-    inputs: [
-      {
-        id: "issueSummary",
-        label: "Issue summary",
-        placeholder: "What customer problem should the workflow analyze?",
-      },
-    ],
-  },
-];
-
-export function WorkflowPage() {
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState(WORKFLOW_DRAFTS[0]?.id ?? "");
+export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}) {
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState(WORKFLOW_DEFINITIONS[0]?.id ?? "");
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [session, setSession] = useState<WorkflowSessionResponse | null>(null);
+  const [roomPrompt, setRoomPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  const [isContinuing, setIsContinuing] = useState(false);
+  const [sourceIntent, setSourceIntent] = useState<WorkflowLaunchIntent | null>(null);
 
-  const selectedWorkflow = useMemo(
-    () => WORKFLOW_DRAFTS.find((workflow) => workflow.id === selectedWorkflowId) ?? WORKFLOW_DRAFTS[0],
-    [selectedWorkflowId],
-  );
+  const selectedWorkflow =
+    WORKFLOW_DEFINITIONS.find((workflow) => workflow.id === selectedWorkflowId) ??
+    WORKFLOW_DEFINITIONS[0];
+  const activeWorkflow = session
+    ? WORKFLOW_DEFINITIONS.find((workflow) => workflow.id === session.workflowId)
+    : selectedWorkflow;
+  const transcriptEvents = session ? session.events.filter(isTranscriptEvent) : [];
+  const timelineEvents = session ? session.events.filter((event) => event.kind === "node_event") : [];
+  const sourceOrigin = session?.origin ?? sourceIntent?.origin ?? null;
+
+  useEffect(() => {
+    if (!intent) {
+      return;
+    }
+
+    if (intent.kind === "open_workflow_lobby") {
+      const defaultWorkflow = WORKFLOW_DEFINITIONS[0];
+      const firstInputId = defaultWorkflow?.inputs[0]?.id ?? "goal";
+
+      setSelectedWorkflowId(defaultWorkflow?.id ?? "");
+      setInputValues(intent.prompt.trim() ? { [firstInputId]: intent.prompt.trim() } : {});
+      setSession(null);
+      setRoomPrompt("");
+      setError(null);
+      setSourceIntent(intent);
+      onIntentHandled?.();
+      return;
+    }
+
+    let cancelled = false;
+
+    const openWorkflowRoom = async () => {
+      setSelectedWorkflowId(intent.workflowId);
+      setInputValues(seedWorkflowInputs(intent.workflowId, intent.prompt));
+      setRoomPrompt("");
+      setError(null);
+      setIsStarting(true);
+      setSourceIntent(intent);
+
+      try {
+        const nextSession = await startWorkflowSession(
+          intent.workflowId,
+          seedWorkflowInputs(intent.workflowId, intent.prompt),
+          intent.origin,
+        );
+
+        if (!cancelled) {
+          setSession(nextSession);
+        }
+      } catch (caughtError) {
+        if (!cancelled) {
+          const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+          setError(message);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsStarting(false);
+          onIntentHandled?.();
+        }
+      }
+    };
+
+    void openWorkflowRoom();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [intent, onIntentHandled]);
 
   const handleStart = async () => {
     if (!selectedWorkflow) {
@@ -83,8 +114,13 @@ export function WorkflowPage() {
           .map((input) => [input.id, inputValues[input.id]?.trim() ?? ""])
           .filter(([, value]) => value.length > 0),
       );
-      const nextSession = await startWorkflowSession(selectedWorkflow.id, inputs);
+      const nextSession = await startWorkflowSession(
+        selectedWorkflow.id,
+        inputs,
+        sourceIntent?.origin,
+      );
       setSession(nextSession);
+      setRoomPrompt("");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setError(message);
@@ -93,82 +129,138 @@ export function WorkflowPage() {
     }
   };
 
+  const handleContinue = async () => {
+    if (!session || roomPrompt.trim().length === 0) {
+      return;
+    }
+
+    setError(null);
+    setIsContinuing(true);
+
+    try {
+      const nextSession = await continueWorkflowSession(session.sessionId, roomPrompt.trim());
+      setSession(nextSession);
+      setRoomPrompt("");
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(message);
+    } finally {
+      setIsContinuing(false);
+    }
+  };
+
   return (
     <div className="page-layout">
+      <SectionHeader
+        meta="Saved types, sessions, and shared memory"
+        status="Shared Memory"
+        tag="Workflow"
+        title="Saved Workflows"
+      />
+
       <div className="page-layout__body">
         <div className="page-layout__main">
-          <Card
-            description="Select a workflow, review its purpose, fill the required inputs, and start a real session."
-            title="Saved Workflows"
-            tone="accent"
-          />
-          <div className="workflow-grid">
-            {WORKFLOW_DRAFTS.map((workflow) => (
-              <button
-                className="settings-panel__trigger"
-                key={workflow.id}
-                onClick={() => {
-                  setSelectedWorkflowId(workflow.id);
-                  setSession(null);
-                  setError(null);
-                }}
-                type="button"
-              >
-                <Card description={workflow.description} title={workflow.title} tone={workflow.id === selectedWorkflowId ? "accent" : "default"} />
-              </button>
-            ))}
-          </div>
-
-          {selectedWorkflow ? (
-            <Card
-              description={selectedWorkflow.purpose}
-              title={`Run ${selectedWorkflow.title}`}
-            >
-              <div className="settings-form-grid">
-                {selectedWorkflow.inputs.map((input) => (
-                  <label className="settings-form-field settings-form-field--full" key={input.id}>
-                    <div className="settings-form-field__copy">
-                      <span className="settings-form-field__label">{input.label}</span>
-                      <span className="settings-form-field__hint">Provide the input before starting the workflow session.</span>
-                    </div>
-                    <input
-                      className="settings-input"
-                      onChange={(event) =>
-                        setInputValues((current) => ({
-                          ...current,
-                          [input.id]: event.target.value,
-                        }))
-                      }
-                      placeholder={input.placeholder}
-                      value={inputValues[input.id] ?? ""}
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="settings-panel__footer">
-                <button className="settings-button settings-button--accent" disabled={isStarting} onClick={() => void handleStart()} type="button">
-                  {isStarting ? "Starting..." : "Start Workflow"}
-                </button>
-              </div>
-            </Card>
-          ) : null}
+          {session ? (
+            <WorkflowRoom
+              isContinuing={isContinuing}
+              onContinue={() => void handleContinue()}
+              onPromptChange={setRoomPrompt}
+              prompt={roomPrompt}
+              session={session}
+              workflowTitle={activeWorkflow?.title ?? session.workflowId}
+            />
+          ) : (
+            <WorkflowLobby
+              inputValues={inputValues}
+              isStarting={isStarting}
+              onInputChange={(inputId, value) =>
+                setInputValues((current) => ({
+                  ...current,
+                  [inputId]: value,
+                }))
+              }
+              onSelectWorkflow={(workflowId) => {
+                setSelectedWorkflowId(workflowId);
+                setSession(null);
+                setError(null);
+              }}
+              onStart={() => void handleStart()}
+              selectedWorkflow={selectedWorkflow}
+              selectedWorkflowId={selectedWorkflowId}
+              workflows={WORKFLOW_DEFINITIONS}
+            />
+          )}
 
           {error ? <Card description={error} title="Workflow Error" tone="soft" /> : null}
-          {session ? (
+        </div>
+
+        <Inspector
+          description={
+            session
+              ? "Shows the active room, workflow lanes, event counts, and incoming chat context."
+              : "Shows the selected workflow, required inputs, room readiness, and any incoming chat context."
+          }
+          title={session ? "Workflow Room Context" : "Workflow Context"}
+        >
+          <Card
+            description={
+              session
+                ? activeWorkflow?.title ?? session.workflowId
+                : activeWorkflow?.title ?? "No workflow selected"
+            }
+            title={session ? "Room Workflow" : "Selected Workflow"}
+          />
+          <Card
+            description={
+              session
+                ? `${transcriptEvents.length} transcript events | ${timelineEvents.length} timeline events`
+                : activeWorkflow?.inputs.map((input) => input.label).join(" | ") || "No inputs"
+            }
+            title={session ? "Room Activity" : "Required Inputs"}
+          />
+          <Card
+            description={
+              session
+                ? `${Object.keys(session.inputs).length} captured inputs | ${session.status}`
+                : "No session started yet"
+            }
+            title="Execution"
+          />
+          {sourceOrigin ? (
             <Card
-              description={`Session ${session.sessionId.slice(0, 8)}�� �� ${session.status}`}
-              title="Execution State"
+              description={formatWorkflowSourceSession(sourceOrigin.sourceSessionId)}
+              title="Source Session"
               tone="soft"
             />
           ) : null}
-        </div>
-
-        <Inspector description="Shows the selected workflow, required inputs, and the latest execution state." title="Workflow Context">
-          <Card description={selectedWorkflow?.title ?? "No workflow selected"} title="Selected Workflow" />
-          <Card description={selectedWorkflow?.inputs.map((input) => input.label).join(" �� ") || "No inputs"} title="Required Inputs" />
-          <Card description={session ? `${Object.keys(session.inputs).length} input values captured` : "No session started yet"} title="Execution" />
+          {session ? (
+            <div style={{ display: "grid", gap: "0.75rem" }}>
+              <AgentColumn
+                description="Maintains the session prompt, transcript, and routing context."
+                detail={`Session ${session.sessionId.slice(0, 8)}...`}
+                status="coordinating"
+                title="Room Coordinator"
+              />
+              <AgentColumn
+                description="Tracks workflow state transitions and timeline milestones."
+                detail={`${timelineEvents.length} timeline events recorded`}
+                status="tracking"
+                title="Timeline Lane"
+              />
+              <AgentColumn
+                description="Shapes the next assistant reply from the room conversation."
+                detail={`${transcriptEvents.length} transcript events available`}
+                status="drafting"
+                title="Draft Lane"
+              />
+            </div>
+          ) : null}
         </Inspector>
       </div>
     </div>
   );
+}
+
+function isTranscriptEvent(event: WorkflowEvent) {
+  return event.kind === "user_message" || event.kind === "assistant_message";
 }

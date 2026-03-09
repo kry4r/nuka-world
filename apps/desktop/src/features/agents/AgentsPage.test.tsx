@@ -3,8 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentsPage } from "./AgentsPage";
 import { findText, renderIntoDocument } from "@/test/render";
 
-const { invokeMock } = vi.hoisted(() => ({
-  invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) => {
+const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
+  defaultInvokeImplementation: async (
+    command: string,
+    args?: Record<string, unknown>,
+  ) => {
     switch (command) {
       case "default_agent_tool_bindings":
         return { names: ["codex", "git", "search_knowledge"] };
@@ -35,7 +38,10 @@ const { invokeMock } = vi.hoisted(() => ({
       default:
         throw new Error(`unexpected command: ${command}`);
     }
-  }),
+  },
+  invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) =>
+    defaultInvokeImplementation(command, args),
+  ),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -46,6 +52,7 @@ const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
   invokeMock.mockClear();
+  invokeMock.mockImplementation(defaultInvokeImplementation);
 
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
@@ -62,6 +69,16 @@ function findButton(container: HTMLElement, text: string) {
 }
 
 describe("AgentsPage", () => {
+  it("renders an agent library and editor split instead of a generic card grid", async () => {
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    expect(view.container.querySelector('[data-testid="agents-library"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="agents-editor"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="agents-quick-create"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="agents-card-grid"]')).toBeFalsy();
+  });
+
   it("lists saved agents from the backend", async () => {
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
@@ -84,6 +101,8 @@ describe("AgentsPage", () => {
     expect(findText(view.container, "Agent Details")).toBeTruthy();
     expect(findText(view.container, "Summarize findings and cite sources.")).toBeTruthy();
     expect(findText(view.container, "search_knowledge")).toBeTruthy();
+    expect(findText(view.container, "Provider context")).toBeTruthy();
+    expect(findText(view.container, "Memory and knowledge bindings")).toBeTruthy();
   });
 
   it("creates an agent draft via backend draft generation", async () => {
@@ -117,5 +136,100 @@ describe("AgentsPage", () => {
     );
     expect(findText(view.container, "Release Digest")).toBeTruthy();
     expect(findText(view.container, "Weekly digest writer")).toBeTruthy();
+    expect(findButton(view.container, "Save Agent")).toBeTruthy();
+    expect(findButton(view.container, "Delete Agent")).toBeFalsy();
+  });
+
+  it("keeps an explicitly empty tool list empty instead of falling back to defaults", async () => {
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "list_agents") {
+        return [
+          {
+            id: "agent-empty-tools",
+            name: "Observer",
+            description: "Review only",
+            systemPrompt: "Observe and summarize.",
+            providerId: "provider-local",
+            toolNames: [],
+          },
+        ];
+      }
+
+      return defaultInvokeImplementation(command, args);
+    });
+
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    expect(findText(view.container, "Observer")).toBeTruthy();
+    expect(findText(view.container, "No tools assigned")).toBeTruthy();
+    expect(findText(view.container, "search_knowledge")).toBeFalsy();
+  });
+
+  it("shows a visible error when the initial agent load fails", async () => {
+    invokeMock.mockImplementationOnce(async () => {
+      throw new Error("tool registry offline");
+    });
+
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    expect(findText(view.container, "Agent Load Error")).toBeTruthy();
+    expect(findText(view.container, "tool registry offline")).toBeTruthy();
+  });
+
+  it("shows a visible error when saving a draft fails", async () => {
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "save_agent") {
+        throw new Error("save failed");
+      }
+
+      return defaultInvokeImplementation(command, args);
+    });
+
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    const createButton = findButton(view.container, "Create");
+
+    await act(async () => {
+      createButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const saveButton = findButton(view.container, "Save Agent");
+    expect(saveButton).toBeTruthy();
+
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Agent Draft Error")).toBeTruthy();
+    expect(findText(view.container, "save failed")).toBeTruthy();
+  });
+
+  it("shows a visible error when deleting an agent fails", async () => {
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "delete_agent") {
+        throw new Error("delete failed");
+      }
+
+      return defaultInvokeImplementation(command, args);
+    });
+
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    const deleteButton = findButton(view.container, "Delete Agent");
+    expect(deleteButton).toBeTruthy();
+
+    await act(async () => {
+      deleteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Agent Action Error")).toBeTruthy();
+    expect(findText(view.container, "delete failed")).toBeTruthy();
   });
 });

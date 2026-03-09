@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import {
   addFolderConnector,
   listIndexJobs,
@@ -11,15 +12,23 @@ import {
   type KnowledgeLibraryRecord,
   type KnowledgeSearchResult,
 } from "@/lib/knowledge";
+import { KnowledgeWorkbench, type KnowledgeWorkbenchMode } from "./KnowledgeWorkbench";
+import { LibraryExplorer } from "./LibraryExplorer";
 
 export function KnowledgePage() {
   const [libraries, setLibraries] = useState<KnowledgeLibraryRecord[]>([]);
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
+  const [activeMode, setActiveMode] = useState<KnowledgeWorkbenchMode>("search");
   const [folderPath, setFolderPath] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [indexJobs, setIndexJobs] = useState<KnowledgeIndexJobRecord[]>([]);
   const [results, setResults] = useState<KnowledgeSearchResult[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [jobsError, setJobsError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  const knowledgeError = actionError ?? jobsError ?? loadError;
 
   useEffect(() => {
     let alive = true;
@@ -31,9 +40,21 @@ export function KnowledgePage() {
         }
 
         setLibraries(items);
-        setSelectedLibraryId(items[0]?.id ?? null);
+        setLoadError(null);
+        setSelectedLibraryId((current) =>
+          current && items.some((library) => library.id === current) ? current : items[0]?.id ?? null,
+        );
       })
-      .catch(() => undefined);
+      .catch((caughtError) => {
+        if (!alive) {
+          return;
+        }
+
+        const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+        setLoadError(message);
+        setLibraries([]);
+        setSelectedLibraryId(null);
+      });
 
     return () => {
       alive = false;
@@ -43,6 +64,7 @@ export function KnowledgePage() {
   useEffect(() => {
     if (!selectedLibraryId) {
       setIndexJobs([]);
+      setJobsError(null);
       return;
     }
 
@@ -51,9 +73,18 @@ export function KnowledgePage() {
       .then((items) => {
         if (alive) {
           setIndexJobs(items);
+          setJobsError(null);
         }
       })
-      .catch(() => undefined);
+      .catch((caughtError) => {
+        if (!alive) {
+          return;
+        }
+
+        const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+        setJobsError(message);
+        setIndexJobs([]);
+      });
 
     return () => {
       alive = false;
@@ -71,23 +102,49 @@ export function KnowledgePage() {
       return;
     }
 
-    const library = await addFolderConnector(nextPath);
-    const nextLibraries = await listKnowledgeLibraries();
-    setLibraries(nextLibraries);
-    setSelectedLibraryId(library.id);
-    setFolderPath("");
-    const jobs = await listIndexJobs(library.id);
-    setIndexJobs(jobs);
+    if (!selectedLibrary) {
+      setActionError("Select a library before adding a connector.");
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      const library = await addFolderConnector(selectedLibrary.id, nextPath);
+      const nextLibraries = await listKnowledgeLibraries();
+      setLibraries(nextLibraries);
+      setLoadError(null);
+      setSelectedLibraryId(library.id);
+      setFolderPath("");
+      setActiveMode("sources");
+      const jobs = await listIndexJobs(library.id);
+      setIndexJobs(jobs);
+      setJobsError(null);
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setActionError(message);
+    }
   };
 
   const handleRebuild = async () => {
     if (!selectedLibrary) {
+      setActionError("Select a library before rebuilding the index.");
       return;
     }
 
-    await rebuildKnowledgeLibrary(selectedLibrary.id);
-    const jobs = await listIndexJobs(selectedLibrary.id);
-    setIndexJobs(jobs);
+    setActionError(null);
+
+    try {
+      await rebuildKnowledgeLibrary(selectedLibrary.id);
+      const jobs = await listIndexJobs(selectedLibrary.id);
+      setIndexJobs(jobs);
+      setJobsError(null);
+      setActiveMode("jobs");
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setActionError(message);
+      setActiveMode("jobs");
+    }
   };
 
   const handleSearch = async () => {
@@ -96,110 +153,96 @@ export function KnowledgePage() {
     try {
       const nextResults = await searchKnowledge(searchQuery);
       setResults(nextResults);
+      setActiveMode("search");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setSearchError(message);
       setResults([]);
+      setActiveMode("search");
     }
   };
 
   return (
     <div className="page-layout">
+      <SectionHeader
+        meta="Explorer, search lab, jobs, and engine-aware retrieval contracts"
+        status="Workbench"
+        tag="Knowledge"
+        title="Knowledge Libraries"
+      />
+
       <div className="page-layout__body">
-        <div className="page-layout__main">
-          <Card
-            description="Connect a local folder, inspect index jobs, and search the saved library state."
-            title="Local Folder Connectors"
-            tone="accent"
+        <div
+          className="page-layout__main"
+          style={{
+            display: "grid",
+            gap: "1rem",
+            gridTemplateColumns: "minmax(240px, 320px) minmax(0, 1fr)",
+          }}
+        >
+          <LibraryExplorer
+            libraries={libraries}
+            loadError={loadError}
+            onSelect={setSelectedLibraryId}
+            selectedLibraryId={selectedLibraryId}
           />
 
-          <div className="split-row">
-            <input
-              aria-label="Folder path"
-              className="field-input"
-              onChange={(event) => setFolderPath(event.target.value)}
-              placeholder="C:/docs/rust"
-              value={folderPath}
-            />
-            <button className="composer__send" onClick={() => void handleAddFolder()} type="button">
-              Add Folder
-            </button>
-          </div>
+          <KnowledgeWorkbench
+            activeMode={activeMode}
+            folderPath={folderPath}
+            jobs={indexJobs}
+            jobsError={jobsError}
+            libraries={libraries}
+            onAddFolder={() => void handleAddFolder()}
+            onFolderPathChange={setFolderPath}
+            onModeChange={setActiveMode}
+            onRebuild={() => void handleRebuild()}
+            onSearch={() => void handleSearch()}
+            onSearchQueryChange={setSearchQuery}
+            results={results}
+            searchError={searchError}
+            searchQuery={searchQuery}
+            selectedLibrary={selectedLibrary}
+          />
 
-          {libraries.length === 0 ? (
-            <Card description="Add a local folder connector to create the first knowledge library." title="No folder connectors yet." tone="soft" />
-          ) : (
-            <Card title="Libraries">
-              <div className="workflow-grid">
-                {libraries.map((library) => (
-                  <button
-                    className="settings-panel__trigger"
-                    key={library.id}
-                    onClick={() => setSelectedLibraryId(library.id)}
-                    type="button"
-                  >
-                    <Card description={library.connectors.map((connector) => connector.path).join(" �� ")} title={library.name} tone={library.id === selectedLibraryId ? "accent" : "soft"} />
-                  </button>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          <Card title="Index Jobs">
-            {indexJobs.length === 0 ? (
-              <p>No index jobs recorded yet.</p>
-            ) : (
-              <div className="knowledge-row">
-                {indexJobs.map((job) => (
-                  <Card description={job.detail ?? "No detail"} key={job.id} title={job.status} tone="soft" />
-                ))}
-              </div>
-            )}
-            <div className="settings-panel__footer">
-              <button className="settings-button settings-button--accent" disabled={!selectedLibrary} onClick={() => void handleRebuild()} type="button">
-                Rebuild Index
-              </button>
-            </div>
-          </Card>
-
-          <Card title="Search">
-            <div className="split-row">
-              <input
-                aria-label="Search knowledge"
-                className="field-input"
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search knowledge"
-                value={searchQuery}
-              />
-              <button className="composer__send" onClick={() => void handleSearch()} type="button">
-                Search
-              </button>
-            </div>
-            {searchError ? <Card description={searchError} title="Search Error" tone="soft" /> : null}
-            {results.length > 0 ? (
-              <div className="knowledge-row">
-                {results.map((result) => (
-                  <Card description={result.path} key={`${result.collectionId}-${result.path}`} title={result.snippet} tone="soft" />
-                ))}
-              </div>
-            ) : null}
-          </Card>
+          {knowledgeError ? (
+            <Card description={knowledgeError} title="Knowledge Error" tone="soft" />
+          ) : null}
         </div>
 
-        <Inspector description="Shows the selected library, connector scope, and supported extensions from real backend state." title="Library State">
+        <Inspector
+          description="Library identity, source metadata, and engine metadata stay separate here so future adapters can expand without reworking the page."
+          title="Knowledge Inspector"
+        >
           {selectedLibrary ? (
-            <>
+            <div style={{ display: "grid", gap: "0.75rem" }}>
               <Card description={selectedLibrary.name} title="Selected Library" tone="accent" />
-              <Card description={selectedLibrary.connectors.map((connector) => connector.path).join(" �� ")} title="Connector Paths" tone="soft" />
-              <Card description={selectedLibrary.supportedExtensions.join(", ")} title="Supported Extensions" tone="soft" />
-              <Card description={selectedLibrary.engine} title="Engine" tone="soft" />
-            </>
+              <Card
+                description={selectedLibrary.connectors.map((connector) => connector.label).join(", ")}
+                title="Source Connectors"
+                tone="soft"
+              />
+              <Card
+                description={selectedLibrary.connectors.map((connector) => connector.path).join(" | ")}
+                title="Source Paths"
+                tone="soft"
+              />
+              <Card description={selectedLibrary.engine.label} title="Engine Summary" tone="soft" />
+              <Card description={selectedLibrary.engine.health} title="Engine Health" tone="soft" />
+              <Card
+                description={selectedLibrary.engine.capabilities.join(", ")}
+                title="Capabilities"
+                tone="soft"
+              />
+            </div>
           ) : (
-            <Card description="Select or add a library to inspect its real connector state." title="Library State" />
+            <Card
+              description="Select or add a library to inspect its source connectors and engine summary."
+              title="Knowledge Inspector"
+            />
           )}
         </Inspector>
       </div>
     </div>
   );
 }
-

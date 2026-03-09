@@ -3,15 +3,23 @@ import { invoke } from "@tauri-apps/api/core";
 export type KnowledgeConnectorRecord = {
   id: string;
   kind: string;
+  label: string;
   path: string;
   enabled: boolean;
+};
+
+export type KnowledgeEngineSummary = {
+  id: string;
+  label: string;
+  health: string;
+  capabilities: string[];
 };
 
 export type KnowledgeLibraryRecord = {
   id: string;
   name: string;
   description: string;
-  engine: string;
+  engine: KnowledgeEngineSummary;
   connectors: KnowledgeConnectorRecord[];
   supportedExtensions: string[];
 };
@@ -34,8 +42,11 @@ export async function listKnowledgeLibraries(): Promise<KnowledgeLibraryRecord[]
   return invoke<KnowledgeLibraryRecord[]>("list_knowledge_libraries");
 }
 
-export async function addFolderConnector(path: string): Promise<KnowledgeLibraryRecord> {
-  return invoke<KnowledgeLibraryRecord>("add_folder_connector", { path });
+export async function addFolderConnector(
+  collectionId: string,
+  path: string,
+): Promise<KnowledgeLibraryRecord> {
+  return invoke<KnowledgeLibraryRecord>("add_folder_connector", { collectionId, path });
 }
 
 export async function rebuildKnowledgeLibrary(collectionId: string): Promise<KnowledgeIndexJobRecord> {

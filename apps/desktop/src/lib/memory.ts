@@ -1,33 +1,54 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type MemoryScopeRecord = {
+export type MemoryGraphNode = {
   id: string;
-  title: string;
   kind: string;
-  workflowId: string | null;
-  sessionId: string | null;
-  agentId: string | null;
-};
-
-export type MemoryNodeDetail = {
-  id: string;
   title: string;
-  kind: string;
   body: string | null;
-  relatedIds: string[];
-  workflowId: string | null;
-  sessionId: string | null;
-  agentId: string | null;
 };
 
-export async function listMemoryScopes(): Promise<MemoryScopeRecord[]> {
-  return invoke<MemoryScopeRecord[]>("list_memory_scopes");
+export type MemoryGraphEdge = {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  relation: string;
+};
+
+export type MemoryGraph = {
+  nodes: MemoryGraphNode[];
+  edges: MemoryGraphEdge[];
+};
+
+export async function loadMemoryGraph(): Promise<MemoryGraph> {
+  return invoke<MemoryGraph>("load_memory_graph");
 }
 
-export async function listMemoryByWorkflow(workflowId: string): Promise<MemoryScopeRecord[]> {
-  return invoke<MemoryScopeRecord[]>("list_memory_by_workflow", { workflowId });
+export async function updateMemoryNode(
+  nodeId: string,
+  title: string,
+  body: string | null,
+): Promise<MemoryGraphNode> {
+  return invoke<MemoryGraphNode>("update_memory_node", { nodeId, title, body });
 }
 
-export async function getMemoryNodeDetail(nodeId: string): Promise<MemoryNodeDetail | null> {
-  return invoke<MemoryNodeDetail | null>("get_memory_node_detail", { nodeId });
+export async function deleteMemoryNode(nodeId: string): Promise<void> {
+  return invoke("delete_memory_node", { nodeId });
+}
+
+export async function createMemoryEdge(
+  edgeId: string,
+  sourceId: string,
+  targetId: string,
+  relation: string,
+): Promise<MemoryGraphEdge> {
+  return invoke<MemoryGraphEdge>("create_memory_edge", {
+    edgeId,
+    sourceId,
+    targetId,
+    relation,
+  });
+}
+
+export async function deleteMemoryEdge(edgeId: string): Promise<void> {
+  return invoke("delete_memory_edge", { edgeId });
 }

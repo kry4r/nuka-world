@@ -1,22 +1,20 @@
-﻿import goodLogo from "@/assets/goodlogo.png";
-import type { NukaBrandVariant } from "./NukaLogo";
+import nukaMark from "@/assets/nuka.svg";
 
 type NukaLockupProps = {
   width?: number;
   className?: string;
-  variant?: NukaBrandVariant;
 };
 
-export function NukaLockup({ width = 180, className, variant = "geometric" }: NukaLockupProps) {
+export function NukaLockup({ width = 180, className }: NukaLockupProps) {
   return (
     <span
       aria-hidden="true"
       className={["nuka-lockup", className].filter(Boolean).join(" ")}
+      data-brand-source="nuka-svg"
       data-brand-kind="lockup"
-      data-brand-variant={variant}
       style={{ width }}
     >
-      <img alt="" src={goodLogo} />
+      <img alt="" src={nukaMark} />
     </span>
   );
 }
