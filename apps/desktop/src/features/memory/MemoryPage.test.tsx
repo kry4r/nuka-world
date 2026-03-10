@@ -6,8 +6,10 @@ import { findText, renderIntoDocument } from "@/test/render";
 const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
   const initialNodes: Array<{
     body: string | null;
+    consolidationState: string;
     id: string;
     kind: string;
+    traceType: string;
     title: string;
   }> = [
       {
@@ -15,30 +17,40 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
         kind: "workflow",
         title: "Release Workflow",
         body: "Coordinates release validation.",
+        traceType: "semantic",
+        consolidationState: "approved",
       },
       {
         id: "fact-archive",
         kind: "fact",
         title: "Archive Fact",
         body: "Older note kept for comparison.",
+        traceType: "semantic",
+        consolidationState: "archived",
       },
       {
         id: "memory-review",
         kind: "fact",
         title: "Review Memory",
         body: "Tracks the latest review conclusions.",
+        traceType: "episodic",
+        consolidationState: "candidate",
       },
       {
         id: "session-sync",
         kind: "session",
         title: "Review Session",
         body: "Tracks the active review conversation.",
+        traceType: "working",
+        consolidationState: "none",
       },
       {
         id: "agent-scout",
         kind: "agent",
         title: "Scout Agent",
         body: "Flags follow-up work.",
+        traceType: "semantic",
+        consolidationState: "rejected",
       },
     ];
 
@@ -108,6 +120,8 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
           title: node.title,
           kind: node.kind,
           body: node.body,
+          traceType: node.traceType,
+          consolidationState: node.consolidationState,
           relatedIds: graphState.edges
             .filter((edge) => edge.sourceId === node.id || edge.targetId === node.id)
             .flatMap((edge) => [edge.sourceId, edge.targetId].filter((id) => id !== node.id)),
@@ -217,6 +231,59 @@ function setFormValue(
 }
 
 describe("MemoryPage", () => {
+  it("switches between activation, consolidation, and schema views", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+
+    expect(findText(view.container, "Activation")).toBeTruthy();
+    expect(findText(view.container, "Consolidation")).toBeTruthy();
+    expect(findText(view.container, "Schema")).toBeTruthy();
+    expect(canvas?.getAttribute("data-workbench-view")).toBe("activation");
+
+    await act(async () => {
+      findButton(view.container, "Consolidation")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(canvas?.getAttribute("data-workbench-view")).toBe("consolidation");
+
+    await act(async () => {
+      findButton(view.container, "Schema")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(canvas?.getAttribute("data-workbench-view")).toBe("schema");
+  });
+
+  it("renders trace and consolidation metadata on memory nodes", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const reviewNode = findButton(view.container, "Review Memory");
+    const sessionNode = findButton(view.container, "Review Session");
+
+    expect(reviewNode?.getAttribute("data-trace-type")).toBe("episodic");
+    expect(reviewNode?.getAttribute("data-consolidation-state")).toBe("candidate");
+    expect(sessionNode?.getAttribute("data-trace-type")).toBe("working");
+    expect(sessionNode?.getAttribute("data-consolidation-state")).toBe("none");
+  });
+
   it("renders utility controls with search, filter, legend, and view mode affordances beside the graph canvas", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
@@ -271,6 +338,28 @@ describe("MemoryPage", () => {
     expect(selectedNode?.getAttribute("data-node-depth")).toBe("0");
     expect(firstDegreeNode?.getAttribute("data-node-depth")).toBe("1");
     expect(secondDegreeNode?.getAttribute("data-node-depth")).toBe("2");
+  });
+
+  it("shows trace and consolidation metadata in the inspector", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      findButton(view.container, "Review Memory")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Trace type")).toBeTruthy();
+    expect(findText(view.container, "episodic")).toBeTruthy();
+    expect(findText(view.container, "Consolidation state")).toBeTruthy();
+    expect(findText(view.container, "candidate")).toBeTruthy();
   });
 
   it("shows delete impact details before confirming node removal", async () => {

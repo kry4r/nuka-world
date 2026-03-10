@@ -28,6 +28,9 @@ export function MemoryPage() {
   const [filterKind, setFilterKind] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"focused" | "full">("focused");
+  const [workbenchView, setWorkbenchView] = useState<
+    "activation" | "consolidation" | "schema"
+  >("activation");
   const [pan, setPan] = useState(defaultView);
   const [zoom, setZoom] = useState(defaultZoom);
   const [deleteReview, setDeleteReview] = useState<{
@@ -307,11 +310,13 @@ export function MemoryPage() {
               onFocusSelected={handleFocusSelected}
               onSearchQueryChange={setSearchQuery}
               onViewModeChange={setViewMode}
+              onWorkbenchViewChange={setWorkbenchView}
               onZoomIn={() => setZoom((current) => Math.min(1.8, current + 0.12))}
               onZoomOut={() => setZoom((current) => Math.max(0.55, current - 0.12))}
               searchQuery={searchQuery}
               selectedNodeTitle={selectedNode?.title ?? null}
               viewMode={viewMode}
+              workbenchView={workbenchView}
               zoom={zoom}
             />
           </Card>
@@ -347,6 +352,7 @@ export function MemoryPage() {
                 onZoomChange={setZoom}
                 pan={pan}
                 selectedNodeId={selectedNode?.id ?? null}
+                workbenchView={workbenchView}
                 zoom={zoom}
               />
             )}

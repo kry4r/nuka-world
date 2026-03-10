@@ -117,6 +117,21 @@ export function MemoryNodeInspector({
         </div>
       </Card>
 
+      <Card title="Memory State" tone="soft">
+        <div style={{ display: "grid", gap: "0.55rem" }}>
+          <div style={{ display: "grid", gap: "0.15rem" }}>
+            <strong>Trace type</strong>
+            <span style={{ color: "rgba(248, 244, 236, 0.72)" }}>{node.traceType}</span>
+          </div>
+          <div style={{ display: "grid", gap: "0.15rem" }}>
+            <strong>Consolidation state</strong>
+            <span style={{ color: "rgba(248, 244, 236, 0.72)" }}>
+              {node.consolidationState}
+            </span>
+          </div>
+        </div>
+      </Card>
+
       {deleteImpact ? (
         <Card
           description={`${deleteImpact.edgeCount} connected links will be removed.`}

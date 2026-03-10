@@ -1,12 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 
+export type MemoryTraceType = "working" | "episodic" | "semantic";
+
+export type MemoryConsolidationState =
+  | "none"
+  | "candidate"
+  | "approved"
+  | "rejected"
+  | "archived";
+
 export type MemoryGraphNode = {
   id: string;
   kind: string;
   title: string;
   body: string | null;
-  traceType: string;
-  consolidationState: string;
+  traceType: MemoryTraceType;
+  consolidationState: MemoryConsolidationState;
 };
 
 export type MemoryGraphEdge = {

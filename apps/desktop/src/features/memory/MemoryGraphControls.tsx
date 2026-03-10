@@ -1,3 +1,5 @@
+type MemoryWorkbenchView = "activation" | "consolidation" | "schema";
+
 type MemoryGraphControlsProps = {
   edgesCount: number;
   filterKind: string;
@@ -5,12 +7,14 @@ type MemoryGraphControlsProps = {
   searchQuery: string;
   selectedNodeTitle: string | null;
   viewMode: "focused" | "full";
+  workbenchView: MemoryWorkbenchView;
   onFilterKindChange: (value: string) => void;
   onFitView: () => void;
   onFocusSelected: () => void;
   onSearchQueryChange: (value: string) => void;
   zoom: number;
   onViewModeChange: (value: "focused" | "full") => void;
+  onWorkbenchViewChange: (value: MemoryWorkbenchView) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
 };
@@ -22,11 +26,13 @@ export function MemoryGraphControls({
   searchQuery,
   selectedNodeTitle,
   viewMode,
+  workbenchView,
   onFilterKindChange,
   onFitView,
   onFocusSelected,
   onSearchQueryChange,
   onViewModeChange,
+  onWorkbenchViewChange,
   zoom,
   onZoomIn,
   onZoomOut,
@@ -70,6 +76,37 @@ export function MemoryGraphControls({
           <option value="message">message</option>
           <option value="fact">fact</option>
         </select>
+      </label>
+
+      <label style={{ display: "grid", gap: "0.35rem" }}>
+        <span>Workbench view</span>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+          }}
+        >
+          {[
+            { label: "Activation", value: "activation" as const },
+            { label: "Consolidation", value: "consolidation" as const },
+            { label: "Schema", value: "schema" as const },
+          ].map((option) => (
+            <button
+              aria-pressed={workbenchView === option.value}
+              className={
+                workbenchView === option.value
+                  ? "settings-button settings-button--accent"
+                  : "settings-button"
+              }
+              key={option.value}
+              onClick={() => onWorkbenchViewChange(option.value)}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </label>
 
       <label style={{ display: "grid", gap: "0.35rem" }}>
