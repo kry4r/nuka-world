@@ -282,26 +282,26 @@ describe("App shell", () => {
     expect(view.container.textContent).toContain("Provider required");
   });
 
-  it("renders a persistent left rail with the Nuka SVG lockup", async () => {
+  it("renders a persistent left rail with the docs logo mark", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
     const sidebar = view.container.querySelector('.app-sidebar[aria-label="Primary"]');
-    const brandLockup = view.container.querySelector(".app-sidebar__brand .nuka-lockup");
+    const brandMark = view.container.querySelector(".app-sidebar__brand .nuka-logo");
 
     expect(sidebar).toBeTruthy();
-    expect(brandLockup?.getAttribute("data-brand-source")).toBe("nuka-svg");
+    expect(brandMark?.getAttribute("data-brand-source")).toBe("docs-logo");
     expect(findText(view.container, "Settings")).toBeTruthy();
   });
 
-  it("renders a top status strip that tracks the active page", async () => {
+  it("does not render the removed top status strip and still tracks active navigation", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
     const statusStrip = view.container.querySelector('[data-testid="status-strip"]');
     const settingsButton = view.container.querySelector('button[aria-label="Settings"]');
 
-    expect(statusStrip?.textContent).toContain("Chat");
+    expect(statusStrip).toBeFalsy();
 
     await act(async () => {
       settingsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -310,18 +310,17 @@ describe("App shell", () => {
     });
 
     expect(settingsButton?.getAttribute("aria-current")).toBe("page");
-    expect(statusStrip?.textContent).toContain("Settings");
     expect(view.container.querySelector('.app-shell__page[data-active-page="settings"]')).toBeTruthy();
   });
 
-  it("opens the inspector only when the current page has contextual details", async () => {
+  it("does not render the removed shell inspector on any page", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
     const settingsButton = view.container.querySelector('button[aria-label="Settings"]');
     const shellInspector = () => view.container.querySelector(".app-shell__inspector");
 
-    expect(shellInspector()?.getAttribute("data-inspector-state")).toBe("closed");
+    expect(shellInspector()).toBeFalsy();
 
     await act(async () => {
       settingsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -329,11 +328,7 @@ describe("App shell", () => {
       await Promise.resolve();
     });
 
-    expect(shellInspector()?.getAttribute("data-inspector-state")).toBe("open");
-    expect(
-      shellInspector()
-        ?.textContent?.includes("Workspace Guide"),
-    ).toBe(true);
+    expect(shellInspector()).toBeFalsy();
   });
 
   it("surfaces a create workflow handoff from chat and opens the workflow page on demand", async () => {

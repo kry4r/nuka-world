@@ -100,13 +100,13 @@ function setCheckboxValue(element: HTMLInputElement, checked: boolean) {
 }
 
 describe("SettingsPage", () => {
-  it("renders a desktop settings tri-pane with section nav, control surface, and contextual guide", async () => {
+  it("renders a desktop settings surface with section nav and control surface", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
     expect(view.container.querySelector('[data-testid="settings-section-nav"]')).toBeTruthy();
     expect(view.container.querySelector('[data-testid="settings-control-surface"]')).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="settings-context-guide"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="settings-context-guide"]')).toBeFalsy();
     expect(view.container.querySelector('[data-testid="settings-accordion-stack"]')).toBeFalsy();
   });
 
@@ -131,7 +131,7 @@ describe("SettingsPage", () => {
     cleanups.push(view.cleanup);
 
     expect(findText(view.container, "Application Settings")).toBeTruthy();
-    expect(findText(view.container, "Section Guide")).toBeTruthy();
+    expect(findText(view.container, "Appearance Defaults")).toBeTruthy();
     expect(findText(view.container, "+ Add Provider")).toBeTruthy();
     expect(findText(view.container, "Language")).toBeTruthy();
 
@@ -385,12 +385,7 @@ describe("SettingsPage", () => {
     });
 
     expect(findText(view.container, "Close behavior")).toBeTruthy();
-    expect(
-      findText(
-        view.container,
-        "Runtime keeps the desktop shell responsive while longer-lived tasks continue safely.",
-      ),
-    ).toBeTruthy();
+    expect(findText(view.container, "Runtime Controls")).toBeTruthy();
 
     const launchToggle = view.container.querySelector(
       'input[aria-label="Launch at login"]',

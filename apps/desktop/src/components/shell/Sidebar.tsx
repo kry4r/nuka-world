@@ -1,4 +1,4 @@
-import { NukaLockup } from "@/components/brand/NukaLockup";
+import { NukaLogo } from "@/components/brand/NukaLogo";
 import type { ShellNavigationItem, ShellPageId } from "./shellNavigation";
 
 type SidebarProps = {
@@ -14,11 +14,7 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
   return (
     <aside aria-label="Primary" className="app-sidebar">
       <button aria-label="Open Chat" className="app-sidebar__brand" onClick={() => onNavigate("chat")} type="button">
-        <NukaLockup className="app-sidebar__lockup" width={124} />
-        <span className="app-sidebar__brand-copy">
-          <span className="app-sidebar__brand-title">Nuka</span>
-          <span className="app-sidebar__brand-meta">Desktop workbench</span>
-        </span>
+        <NukaLogo className="app-sidebar__logo" size={56} />
       </button>
 
       <nav aria-label="Primary pages" className="app-sidebar__nav">
@@ -42,12 +38,6 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
         })}
       </nav>
 
-      <div className="app-sidebar__runtime" aria-label="Runtime summary">
-        <span className="app-sidebar__runtime-label">Runtime</span>
-        <strong>Local-first</strong>
-        <span>Context stays on device until routed.</span>
-      </div>
-
       {settingsItem ? (
         <button
           aria-label={settingsItem.label}
@@ -59,7 +49,6 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
           <span className="app-sidebar__nav-rail" />
           <span className="app-sidebar__settings-copy">
             <span className="app-sidebar__settings-title">{settingsItem.label}</span>
-            <span className="app-sidebar__settings-meta">Providers, appearance, runtime</span>
           </span>
         </button>
       ) : null}
