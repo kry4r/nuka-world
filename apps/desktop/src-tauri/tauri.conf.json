@@ -16,5 +16,10 @@
         "resizable": true
       }
     ]
+  },
+  "bundle": {
+    "resources": [
+      "resources/pageindex/pageindex.cmd"
+    ]
   }
 }

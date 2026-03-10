@@ -5,6 +5,21 @@ import { findText, renderIntoDocument } from "./test/render";
 
 const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
   switch (command) {
+    case "app_runtime_status":
+      return {
+        provider: {
+          kind: "missing",
+          message: "Provider required",
+        },
+        knowledge: {
+          kind: "ready",
+          message: "Knowledge ready",
+        },
+        app: {
+          kind: "bootstrapped",
+          message: "Bootstrapped",
+        },
+      };
     case "route_world_prompt": {
       const prompt = String(args?.prompt ?? "");
       const mode = args?.mode as { kind: string; workflowId?: string } | undefined;
@@ -238,6 +253,18 @@ afterEach(async () => {
 });
 
 describe("App shell", () => {
+  it("shows provider-required state for AI pages before a default provider exists", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.textContent).toContain("Provider required");
+  });
+
   it("renders a persistent left rail with the Nuka SVG lockup", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
@@ -356,4 +383,3 @@ describe("App shell", () => {
     expect(findText(view.container, "Status: active")).toBeTruthy();
   });
 });
-

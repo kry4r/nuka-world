@@ -1,9 +1,53 @@
 use crate::settings::SettingsState;
 use std::sync::RwLock;
 
+#[derive(Debug, Clone)]
+pub struct RuntimeCapabilityStatus {
+    kind: String,
+    message: String,
+}
+
+impl RuntimeCapabilityStatus {
+    pub fn new(kind: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AppRuntimeStatus {
+    app: RuntimeCapabilityStatus,
+    knowledge: RuntimeCapabilityStatus,
+}
+
+impl AppRuntimeStatus {
+    pub fn new(app: RuntimeCapabilityStatus, knowledge: RuntimeCapabilityStatus) -> Self {
+        Self { app, knowledge }
+    }
+
+    pub fn app(&self) -> &RuntimeCapabilityStatus {
+        &self.app
+    }
+
+    pub fn knowledge(&self) -> &RuntimeCapabilityStatus {
+        &self.knowledge
+    }
+}
+
 #[allow(dead_code)]
 pub struct AppState {
     settings: RwLock<SettingsState>,
+    runtime_status: AppRuntimeStatus,
     provider_service: nuka_runtime::providers::ProvidersService,
     settings_service: nuka_runtime::settings_service::SettingsService,
     agents_service: nuka_runtime::agents::AgentsService,
@@ -17,6 +61,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         settings: SettingsState,
+        runtime_status: AppRuntimeStatus,
         provider_service: nuka_runtime::providers::ProvidersService,
         settings_service: nuka_runtime::settings_service::SettingsService,
         agents_service: nuka_runtime::agents::AgentsService,
@@ -27,6 +72,7 @@ impl AppState {
     ) -> Self {
         Self {
             settings: RwLock::new(settings),
+            runtime_status,
             provider_service,
             settings_service,
             agents_service,
@@ -43,6 +89,10 @@ impl AppState {
 
     pub fn set_settings(&self, settings: SettingsState) {
         *self.settings.write().expect("settings lock poisoned") = settings;
+    }
+
+    pub fn runtime_status(&self) -> AppRuntimeStatus {
+        self.runtime_status.clone()
     }
 
     pub fn provider_service(&self) -> &nuka_runtime::providers::ProvidersService {

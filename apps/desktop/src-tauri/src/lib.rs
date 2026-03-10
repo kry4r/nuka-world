@@ -14,6 +14,7 @@ pub fn run() {
             commands::agents::generate_agent_draft,
             commands::agents::list_agents,
             commands::agents::save_agent,
+            commands::app::app_runtime_status,
             commands::app::close_policy_minimizes_to_tray,
             commands::chat::route_world_prompt,
             commands::knowledge::add_folder_connector,
@@ -106,4 +107,3 @@ mod tests {
         }
     }
 }
-
