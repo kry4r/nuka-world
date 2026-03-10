@@ -14,6 +14,8 @@ import {
   type WorkflowLaunchIntent,
 } from "@/lib/workflow";
 import { useProviderGate } from "@/hooks/useProviderGate";
+import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
+import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
 import { ChatModeSwitcher } from "./ChatModeSwitcher";
 import { ConversationEventBlock } from "./ConversationEventBlock";
 import { SuggestionStrip } from "./SuggestionStrip";
@@ -138,6 +140,11 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
   const [error, setError] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
   const [workflowHandoff, setWorkflowHandoff] = useState<WorkflowLaunchIntent | null>(null);
+  const memoryReviewDock = useMemoryReviewDock(
+    "chat",
+    session?.session.id ?? null,
+    session?.session.messageCount ?? null,
+  );
 
   const landing = messages.length === 0;
   const draftMode = resolveDraftMode(modeKind, selectedWorkflowId);
@@ -378,6 +385,8 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                   </select>
                 </label>
               ) : null}
+
+              <MemoryReviewDock {...memoryReviewDock} />
 
               <div className="composer__bar">
                 <div className="composer__field">

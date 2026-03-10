@@ -29,8 +29,10 @@ pub fn run() {
             commands::memory::get_memory_node_detail,
             commands::memory::list_memory_by_workflow,
             commands::memory::list_memory_scopes,
+            commands::memory::list_pending_memory_candidates,
             commands::memory::load_memory_graph,
             commands::memory::memory_promotion_policy,
+            commands::memory::review_memory_candidate,
             commands::memory::update_memory_node,
             commands::providers::delete_provider,
             commands::providers::list_providers,
@@ -98,6 +100,8 @@ mod tests {
             "commands::memory::delete_memory_node",
             "commands::memory::create_memory_edge",
             "commands::memory::delete_memory_edge",
+            "commands::memory::list_pending_memory_candidates",
+            "commands::memory::review_memory_candidate",
             "commands::workflow::continue_workflow_session",
         ] {
             assert!(

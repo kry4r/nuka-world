@@ -78,6 +78,7 @@ async fn route_world_prompt_inner(
     mode: ChatModeInput,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<ChatRouteResponse> {
+    let prompt_for_memory = prompt.clone();
     let turn = match session_id.as_deref() {
         Some(session_id) => state.world_runtime().continue_session(session_id, &prompt).await,
         None => state.world_runtime().start_session(&prompt, mode.into()).await,
@@ -118,6 +119,14 @@ async fn route_world_prompt_inner(
             None,
         ),
     };
+
+    state
+        .memory_service()
+        .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+            session_id: session.id.clone(),
+            prompt: prompt_for_memory,
+        })
+        .await?;
 
     Ok(ChatRouteResponse {
         session,
@@ -243,6 +252,40 @@ mod tests {
         assert_eq!(response.messages.len(), 1);
         assert_eq!(response.messages[0].content, "summarize today's notes");
         assert_eq!(response.provider.as_ref().map(|provider| provider.name.as_str()), Some("Local"));
+    }
+
+    #[tokio::test]
+    async fn route_world_prompt_creates_chat_memory_candidate_for_the_session() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        );
+        let provider_id = provider.id.clone();
+
+        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+
+        let response = super::route_world_prompt_inner(
+            "capture the release checklist".to_string(),
+            None,
+            super::ChatModeInput::ChatOnly,
+            &state,
+        )
+        .await
+        .unwrap();
+        let pending = state.memory_service().list_pending_candidates().await.unwrap();
+
+        assert!(pending.iter().any(|candidate| {
+            candidate.surface == nuka_domain::memory::MemorySurface::Chat
+                && candidate.owner_id == response.session.id
+        }));
     }
 
     #[tokio::test]

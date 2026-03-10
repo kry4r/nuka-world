@@ -4,6 +4,11 @@ pub enum RuntimeEvent {
         session_id: String,
         prompt: String,
     },
+    WorkflowSessionStarted {
+        session_id: String,
+        workflow_id: String,
+        prompt: String,
+    },
     WorkflowTurnCompleted {
         session_id: String,
         workflow_id: String,

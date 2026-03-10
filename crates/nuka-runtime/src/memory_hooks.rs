@@ -13,6 +13,22 @@ pub async fn handle_runtime_event(
                 )
                 .await?;
         }
+        crate::runtime_events::RuntimeEvent::WorkflowSessionStarted {
+            session_id,
+            workflow_id,
+            prompt,
+        } => {
+            service
+                .record_runtime_candidate(
+                    nuka_domain::memory::MemorySurface::Workflow,
+                    &session_id,
+                    &prompt,
+                    &format!(
+                        "Workflow session {session_id} in {workflow_id} opened for review"
+                    ),
+                )
+                .await?;
+        }
         crate::runtime_events::RuntimeEvent::WorkflowTurnCompleted {
             session_id,
             workflow_id,

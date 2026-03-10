@@ -82,6 +82,7 @@ async fn start_workflow_session_inner(
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<WorkflowSessionResponse> {
     let inputs = inputs.unwrap_or_default();
+    let prompt = memory_prompt_for_workflow(&workflow_id, &inputs);
     let session = state
         .workflow_world_runtime()
         .start_saved_workflow_session_with_inputs_and_origin(
@@ -89,6 +90,15 @@ async fn start_workflow_session_inner(
             inputs.clone(),
             origin.map(Into::into),
         )
+        .await?;
+
+    state
+        .memory_service()
+        .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::WorkflowSessionStarted {
+            session_id: session.id.clone(),
+            workflow_id: session.workflow_id.clone(),
+            prompt,
+        })
         .await?;
 
     Ok(WorkflowSessionResponse::from(session))
@@ -99,12 +109,42 @@ async fn continue_workflow_session_inner(
     prompt: String,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<WorkflowSessionResponse> {
+    let prompt_for_memory = prompt.clone();
     let session = state
         .workflow_world_runtime()
         .continue_saved_workflow_session(&session_id, &prompt)
         .await?;
 
+    state
+        .memory_service()
+        .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::WorkflowTurnCompleted {
+            session_id: session.id.clone(),
+            workflow_id: session.workflow_id.clone(),
+            prompt: prompt_for_memory,
+        })
+        .await?;
+
     Ok(WorkflowSessionResponse::from(session))
+}
+
+fn memory_prompt_for_workflow(
+    workflow_id: &str,
+    inputs: &std::collections::BTreeMap<String, String>,
+) -> String {
+    if let Some(prompt) = inputs
+        .get("goal")
+        .or_else(|| inputs.get("releaseScope"))
+        .or_else(|| inputs.get("issueSummary"))
+        .filter(|value| !value.trim().is_empty())
+    {
+        return prompt.clone();
+    }
+
+    match workflow_id {
+        "workflow-release-notes" => "Prepare the release notes workflow room.".to_string(),
+        "workflow-customer-triage" => "Open the customer triage workflow room.".to_string(),
+        _ => "Prepare a product launch brief".to_string(),
+    }
 }
 
 impl From<nuka_runtime::workflow::WorkflowSession> for WorkflowSessionResponse {
@@ -265,6 +305,30 @@ mod tests {
             super::WorkflowEventResponse::UserMessage { ref content, .. }
                 if content == "Review the release checklist"
         ));
+    }
+
+    #[tokio::test]
+    async fn start_workflow_session_creates_memory_candidate_for_the_room_session() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        configure_default_provider(&state).await;
+
+        let session = super::start_workflow_session_inner(
+            "workflow-release-notes".to_string(),
+            Some(std::collections::BTreeMap::from([(
+                "releaseScope".to_string(),
+                "Review the release checklist".to_string(),
+            )])),
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
+        let pending = state.memory_service().list_pending_candidates().await.unwrap();
+
+        assert!(pending.iter().any(|candidate| {
+            candidate.surface == nuka_domain::memory::MemorySurface::Workflow
+                && candidate.owner_id == session.session_id
+        }));
     }
 
     #[tokio::test]

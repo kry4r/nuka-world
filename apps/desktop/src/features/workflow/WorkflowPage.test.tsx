@@ -93,6 +93,11 @@ const { providerGateState } = vi.hoisted(() => ({
   },
 }));
 
+const { listPendingMemoryCandidatesMock, reviewMemoryCandidateMock } = vi.hoisted(() => ({
+  listPendingMemoryCandidatesMock: vi.fn(async () => []),
+  reviewMemoryCandidateMock: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/workflow", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/workflow")>();
 
@@ -108,11 +113,22 @@ vi.mock("@/hooks/useProviderGate", () => ({
   useProviderGate: () => providerGateState,
 }));
 
+vi.mock("@/lib/memory", () => ({
+  listPendingMemoryCandidates: (
+    ...args: Parameters<typeof listPendingMemoryCandidatesMock>
+  ) => listPendingMemoryCandidatesMock(...args),
+  reviewMemoryCandidate: (
+    ...args: Parameters<typeof reviewMemoryCandidateMock>
+  ) => reviewMemoryCandidateMock(...args),
+}));
+
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
   startWorkflowSessionMock.mockClear();
   continueWorkflowSessionMock.mockClear();
+  listPendingMemoryCandidatesMock.mockReset();
+  reviewMemoryCandidateMock.mockReset();
   providerGateState.ready = true;
   providerGateState.blocked = false;
   providerGateState.message = "Provider ready";
@@ -208,6 +224,121 @@ describe("WorkflowPage", () => {
     expect(findText(view.container, "Research Brief | Session workflow...")).toBeTruthy();
     expect(findText(view.container, "Workflow Lobby")).toBeFalsy();
     expect(findText(view.container, "Status: active")).toBeTruthy();
+  });
+
+  it("renders the three-way memory review dock in the workflow room", async () => {
+    listPendingMemoryCandidatesMock.mockResolvedValueOnce([
+      {
+        id: "candidate-workflow-1",
+        nodeId: "node-workflow-1",
+        title: "Launch Brief Memory",
+        surface: "workflow",
+        ownerId: "workflow-session-1",
+        suggestedSchemaId: "schema-launch",
+        confidence: 0.77,
+        reason: "Repeated launch-planning cue",
+        evidenceCount: 3,
+      },
+    ]);
+
+    const view = await renderIntoDocument(<WorkflowPage />);
+    cleanups.push(view.cleanup);
+
+    const startButton = findButton(view.container, "Start Workflow");
+    await act(async () => {
+      startButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listPendingMemoryCandidatesMock).toHaveBeenCalledWith(
+      "workflow",
+      "workflow-session-1",
+    );
+    expect(view.container.textContent).toContain("转入长期语义记忆");
+    expect(view.container.textContent).toContain("暂留为情景记忆");
+    expect(view.container.textContent).toContain("拒绝");
+  });
+
+  it("refreshes the memory review dock after another turn in the same workflow room", async () => {
+    listPendingMemoryCandidatesMock
+      .mockResolvedValueOnce([
+        {
+          id: "candidate-workflow-1",
+          nodeId: "node-workflow-1",
+          title: "First Workflow Candidate",
+          surface: "workflow",
+          ownerId: "workflow-session-1",
+          suggestedSchemaId: null,
+          confidence: 0.74,
+          reason: "First workflow cue",
+          evidenceCount: 1,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "candidate-workflow-2",
+          nodeId: "node-workflow-2",
+          title: "Second Workflow Candidate",
+          surface: "workflow",
+          ownerId: "workflow-session-1",
+          suggestedSchemaId: null,
+          confidence: 0.81,
+          reason: "Second workflow cue",
+          evidenceCount: 2,
+        },
+      ]);
+
+    const view = await renderIntoDocument(<WorkflowPage />);
+    cleanups.push(view.cleanup);
+
+    const startButton = findButton(view.container, "Start Workflow");
+    await act(async () => {
+      startButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const composer = view.container.querySelector(
+      'textarea[placeholder="Message this workflow room..."]',
+    ) as HTMLTextAreaElement | null;
+    const continueButton = findButton(view.container, "Continue Workflow");
+    await act(async () => {
+      if (!composer) {
+        throw new Error("workflow composer missing");
+      }
+
+      setFormValue(composer, "Second workflow turn");
+    });
+    await act(async () => {
+      continueButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listPendingMemoryCandidatesMock).toHaveBeenNthCalledWith(
+      1,
+      "workflow",
+      "workflow-session-1",
+    );
+    expect(listPendingMemoryCandidatesMock).toHaveBeenNthCalledWith(
+      2,
+      "workflow",
+      "workflow-session-1",
+    );
+    expect(view.container.textContent).toContain("Second Workflow Candidate");
   });
 
   it("renders transcript and timeline events inside the workflow room", async () => {

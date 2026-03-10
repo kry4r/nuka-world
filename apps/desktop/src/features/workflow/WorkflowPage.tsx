@@ -3,6 +3,8 @@ import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { useProviderGate } from "@/hooks/useProviderGate";
+import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
+import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
 import {
   WORKFLOW_DEFINITIONS,
   continueWorkflowSession,
@@ -32,6 +34,11 @@ export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}
   const [isStarting, setIsStarting] = useState(false);
   const [isContinuing, setIsContinuing] = useState(false);
   const [sourceIntent, setSourceIntent] = useState<WorkflowLaunchIntent | null>(null);
+  const memoryReviewDock = useMemoryReviewDock(
+    "workflow",
+    session?.sessionId ?? null,
+    session?.events.length ?? null,
+  );
 
   const selectedWorkflow =
     WORKFLOW_DEFINITIONS.find((workflow) => workflow.id === selectedWorkflowId) ??
@@ -194,6 +201,7 @@ export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}
               onContinue={() => void handleContinue()}
               onPromptChange={setRoomPrompt}
               prompt={roomPrompt}
+              reviewDock={<MemoryReviewDock {...memoryReviewDock} />}
               session={session}
               workflowTitle={activeWorkflow?.title ?? session.workflowId}
             />

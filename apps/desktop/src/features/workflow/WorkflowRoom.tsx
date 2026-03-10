@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 import type { WorkflowEvent, WorkflowSessionResponse } from "@/lib/workflow";
 import { WorkflowTimeline } from "./WorkflowTimeline";
@@ -11,6 +12,7 @@ type WorkflowRoomProps = {
   continueDisabled: boolean;
   onContinue: () => void;
   onPromptChange: (value: string) => void;
+  reviewDock?: ReactNode;
 };
 
 export function WorkflowRoom({
@@ -20,6 +22,7 @@ export function WorkflowRoom({
   onContinue,
   onPromptChange,
   prompt,
+  reviewDock,
   session,
   workflowTitle,
 }: WorkflowRoomProps) {
@@ -105,6 +108,7 @@ export function WorkflowRoom({
         tone="soft"
       >
         <div style={{ display: "grid", gap: "0.85rem" }}>
+          {reviewDock}
           <textarea
             className="settings-input"
             disabled={composerDisabled}

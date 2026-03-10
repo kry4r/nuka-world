@@ -69,6 +69,11 @@ const { providerGateState } = vi.hoisted(() => ({
   },
 }));
 
+const { listPendingMemoryCandidatesMock, reviewMemoryCandidateMock } = vi.hoisted(() => ({
+  listPendingMemoryCandidatesMock: vi.fn(async () => []),
+  reviewMemoryCandidateMock: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/chat", () => ({
   routeWorldPrompt: (...args: Parameters<typeof routeWorldPromptMock>) =>
     routeWorldPromptMock(...args),
@@ -76,6 +81,15 @@ vi.mock("@/lib/chat", () => ({
 
 vi.mock("@/hooks/useProviderGate", () => ({
   useProviderGate: () => providerGateState,
+}));
+
+vi.mock("@/lib/memory", () => ({
+  listPendingMemoryCandidates: (
+    ...args: Parameters<typeof listPendingMemoryCandidatesMock>
+  ) => listPendingMemoryCandidatesMock(...args),
+  reviewMemoryCandidate: (
+    ...args: Parameters<typeof reviewMemoryCandidateMock>
+  ) => reviewMemoryCandidateMock(...args),
 }));
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -131,6 +145,8 @@ function deferredValue<T>() {
 
 afterEach(async () => {
   routeWorldPromptMock.mockReset();
+  listPendingMemoryCandidatesMock.mockReset();
+  reviewMemoryCandidateMock.mockReset();
   providerGateState.ready = true;
   providerGateState.blocked = false;
   providerGateState.message = "Provider ready";
@@ -209,6 +225,96 @@ describe("ChatPage", () => {
     ).toBeFalsy();
     expect(view.container.textContent?.includes("路")).toBe(false);
     expect(view.container.textContent?.includes("鈥")).toBe(false);
+  });
+
+  it("renders the three-way memory review dock in chat once a real session is active", async () => {
+    listPendingMemoryCandidatesMock.mockResolvedValueOnce([
+      {
+        id: "candidate-chat-1",
+        nodeId: "node-chat-1",
+        title: "Release Checklist Memory",
+        surface: "chat",
+        ownerId: "session-123",
+        suggestedSchemaId: "schema-release",
+        confidence: 0.82,
+        reason: "Repeated release guidance",
+        evidenceCount: 2,
+      },
+    ]);
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await setComposerValue(view.container, "Summarize today's notes");
+    await clickButton(view.container, "Send");
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listPendingMemoryCandidatesMock).toHaveBeenCalledWith("chat", "session-123");
+    expect(view.container.textContent).toContain("转入长期语义记忆");
+    expect(view.container.textContent).toContain("暂留为情景记忆");
+    expect(view.container.textContent).toContain("拒绝");
+  });
+
+  it("refreshes the memory review dock after another turn in the same chat session", async () => {
+    listPendingMemoryCandidatesMock
+      .mockResolvedValueOnce([
+        {
+          id: "candidate-chat-1",
+          nodeId: "node-chat-1",
+          title: "First Candidate",
+          surface: "chat",
+          ownerId: "session-123",
+          suggestedSchemaId: null,
+          confidence: 0.7,
+          reason: "First memory cue",
+          evidenceCount: 1,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "candidate-chat-2",
+          nodeId: "node-chat-2",
+          title: "Second Candidate",
+          surface: "chat",
+          ownerId: "session-123",
+          suggestedSchemaId: null,
+          confidence: 0.76,
+          reason: "Second memory cue",
+          evidenceCount: 2,
+        },
+      ]);
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await setComposerValue(view.container, "First turn");
+    await clickButton(view.container, "Send");
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await setComposerValue(view.container, "Second turn");
+    await clickButton(view.container, "Send");
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listPendingMemoryCandidatesMock).toHaveBeenNthCalledWith(
+      1,
+      "chat",
+      "session-123",
+    );
+    expect(listPendingMemoryCandidatesMock).toHaveBeenNthCalledWith(
+      2,
+      "chat",
+      "session-123",
+    );
+    expect(view.container.textContent).toContain("Second Candidate");
   });
 
   it("renders a truthful backend error state instead of fake fallback text", async () => {

@@ -5,6 +5,8 @@ export type MemoryGraphNode = {
   kind: string;
   title: string;
   body: string | null;
+  traceType: string;
+  consolidationState: string;
 };
 
 export type MemoryGraphEdge = {
@@ -17,6 +19,25 @@ export type MemoryGraphEdge = {
 export type MemoryGraph = {
   nodes: MemoryGraphNode[];
   edges: MemoryGraphEdge[];
+};
+
+export type MemoryReviewSurface = "chat" | "workflow";
+
+export type MemoryReviewDecision =
+  | "promote_semantic"
+  | "keep_episodic"
+  | "reject";
+
+export type MemoryCandidate = {
+  id: string;
+  nodeId: string;
+  title: string;
+  surface: MemoryReviewSurface;
+  ownerId: string;
+  suggestedSchemaId: string | null;
+  confidence: number;
+  reason: string;
+  evidenceCount: number;
 };
 
 export async function loadMemoryGraph(): Promise<MemoryGraph> {
@@ -51,4 +72,21 @@ export async function createMemoryEdge(
 
 export async function deleteMemoryEdge(edgeId: string): Promise<void> {
   return invoke("delete_memory_edge", { edgeId });
+}
+
+export async function listPendingMemoryCandidates(
+  surface: MemoryReviewSurface,
+  ownerId: string,
+): Promise<MemoryCandidate[]> {
+  return invoke<MemoryCandidate[]>("list_pending_memory_candidates", {
+    surface,
+    ownerId,
+  });
+}
+
+export async function reviewMemoryCandidate(
+  candidateId: string,
+  decision: MemoryReviewDecision,
+): Promise<void> {
+  return invoke("review_memory_candidate", { candidateId, decision });
 }

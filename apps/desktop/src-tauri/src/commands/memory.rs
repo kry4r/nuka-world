@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Serialize)]
@@ -55,6 +55,28 @@ pub struct MemoryGraphResponse {
 #[serde(rename_all = "camelCase")]
 pub struct MemoryPromotionResponse {
     pub can_promote: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryCandidateResponse {
+    pub id: String,
+    pub node_id: String,
+    pub title: String,
+    pub surface: String,
+    pub owner_id: String,
+    pub suggested_schema_id: Option<String>,
+    pub confidence: f32,
+    pub reason: String,
+    pub evidence_count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewDecisionInput {
+    PromoteSemantic,
+    KeepEpisodic,
+    Reject,
 }
 
 #[tauri::command]
@@ -143,6 +165,28 @@ pub async fn delete_memory_edge(
     state: tauri::State<'_, crate::app_state::AppState>,
 ) -> Result<(), String> {
     delete_memory_edge_inner(edge_id, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn list_pending_memory_candidates(
+    surface: String,
+    owner_id: String,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<Vec<MemoryCandidateResponse>, String> {
+    list_pending_memory_candidates_inner(surface, owner_id, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn review_memory_candidate(
+    candidate_id: String,
+    decision: ReviewDecisionInput,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<(), String> {
+    review_memory_candidate_inner(candidate_id, decision, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -250,6 +294,35 @@ async fn delete_memory_edge_inner(
     state.memory_service().delete_edge(&edge_id).await
 }
 
+async fn list_pending_memory_candidates_inner(
+    surface: String,
+    owner_id: String,
+    state: &crate::app_state::AppState,
+) -> anyhow::Result<Vec<MemoryCandidateResponse>> {
+    let surface = nuka_domain::memory::MemorySurface::from_str(&surface)
+        .map_err(anyhow::Error::msg)?;
+
+    Ok(state
+        .memory_service()
+        .list_pending_candidates()
+        .await?
+        .into_iter()
+        .filter(|candidate| candidate.surface == surface && candidate.owner_id == owner_id)
+        .map(Into::into)
+        .collect())
+}
+
+async fn review_memory_candidate_inner(
+    candidate_id: String,
+    decision: ReviewDecisionInput,
+    state: &crate::app_state::AppState,
+) -> anyhow::Result<()> {
+    state
+        .memory_service()
+        .review_candidate(&candidate_id, decision.into())
+        .await
+}
+
 impl From<nuka_domain::memory::MemoryScope> for MemoryScopeResponse {
     fn from(scope: nuka_domain::memory::MemoryScope) -> Self {
         let kind = memory_scope_kind(&scope).to_string();
@@ -275,6 +348,32 @@ impl From<nuka_domain::memory::MemoryGraphNode> for MemoryNodeDetailResponse {
             trace_type: node.trace_type.as_str().to_string(),
             consolidation_state: node.consolidation_state.as_str().to_string(),
             related_ids: Vec::new(),
+        }
+    }
+}
+
+impl From<nuka_domain::memory::MemoryCandidate> for MemoryCandidateResponse {
+    fn from(candidate: nuka_domain::memory::MemoryCandidate) -> Self {
+        Self {
+            id: candidate.id,
+            node_id: candidate.node_id,
+            title: candidate.title,
+            surface: candidate.surface.as_str().to_string(),
+            owner_id: candidate.owner_id,
+            suggested_schema_id: candidate.suggested_schema_id,
+            confidence: candidate.confidence,
+            reason: candidate.reason,
+            evidence_count: candidate.evidence_count,
+        }
+    }
+}
+
+impl From<ReviewDecisionInput> for nuka_domain::memory::ReviewDecision {
+    fn from(value: ReviewDecisionInput) -> Self {
+        match value {
+            ReviewDecisionInput::PromoteSemantic => Self::PromoteSemantic,
+            ReviewDecisionInput::KeepEpisodic => Self::KeepEpisodic,
+            ReviewDecisionInput::Reject => Self::Reject,
         }
     }
 }
@@ -445,6 +544,95 @@ mod tests {
 
         assert_eq!(json["traceType"], "episodic");
         assert_eq!(json["consolidationState"], "approved");
+    }
+
+    #[tokio::test]
+    async fn list_pending_memory_candidates_filters_by_surface_owner() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        state
+            .memory_service()
+            .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                session_id: "session-1".to_string(),
+                prompt: "Capture the release policy".to_string(),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                session_id: "session-2".to_string(),
+                prompt: "Ignore this other chat cue".to_string(),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .handle_runtime_event(
+                nuka_runtime::runtime_events::RuntimeEvent::WorkflowTurnCompleted {
+                    session_id: "session-1".to_string(),
+                    workflow_id: "workflow-release".to_string(),
+                    prompt: "Ignore this workflow cue".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let items = super::list_pending_memory_candidates_inner(
+            "chat".to_string(),
+            "session-1".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].surface, "chat");
+        assert_eq!(items[0].owner_id, "session-1");
+    }
+
+    #[tokio::test]
+    async fn review_memory_candidate_applies_decision_and_clears_pending_item() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        state
+            .memory_service()
+            .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                session_id: "session-review".to_string(),
+                prompt: "Keep the release retro as episodic memory".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let pending = super::list_pending_memory_candidates_inner(
+            "chat".to_string(),
+            "session-review".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        super::review_memory_candidate_inner(
+            pending[0].id.clone(),
+            super::ReviewDecisionInput::KeepEpisodic,
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let remaining = super::list_pending_memory_candidates_inner(
+            "chat".to_string(),
+            "session-review".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+        let graph = state.memory_service().load_graph().await.unwrap();
+
+        assert!(remaining.is_empty());
+        assert!(graph.nodes.iter().any(|node| {
+            node.trace_type == nuka_domain::memory::MemoryTraceType::Episodic
+                && node.consolidation_state
+                    == nuka_domain::memory::MemoryConsolidationState::Approved
+        }));
     }
 
     #[tokio::test]
