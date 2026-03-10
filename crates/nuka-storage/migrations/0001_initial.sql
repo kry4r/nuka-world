@@ -107,6 +107,63 @@ create table if not exists memory_scopes (
   created_at text not null
 );
 
+create table if not exists memory_nodes (
+  id text primary key,
+  kind text not null,
+  title text not null,
+  body text,
+  trace_type text not null default 'semantic',
+  consolidation_state text not null default 'none',
+  created_at text not null,
+  updated_at text not null
+);
+
+create table if not exists memory_edges (
+  id text primary key,
+  source_id text not null references memory_nodes(id) on delete cascade,
+  target_id text not null references memory_nodes(id) on delete cascade,
+  relation text not null,
+  created_at text not null
+);
+
+create table if not exists memory_candidates (
+  id text primary key,
+  node_id text not null references memory_nodes(id) on delete cascade,
+  title text not null,
+  surface text not null,
+  owner_id text not null,
+  suggested_schema_id text,
+  confidence real not null default 0,
+  reason text not null default '',
+  status text not null default 'pending',
+  created_at text not null,
+  reviewed_at text
+);
+
+create table if not exists memory_candidate_evidence (
+  id text primary key,
+  candidate_id text not null references memory_candidates(id) on delete cascade,
+  detail text not null,
+  created_at text not null
+);
+
+create table if not exists memory_snapshots (
+  id text primary key,
+  node_id text not null references memory_nodes(id) on delete cascade,
+  title text not null,
+  body text,
+  trace_type text not null,
+  created_at text not null
+);
+
+create table if not exists memory_review_actions (
+  id text primary key,
+  candidate_id text not null references memory_candidates(id) on delete cascade,
+  node_id text not null references memory_nodes(id) on delete cascade,
+  decision text not null,
+  created_at text not null
+);
+
 create table if not exists runtime_state_entries (
   state_key text primary key,
   state_value text not null,

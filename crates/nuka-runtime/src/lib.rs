@@ -1,8 +1,10 @@
 pub mod agents;
 pub mod chat_service;
 pub mod knowledge_service;
+pub mod memory_hooks;
 pub mod memory_service;
 pub mod providers;
+pub mod runtime_events;
 pub mod session;
 pub mod settings_service;
 pub mod workflow;

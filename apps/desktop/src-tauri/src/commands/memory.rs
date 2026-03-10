@@ -19,6 +19,8 @@ pub struct MemoryNodeDetailResponse {
     pub title: String,
     pub kind: String,
     pub body: Option<String>,
+    pub trace_type: String,
+    pub consolidation_state: String,
     pub related_ids: Vec<String>,
 }
 
@@ -29,6 +31,8 @@ pub struct MemoryGraphNodeResponse {
     pub kind: String,
     pub title: String,
     pub body: Option<String>,
+    pub trace_type: String,
+    pub consolidation_state: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -268,6 +272,8 @@ impl From<nuka_domain::memory::MemoryGraphNode> for MemoryNodeDetailResponse {
             title: node.title,
             kind: node.kind.as_str().to_string(),
             body: node.body,
+            trace_type: node.trace_type.as_str().to_string(),
+            consolidation_state: node.consolidation_state.as_str().to_string(),
             related_ids: Vec::new(),
         }
     }
@@ -297,6 +303,8 @@ mod tests {
                 kind: nuka_domain::memory::MemoryNodeKind::Fact,
                 title: "Review Memory".to_string(),
                 body: Some("Tracks the latest review conclusions.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -307,6 +315,8 @@ mod tests {
                 kind: nuka_domain::memory::MemoryNodeKind::Workflow,
                 title: "Release Workflow".to_string(),
                 body: Some("Coordinates release validation.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -331,6 +341,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn memory_load_graph_includes_trace_and_consolidation_metadata() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "memory-working".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: "Working Memory".to_string(),
+                body: Some("Tracks the latest active cue.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Working,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::Candidate,
+            })
+            .await
+            .unwrap();
+
+        let graph = super::load_memory_graph_inner(&state).await.unwrap();
+        let json = serde_json::to_value(&graph).unwrap();
+        let node = json["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["id"] == "memory-working")
+            .expect("working memory node should exist");
+
+        assert_eq!(node["traceType"], "working");
+        assert_eq!(node["consolidationState"], "candidate");
+    }
+
+    #[tokio::test]
     async fn memory_detail_reads_graph_node_metadata() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         state
@@ -340,6 +379,8 @@ mod tests {
                 kind: nuka_domain::memory::MemoryNodeKind::Fact,
                 title: "Release Review Memory".to_string(),
                 body: Some("Tracks blockers, owners, and sign-off notes.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -350,6 +391,8 @@ mod tests {
                 kind: nuka_domain::memory::MemoryNodeKind::Workflow,
                 title: "Release Workflow".to_string(),
                 body: Some("Coordinates release validation.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -379,6 +422,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn memory_detail_includes_trace_and_consolidation_metadata() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "memory-episodic".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: "Episodic Memory".to_string(),
+                body: Some("Retains the release-room episode.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Episodic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::Approved,
+            })
+            .await
+            .unwrap();
+
+        let detail = super::get_memory_node_detail_inner("memory-episodic".to_string(), &state)
+            .await
+            .unwrap()
+            .expect("detail should exist");
+        let json = serde_json::to_value(&detail).unwrap();
+
+        assert_eq!(json["traceType"], "episodic");
+        assert_eq!(json["consolidationState"], "approved");
+    }
+
+    #[tokio::test]
     async fn memory_detail_deduplicates_related_ids_for_multiple_relations_to_same_peer() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         state
@@ -388,6 +457,8 @@ mod tests {
                 kind: nuka_domain::memory::MemoryNodeKind::Fact,
                 title: "Release Review Memory".to_string(),
                 body: Some("Tracks blockers, owners, and sign-off notes.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -398,6 +469,8 @@ mod tests {
                 kind: nuka_domain::memory::MemoryNodeKind::Workflow,
                 title: "Release Workflow".to_string(),
                 body: Some("Coordinates release validation.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -440,6 +513,8 @@ mod tests {
                 kind: nuka_domain::memory::MemoryNodeKind::Fact,
                 title: "Release Review Memory".to_string(),
                 body: Some("Tracks blockers, owners, and sign-off notes.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -450,6 +525,8 @@ mod tests {
                 kind: nuka_domain::memory::MemoryNodeKind::Workflow,
                 title: "Release Workflow".to_string(),
                 body: Some("Coordinates release validation.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -488,6 +565,8 @@ impl From<nuka_domain::memory::MemoryGraphNode> for MemoryGraphNodeResponse {
             kind: node.kind.as_str().to_string(),
             title: node.title,
             body: node.body,
+            trace_type: node.trace_type.as_str().to_string(),
+            consolidation_state: node.consolidation_state.as_str().to_string(),
         }
     }
 }

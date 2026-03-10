@@ -72,6 +72,106 @@ impl MemoryService {
             .await
     }
 
+    pub async fn list_pending_candidates(
+        &self,
+    ) -> anyhow::Result<Vec<nuka_domain::memory::MemoryCandidate>> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        nuka_storage::memory::MemoryCandidateRepository::new(self.pool.clone())
+            .list_pending()
+            .await
+    }
+
+    pub async fn list_snapshots(&self) -> anyhow::Result<Vec<nuka_domain::memory::MemorySnapshot>> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        nuka_storage::memory::MemorySnapshotRepository::new(self.pool.clone())
+            .list()
+            .await
+    }
+
+    pub async fn create_candidate_for_test(
+        &self,
+        title: &str,
+    ) -> anyhow::Result<nuka_domain::memory::MemoryCandidate> {
+        self.record_runtime_candidate(
+            nuka_domain::memory::MemorySurface::Workflow,
+            "workflow-test",
+            title,
+            "Seeded memory candidate for tests",
+        )
+        .await
+    }
+
+    pub async fn review_candidate(
+        &self,
+        candidate_id: &str,
+        decision: nuka_domain::memory::ReviewDecision,
+    ) -> anyhow::Result<()> {
+        nuka_storage::migrations::run(&self.pool).await?;
+
+        let candidate_repository =
+            nuka_storage::memory::MemoryCandidateRepository::new(self.pool.clone());
+        let graph_repository = nuka_storage::memory::MemoryGraphRepository::new(self.pool.clone());
+        let snapshot_repository =
+            nuka_storage::memory::MemorySnapshotRepository::new(self.pool.clone());
+        let review_repository =
+            nuka_storage::memory::MemoryReviewActionRepository::new(self.pool.clone());
+
+        let candidate = candidate_repository
+            .get(candidate_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("memory candidate not found: {candidate_id}"))?;
+        let mut node = graph_repository
+            .get_node(&candidate.node_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("memory node not found: {}", candidate.node_id))?;
+
+        match decision {
+            nuka_domain::memory::ReviewDecision::PromoteSemantic => {
+                node.trace_type = nuka_domain::memory::MemoryTraceType::Semantic;
+                node.consolidation_state =
+                    nuka_domain::memory::MemoryConsolidationState::Approved;
+            }
+            nuka_domain::memory::ReviewDecision::KeepEpisodic => {
+                node.trace_type = nuka_domain::memory::MemoryTraceType::Episodic;
+                node.consolidation_state =
+                    nuka_domain::memory::MemoryConsolidationState::Approved;
+            }
+            nuka_domain::memory::ReviewDecision::Reject => {
+                node.consolidation_state =
+                    nuka_domain::memory::MemoryConsolidationState::Rejected;
+            }
+        }
+
+        graph_repository.upsert_node(node.clone()).await?;
+        snapshot_repository
+            .create(nuka_domain::memory::MemorySnapshot {
+                id: uuid::Uuid::new_v4().to_string(),
+                node_id: node.id.clone(),
+                title: node.title.clone(),
+                body: node.body.clone(),
+                trace_type: node.trace_type.clone(),
+            })
+            .await?;
+        review_repository
+            .create(nuka_domain::memory::MemoryReviewAction {
+                id: uuid::Uuid::new_v4().to_string(),
+                candidate_id: candidate.id.clone(),
+                node_id: node.id.clone(),
+                decision: decision.clone(),
+            })
+            .await?;
+        candidate_repository.mark_reviewed(candidate_id, decision).await?;
+
+        Ok(())
+    }
+
+    pub async fn handle_runtime_event(
+        &self,
+        event: crate::runtime_events::RuntimeEvent,
+    ) -> anyhow::Result<()> {
+        crate::memory_hooks::handle_runtime_event(self, event).await
+    }
+
     pub async fn list_scopes(&self) -> anyhow::Result<Vec<nuka_domain::memory::MemoryScope>> {
         self.list_all().await
     }
@@ -126,12 +226,60 @@ impl MemoryService {
             .list()
             .await
     }
+
+    pub(crate) async fn record_runtime_candidate(
+        &self,
+        surface: nuka_domain::memory::MemorySurface,
+        owner_id: &str,
+        prompt: &str,
+        reason: &str,
+    ) -> anyhow::Result<nuka_domain::memory::MemoryCandidate> {
+        nuka_storage::migrations::run(&self.pool).await?;
+
+        let node_id = uuid::Uuid::new_v4().to_string();
+        let candidate_id = uuid::Uuid::new_v4().to_string();
+        let title = prompt.chars().take(48).collect::<String>();
+
+        nuka_storage::memory::MemoryGraphRepository::new(self.pool.clone())
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: node_id.clone(),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: title.clone(),
+                body: Some(prompt.to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Working,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::Candidate,
+            })
+            .await?;
+
+        let repository = nuka_storage::memory::MemoryCandidateRepository::new(self.pool.clone());
+        repository
+            .create_pending(nuka_domain::memory::MemoryCandidate {
+                id: candidate_id.clone(),
+                node_id: node_id.clone(),
+                title: title.clone(),
+                surface,
+                owner_id: owner_id.to_string(),
+                suggested_schema_id: None,
+                confidence: 0.72,
+                reason: reason.to_string(),
+                evidence_count: 0,
+            })
+            .await?;
+        repository.add_evidence(&candidate_id, prompt).await?;
+
+        repository
+            .get(&candidate_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("memory candidate was not persisted"))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::MemoryService;
-    use nuka_domain::memory::{MemoryGraphEdge, MemoryGraphNode, MemoryNodeKind};
+    use nuka_domain::memory::{
+        MemoryGraphEdge, MemoryGraphNode, MemoryNodeKind, MemoryTraceType, ReviewDecision,
+    };
 
     #[tokio::test]
     async fn memory_service_updates_node_title_and_body() {
@@ -142,6 +290,8 @@ mod tests {
                 kind: MemoryNodeKind::Fact,
                 title: "Review Memory".to_string(),
                 body: Some("Tracks the latest review conclusions.".to_string()),
+                trace_type: MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -178,6 +328,8 @@ mod tests {
                 kind: MemoryNodeKind::Fact,
                 title: "Review Memory".to_string(),
                 body: Some("Tracks the latest review conclusions.".to_string()),
+                trace_type: MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -187,6 +339,8 @@ mod tests {
                 kind: MemoryNodeKind::Workflow,
                 title: "Release Workflow".to_string(),
                 body: Some("Coordinates the release review.".to_string()),
+                trace_type: MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
             })
             .await
             .unwrap();
@@ -205,5 +359,50 @@ mod tests {
         let graph = service.load_graph().await.unwrap();
         assert!(graph.nodes.iter().all(|node| node.id != "memory-review"));
         assert!(graph.edges.is_empty(), "connected edges should be deleted");
+    }
+
+    #[tokio::test]
+    async fn reviewing_semantic_promotion_creates_semantic_node_and_snapshot() {
+        let service = MemoryService::new_for_test();
+        let candidate = service
+            .create_candidate_for_test("release-policy")
+            .await
+            .unwrap();
+
+        service
+            .review_candidate(&candidate.id, ReviewDecision::PromoteSemantic)
+            .await
+            .unwrap();
+
+        let graph = service.load_graph().await.unwrap();
+        let snapshots = service.list_snapshots().await.unwrap();
+
+        assert!(graph
+            .nodes
+            .iter()
+            .any(|node| node.trace_type == MemoryTraceType::Semantic));
+        assert!(!snapshots.is_empty());
+    }
+
+    #[tokio::test]
+    async fn workflow_event_hook_generates_candidate_instead_of_auto_promotion() {
+        let service = MemoryService::new_for_test();
+        service
+            .handle_runtime_event(crate::runtime_events::RuntimeEvent::WorkflowTurnCompleted {
+                session_id: "session-release".to_string(),
+                workflow_id: "workflow-release-notes".to_string(),
+                prompt: "Summarize the release handoff".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let graph = service.load_graph().await.unwrap();
+        let pending = service.list_pending_candidates().await.unwrap();
+
+        assert_eq!(pending.len(), 1);
+        assert!(graph
+            .nodes
+            .iter()
+            .all(|node| node.trace_type != MemoryTraceType::Semantic));
     }
 }
