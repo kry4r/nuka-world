@@ -1,6 +1,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "./ChatPage";
+import type { MemoryCandidate } from "@/lib/memory";
 import { findText, renderIntoDocument } from "@/test/render";
 
 type ChatMode =
@@ -70,7 +71,7 @@ const { providerGateState } = vi.hoisted(() => ({
 }));
 
 const { listPendingMemoryCandidatesMock, reviewMemoryCandidateMock } = vi.hoisted(() => ({
-  listPendingMemoryCandidatesMock: vi.fn(async () => []),
+  listPendingMemoryCandidatesMock: vi.fn(async (): Promise<MemoryCandidate[]> => []),
   reviewMemoryCandidateMock: vi.fn(async () => undefined),
 }));
 

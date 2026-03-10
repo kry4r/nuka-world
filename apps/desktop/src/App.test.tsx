@@ -154,6 +154,10 @@ const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>)
       return [];
     case "get_memory_node_detail":
       return null;
+    case "list_pending_memory_candidates":
+      return [];
+    case "review_memory_candidate":
+      return undefined;
     case "list_knowledge_libraries":
       return [];
     case "list_index_jobs":

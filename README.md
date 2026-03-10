@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="./docs/logo/goodlogo.png" alt="Nuka World" width="156">
 </p>
 
@@ -10,43 +10,38 @@
 
 ## What ships now
 
-Nuka World now runs real local backend flows instead of placeholder desktop state:
+Nuka World now runs real desktop backend flows instead of placeholder success paths:
 
-- `Settings` persists providers, appearance, and runtime preferences through Tauri into Rust storage.
-- `Chat` sends real prompts through the configured provider and keeps truthful session metadata.
-- `Workflow` starts saved workflows with input-aware execution state.
-- `Agents` loads saved agents, saves edits, deletes entries, and generates provider-aware drafts.
-- `Knowledge` manages local folder connectors, rebuild jobs, and engine-backed search.
-- `Memory` shows workflow-linked memory scopes with real workflow, session, and agent metadata.
+- `Bootstrap` initializes SQLite, runtime status, and the bundled `PageIndex` entrypoint on launch.
+- `Chat` sends provider-backed turns and stays truthfully blocked until a default provider exists.
+- `Workflow` starts and continues real provider-backed workflow sessions, including chat handoff origins.
+- `Agents` loads and saves real records; `Agent draft` is also blocked until a default provider exists.
+- `Knowledge` creates the default library automatically, rebuilds indexes locally, and searches indexed snippets through bundled `PageIndex`.
+- `Memory` stays graph-first with `working`, `episodic`, and `semantic` traces, inline candidate review, and activation, consolidation, or schema views.
 
-## Current boundaries
+## First run
 
-This iteration intentionally keeps a narrow backend surface:
+1. Launch the app.
+2. Confirm the shell reports `Knowledge ready`.
+3. Open `Settings`.
+4. Add an OpenAI-compatible provider, test the connection, and mark it as default.
+5. Return to `Chat`, `Workflow`, or `Agents`.
+6. Review pending memory candidates from the dock above the chat or workflow composer.
 
-- Provider support is `OpenAI-compatible` only.
-- Users must enter `base URL`, `token`, and `model name` themselves.
-- `Anthropic` is not implemented yet.
-- Knowledge connectors support local folders only.
-- The first replaceable knowledge engine is `PageIndexEngine`.
-- Nuka World owns the local indexing and retrieval process lifecycle.
+## Provider gate
 
-## Provider setup
+The provider requirement is strict:
 
-Configure providers from `Settings`:
+- `Chat` is blocked until a default provider is configured.
+- `Workflow` start and follow-up actions are blocked until a default provider is configured.
+- `Agent draft` is blocked until a default provider is configured.
+- `Knowledge` remains available without a provider because the search runtime is local and bundled.
+- `Memory` remains available without a provider, but new candidates only appear after real chat or workflow runtime events.
 
-1. Open `Settings`.
-2. Add a provider with a friendly name.
-3. Fill in `base URL`, `token`, and `model name`.
-4. Save it and mark one provider as the default route.
-5. Use `Test Connection` to validate the OpenAI-compatible endpoint.
+## Knowledge runtime
 
-The first real chat/workflow/agent draft flows require a default provider.
-
-## Knowledge engine expectations
-
-Knowledge indexing is local-first and designed behind a replaceable engine abstraction.
-The current engine is PageIndex-backed and expects a compatible local runtime to be available.
-If the local runtime is missing, rebuild/search surfaces show a truthful backend error instead of fake success.
+The packaged desktop app resolves `resources/pageindex/pageindex.cmd` from Tauri resources during bootstrap.
+If that resource is missing, knowledge rebuild and search failures should be treated as packaging defects, not as user setup work.
 
 Supported local file types:
 
@@ -62,14 +57,26 @@ Supported local file types:
 - `tsx`
 - `py`
 
-## Surface behavior
+## Memory model
 
-- `Chat`: landing state is centered around the composer; successful sends create or continue a real session.
-- `Workflow`: saved workflows can start a fresh execution session with collected inputs.
-- `Agents`: cards reflect saved backend state and can open real details.
-- `Knowledge`: empty state is honest until a folder connector exists; rebuild/search show real job/result state.
-- `Memory`: browse saved scopes directly or filter by workflow id.
-- `App shell`: settings lives in the main navigation and page switches animate through a real transition container.
+The memory system keeps the existing graph interaction model and adds neuroscience-informed state:
+
+- `Working` traces for short-lived active context.
+- `Episodic` traces for session or workflow events.
+- `Semantic` traces for reviewed long-term knowledge.
+- Inline review dock actions: `转入长期语义记忆`, `暂留为情景记忆`, `拒绝`.
+- `Activation`, `Consolidation`, and `Schema` views on the Memory page.
+
+Semantic promotion is never silent. The runtime can propose candidates, but the user must review them before they become durable semantic memory.
+
+## Current boundaries
+
+- Provider support is `OpenAI-compatible` only.
+- Users must still enter `base URL`, `token`, and `model name` themselves.
+- `Anthropic` is not implemented yet.
+- Knowledge connectors support local folders only.
+- The packaged PageIndex entrypoint is currently the Windows `pageindex.cmd` resource.
+- Nuka World owns the local indexing and retrieval lifecycle.
 
 ## Workspace layout
 
@@ -97,8 +104,8 @@ docs/
 - Rust toolchain
 - Node.js
 - Tauri desktop prerequisites for your platform
-- A reachable OpenAI-compatible endpoint
-- A local PageIndex-compatible runtime if you want knowledge rebuild/search to succeed
+- A reachable OpenAI-compatible endpoint if you want to use `Chat`, `Workflow`, or `Agent draft`
+- No separate PageIndex installation for the packaged desktop app
 
 ## Development commands
 

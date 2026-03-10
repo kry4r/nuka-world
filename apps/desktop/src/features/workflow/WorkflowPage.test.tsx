@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowPage } from "./WorkflowPage";
+import type { MemoryCandidate } from "@/lib/memory";
 import { findText, renderIntoDocument } from "@/test/render";
 
 const { startWorkflowSessionMock, continueWorkflowSessionMock } = vi.hoisted(() => ({
@@ -94,7 +95,7 @@ const { providerGateState } = vi.hoisted(() => ({
 }));
 
 const { listPendingMemoryCandidatesMock, reviewMemoryCandidateMock } = vi.hoisted(() => ({
-  listPendingMemoryCandidatesMock: vi.fn(async () => []),
+  listPendingMemoryCandidatesMock: vi.fn(async (): Promise<MemoryCandidate[]> => []),
   reviewMemoryCandidateMock: vi.fn(async () => undefined),
 }));
 
