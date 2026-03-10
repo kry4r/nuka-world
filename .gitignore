@@ -24,6 +24,7 @@ apps/desktop/node_modules/
 apps/desktop/dist/
 apps/desktop/.vite/
 .npm-cache/
+.worktrees/
 
 # Rust
 target/
