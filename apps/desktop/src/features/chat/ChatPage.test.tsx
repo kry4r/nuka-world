@@ -60,9 +60,22 @@ const routeWorldPromptMock = vi.fn(
   },
 );
 
+const { providerGateState } = vi.hoisted(() => ({
+  providerGateState: {
+    ready: true,
+    blocked: false,
+    message: "Provider ready",
+    openSettings: vi.fn(),
+  },
+}));
+
 vi.mock("@/lib/chat", () => ({
   routeWorldPrompt: (...args: Parameters<typeof routeWorldPromptMock>) =>
     routeWorldPromptMock(...args),
+}));
+
+vi.mock("@/hooks/useProviderGate", () => ({
+  useProviderGate: () => providerGateState,
 }));
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -118,6 +131,10 @@ function deferredValue<T>() {
 
 afterEach(async () => {
   routeWorldPromptMock.mockReset();
+  providerGateState.ready = true;
+  providerGateState.blocked = false;
+  providerGateState.message = "Provider ready";
+  providerGateState.openSettings.mockReset();
 
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
@@ -128,6 +145,24 @@ afterEach(async () => {
 });
 
 describe("ChatPage", () => {
+  it("disables the chat composer until a default provider is ready", async () => {
+    providerGateState.ready = false;
+    providerGateState.blocked = true;
+    providerGateState.message = "Provider required";
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await setComposerValue(view.container, "Draft the handoff");
+
+    const sendButton = getButtonByText(view.container, "Send");
+    const textarea = view.container.querySelector("textarea");
+
+    expect(sendButton?.hasAttribute("disabled")).toBe(true);
+    expect(textarea?.hasAttribute("disabled")).toBe(true);
+    expect(view.container.textContent).toContain("Open Settings");
+  });
+
   it("renders the chat mode entry points as a single-choice selector on the landing composer", async () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);

@@ -44,8 +44,21 @@ const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
   ),
 }));
 
+const { providerGateState } = vi.hoisted(() => ({
+  providerGateState: {
+    ready: true,
+    blocked: false,
+    message: "Provider ready",
+    openSettings: vi.fn(),
+  },
+}));
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
+}));
+
+vi.mock("@/hooks/useProviderGate", () => ({
+  useProviderGate: () => providerGateState,
 }));
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -53,6 +66,10 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   invokeMock.mockClear();
   invokeMock.mockImplementation(defaultInvokeImplementation);
+  providerGateState.ready = true;
+  providerGateState.blocked = false;
+  providerGateState.message = "Provider ready";
+  providerGateState.openSettings.mockReset();
 
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
@@ -69,6 +86,21 @@ function findButton(container: HTMLElement, text: string) {
 }
 
 describe("AgentsPage", () => {
+  it("blocks draft generation until provider ready", async () => {
+    providerGateState.ready = false;
+    providerGateState.blocked = true;
+    providerGateState.message = "Provider required";
+
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    const createButton = findButton(view.container, "Create");
+
+    expect(createButton?.hasAttribute("disabled")).toBe(true);
+    expect(view.container.textContent).toContain("Provider required");
+    expect(view.container.textContent).toContain("Open Settings");
+  });
+
   it("renders an agent library and editor split instead of a generic card grid", async () => {
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);

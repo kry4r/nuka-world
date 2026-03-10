@@ -13,6 +13,7 @@ import {
   WORKFLOW_DEFINITIONS,
   type WorkflowLaunchIntent,
 } from "@/lib/workflow";
+import { useProviderGate } from "@/hooks/useProviderGate";
 import { ChatModeSwitcher } from "./ChatModeSwitcher";
 import { ConversationEventBlock } from "./ConversationEventBlock";
 import { SuggestionStrip } from "./SuggestionStrip";
@@ -127,6 +128,7 @@ type ChatPageProps = {
 };
 
 export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
+  const providerGate = useProviderGate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [session, setSession] = useState<ChatRouteResponse | null>(null);
@@ -181,7 +183,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
   };
 
   const handleSend = async (nextPrompt?: string) => {
-    if (isRouting) {
+    if (isRouting || !providerGate.ready) {
       return;
     }
 
@@ -299,6 +301,20 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
 
             {error ? <Card description={error} title="Backend Error" tone="soft" /> : null}
 
+            {providerGate.blocked ? (
+              <Card description={providerGate.message} title="Provider required" tone="soft">
+                <div className="settings-panel__footer">
+                  <button
+                    className="settings-button settings-button--accent"
+                    onClick={providerGate.openSettings}
+                    type="button"
+                  >
+                    Open Settings
+                  </button>
+                </div>
+              </Card>
+            ) : null}
+
             {workflowHandoff?.kind === "open_workflow_lobby" ? (
               <Card
                 description={`World clarified the task in session ${formatSession(workflowHandoff.origin.sourceSessionId)}. Move into Workflow when you want a dedicated room.`}
@@ -323,7 +339,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
             >
               {!landing && composerMode ? (
                 <SuggestionStrip
-                  disabled={isRouting}
+                  disabled={!providerGate.ready || isRouting}
                   onSelect={(choice) => {
                     void handleSend(choice);
                   }}
@@ -367,6 +383,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                 <div className="composer__field">
                   <textarea
                     className="composer__input"
+                    disabled={!providerGate.ready}
                     onChange={(event) => setPrompt(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
@@ -386,7 +403,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                 <button
                   aria-label={landing ? "Send to World" : "Send"}
                   className="composer__send"
-                  disabled={isRouting || prompt.trim().length === 0}
+                  disabled={!providerGate.ready || isRouting || prompt.trim().length === 0}
                   onClick={() => {
                     void handleSend();
                   }}

@@ -3,22 +3,28 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findText, renderIntoDocument } from "./test/render";
 
+const runtimeStatusState = {
+  provider: {
+    kind: "ready",
+    message: "Provider ready",
+  },
+  knowledge: {
+    kind: "ready",
+    message: "Knowledge ready",
+  },
+  app: {
+    kind: "bootstrapped",
+    message: "Bootstrapped",
+  },
+};
+
 const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
   switch (command) {
     case "app_runtime_status":
       return {
-        provider: {
-          kind: "missing",
-          message: "Provider required",
-        },
-        knowledge: {
-          kind: "ready",
-          message: "Knowledge ready",
-        },
-        app: {
-          kind: "bootstrapped",
-          message: "Bootstrapped",
-        },
+        provider: { ...runtimeStatusState.provider },
+        knowledge: { ...runtimeStatusState.knowledge },
+        app: { ...runtimeStatusState.app },
       };
     case "route_world_prompt": {
       const prompt = String(args?.prompt ?? "");
@@ -244,6 +250,10 @@ async function setSelectValue(container: HTMLElement, value: string) {
 }
 
 afterEach(async () => {
+  invokeMock.mockClear();
+  runtimeStatusState.provider.kind = "ready";
+  runtimeStatusState.provider.message = "Provider ready";
+
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
     if (cleanup) {
@@ -254,6 +264,9 @@ afterEach(async () => {
 
 describe("App shell", () => {
   it("shows provider-required state for AI pages before a default provider exists", async () => {
+    runtimeStatusState.provider.kind = "missing";
+    runtimeStatusState.provider.message = "Provider required";
+
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
@@ -364,6 +377,10 @@ describe("App shell", () => {
     await setSelectValue(view.container, "workflow-release-notes");
     await setComposerValue(view.container, "Review the release checklist");
     await clickButton(view.container, "Send");
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(invokeMock).toHaveBeenCalledWith(
       "start_workflow_session",

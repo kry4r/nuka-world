@@ -539,7 +539,7 @@ export function SettingsPage() {
 
             {isLoaded && activeSection === "providers" ? (
               <Card
-                description="Choose default routing and maintain every model endpoint from one surface."
+                description="Choose default routing and maintain every model endpoint from one surface. Chat, Workflow, and agent drafts stay blocked until a default provider is configured here."
                 title="Provider Registry"
                 tone="soft"
               >

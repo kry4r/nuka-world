@@ -7,11 +7,15 @@ type WorkflowRoomProps = {
   workflowTitle: string;
   prompt: string;
   isContinuing: boolean;
+  composerDisabled: boolean;
+  continueDisabled: boolean;
   onContinue: () => void;
   onPromptChange: (value: string) => void;
 };
 
 export function WorkflowRoom({
+  composerDisabled,
+  continueDisabled,
   isContinuing,
   onContinue,
   onPromptChange,
@@ -103,6 +107,7 @@ export function WorkflowRoom({
         <div style={{ display: "grid", gap: "0.85rem" }}>
           <textarea
             className="settings-input"
+            disabled={composerDisabled}
             onChange={(event) => onPromptChange(event.target.value)}
             placeholder="Message this workflow room..."
             rows={4}
@@ -111,7 +116,7 @@ export function WorkflowRoom({
           <div className="settings-panel__footer">
             <button
               className="settings-button settings-button--accent"
-              disabled={isContinuing || prompt.trim().length === 0}
+              disabled={continueDisabled}
               onClick={onContinue}
               type="button"
             >

@@ -18,6 +18,7 @@ type WorkflowLobbyProps = {
   selectedWorkflowId: string;
   inputValues: Record<string, string>;
   isStarting: boolean;
+  startDisabled: boolean;
   onInputChange: (inputId: string, value: string) => void;
   onSelectWorkflow: (workflowId: string) => void;
   onStart: () => void;
@@ -31,6 +32,7 @@ export function WorkflowLobby({
   onStart,
   selectedWorkflow,
   selectedWorkflowId,
+  startDisabled,
   workflows,
 }: WorkflowLobbyProps) {
   return (
@@ -77,7 +79,12 @@ export function WorkflowLobby({
             ))}
           </div>
           <div className="settings-panel__footer">
-            <button className="settings-button settings-button--accent" disabled={isStarting} onClick={onStart} type="button">
+            <button
+              className="settings-button settings-button--accent"
+              disabled={startDisabled}
+              onClick={onStart}
+              type="button"
+            >
               {isStarting ? "Starting..." : "Start Workflow"}
             </button>
           </div>

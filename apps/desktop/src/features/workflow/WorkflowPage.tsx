@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { useProviderGate } from "@/hooks/useProviderGate";
 import {
   WORKFLOW_DEFINITIONS,
   continueWorkflowSession,
@@ -22,6 +23,7 @@ type WorkflowPageProps = {
 };
 
 export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}) {
+  const providerGate = useProviderGate();
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(WORKFLOW_DEFINITIONS[0]?.id ?? "");
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [session, setSession] = useState<WorkflowSessionResponse | null>(null);
@@ -67,8 +69,18 @@ export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}
       setInputValues(seedWorkflowInputs(intent.workflowId, intent.prompt));
       setRoomPrompt("");
       setError(null);
-      setIsStarting(true);
       setSourceIntent(intent);
+
+      if (providerGate.checking) {
+        return;
+      }
+
+      if (!providerGate.ready) {
+        onIntentHandled?.();
+        return;
+      }
+
+      setIsStarting(true);
 
       try {
         const nextSession = await startWorkflowSession(
@@ -98,10 +110,10 @@ export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}
     return () => {
       cancelled = true;
     };
-  }, [intent, onIntentHandled]);
+  }, [intent, onIntentHandled, providerGate.checking, providerGate.ready]);
 
   const handleStart = async () => {
-    if (!selectedWorkflow) {
+    if (!selectedWorkflow || !providerGate.ready) {
       return;
     }
 
@@ -130,7 +142,7 @@ export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}
   };
 
   const handleContinue = async () => {
-    if (!session || roomPrompt.trim().length === 0) {
+    if (!session || roomPrompt.trim().length === 0 || !providerGate.ready) {
       return;
     }
 
@@ -160,8 +172,24 @@ export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}
 
       <div className="page-layout__body">
         <div className="page-layout__main">
+          {providerGate.blocked ? (
+            <Card description={providerGate.message} title="Provider required" tone="soft">
+              <div className="settings-panel__footer">
+                <button
+                  className="settings-button settings-button--accent"
+                  onClick={providerGate.openSettings}
+                  type="button"
+                >
+                  Open Settings
+                </button>
+              </div>
+            </Card>
+          ) : null}
+
           {session ? (
             <WorkflowRoom
+              composerDisabled={!providerGate.ready || isContinuing}
+              continueDisabled={!providerGate.ready || isContinuing || roomPrompt.trim().length === 0}
               isContinuing={isContinuing}
               onContinue={() => void handleContinue()}
               onPromptChange={setRoomPrompt}
@@ -187,6 +215,7 @@ export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}
               onStart={() => void handleStart()}
               selectedWorkflow={selectedWorkflow}
               selectedWorkflowId={selectedWorkflowId}
+              startDisabled={!providerGate.ready || isStarting}
               workflows={WORKFLOW_DEFINITIONS}
             />
           )}

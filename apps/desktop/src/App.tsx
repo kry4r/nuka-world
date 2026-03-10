@@ -1,4 +1,4 @@
-import { useState, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
 import { AppShell } from "./components/shell/AppShell";
 import type { ShellNavigationItem, ShellPageId } from "./components/shell/shellNavigation";
 import { Card } from "./components/ui/Card";
@@ -54,6 +54,23 @@ export default function App() {
   const [activePage, setActivePage] = useState<AppPage>("chat");
   const [workflowIntent, setWorkflowIntent] = useState<WorkflowLaunchIntent | null>(null);
   const { error: runtimeError, status: runtimeStatus } = useAppRuntimeStatus();
+
+  useEffect(() => {
+    const handleNavigation = (event: Event) => {
+      const detail = (event as CustomEvent<{ page?: AppPage }>).detail;
+      if (!detail?.page) {
+        return;
+      }
+
+      setActivePage(detail.page);
+    };
+
+    window.addEventListener("nuka:navigate", handleNavigation as EventListener);
+
+    return () => {
+      window.removeEventListener("nuka:navigate", handleNavigation as EventListener);
+    };
+  }, []);
 
   const handleWorkflowHandoff = (handoff: WorkflowLaunchIntent) => {
     setWorkflowIntent(handoff);

@@ -84,6 +84,15 @@ const { startWorkflowSessionMock, continueWorkflowSessionMock } = vi.hoisted(() 
   })),
 }));
 
+const { providerGateState } = vi.hoisted(() => ({
+  providerGateState: {
+    ready: true,
+    blocked: false,
+    message: "Provider ready",
+    openSettings: vi.fn(),
+  },
+}));
+
 vi.mock("@/lib/workflow", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/workflow")>();
 
@@ -95,11 +104,19 @@ vi.mock("@/lib/workflow", async (importOriginal) => {
   };
 });
 
+vi.mock("@/hooks/useProviderGate", () => ({
+  useProviderGate: () => providerGateState,
+}));
+
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
   startWorkflowSessionMock.mockClear();
   continueWorkflowSessionMock.mockClear();
+  providerGateState.ready = true;
+  providerGateState.blocked = false;
+  providerGateState.message = "Provider ready";
+  providerGateState.openSettings.mockReset();
 
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
@@ -124,6 +141,21 @@ function setFormValue(element: HTMLInputElement | HTMLTextAreaElement, value: st
 }
 
 describe("WorkflowPage", () => {
+  it("blocks workflow start until provider ready", async () => {
+    providerGateState.ready = false;
+    providerGateState.blocked = true;
+    providerGateState.message = "Provider required";
+
+    const view = await renderIntoDocument(<WorkflowPage />);
+    cleanups.push(view.cleanup);
+
+    const startButton = findButton(view.container, "Start Workflow");
+
+    expect(startButton?.hasAttribute("disabled")).toBe(true);
+    expect(view.container.textContent).toContain("Provider required");
+    expect(view.container.textContent).toContain("Open Settings");
+  });
+
   it("keeps workflow room header source free of mojibake separators", () => {
     const source = readFileSync(resolve(process.cwd(), "src/features/workflow/WorkflowRoom.tsx"), "utf8");
     const headerLine = source
@@ -212,6 +244,8 @@ describe("WorkflowPage", () => {
 
     const composer = view.container.querySelector('textarea[placeholder="Message this workflow room..."]') as HTMLTextAreaElement | null;
     const continueButton = findButton(view.container, "Continue Workflow");
+
+    expect(composer?.hasAttribute("disabled")).toBe(false);
 
     await act(async () => {
       if (!composer) {

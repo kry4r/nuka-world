@@ -3,6 +3,7 @@ import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useProviderGate } from "@/hooks/useProviderGate";
 import {
   deleteAgent,
   generateAgentDraft,
@@ -15,6 +16,7 @@ import { ToolBindingsPanel } from "./ToolBindingsPanel";
 const DEFAULT_REQUEST = "Create an agent that researches release notes and writes short weekly digests.";
 
 export function AgentsPage() {
+  const providerGate = useProviderGate();
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [draftAgent, setDraftAgent] = useState<AgentRecord | null>(null);
@@ -57,7 +59,7 @@ export function AgentsPage() {
   const detailAgent = draftAgent ?? selectedAgent;
 
   const handleGenerateDraft = async () => {
-    if (!request.trim()) {
+    if (!request.trim() || !providerGate.ready) {
       return;
     }
 
@@ -198,6 +200,20 @@ export function AgentsPage() {
                 title="Create From One Sentence"
                 tone="accent"
               >
+                {providerGate.blocked ? (
+                  <div style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}>
+                    <Card description={providerGate.message} title="Provider required" tone="soft" />
+                    <div className="settings-panel__footer">
+                      <button
+                        className="settings-button settings-button--accent"
+                        onClick={providerGate.openSettings}
+                        type="button"
+                      >
+                        Open Settings
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="split-row" style={{ marginTop: "1rem" }}>
                   <input
                     aria-label="Agent request"
@@ -205,7 +221,12 @@ export function AgentsPage() {
                     onChange={(event) => setRequest(event.target.value)}
                     value={request}
                   />
-                  <button className="composer__send" onClick={() => void handleGenerateDraft()} type="button">
+                  <button
+                    className="composer__send"
+                    disabled={!providerGate.ready || isGenerating}
+                    onClick={() => void handleGenerateDraft()}
+                    type="button"
+                  >
                     {isGenerating ? "Creating..." : "Create"}
                   </button>
                 </div>
