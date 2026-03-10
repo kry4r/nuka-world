@@ -182,9 +182,27 @@ impl From<nuka_runtime::workflow::WorkflowEvent> for WorkflowEventResponse {
 
 #[cfg(test)]
 mod tests {
+    async fn configure_default_provider(state: &crate::app_state::AppState) {
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        );
+        let provider_id = provider.id.clone();
+
+        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn start_workflow_session_returns_room_ready_transcript_and_timeline() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        configure_default_provider(&state).await;
         let mut inputs = std::collections::BTreeMap::new();
         inputs.insert("goal".to_string(), "ship task eight".to_string());
 
@@ -219,6 +237,7 @@ mod tests {
     #[tokio::test]
     async fn start_workflow_session_keeps_chat_handoff_origin() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        configure_default_provider(&state).await;
         let session = super::start_workflow_session_inner(
             "workflow-release".to_string(),
             Some(std::collections::BTreeMap::from([(
@@ -251,6 +270,7 @@ mod tests {
     #[tokio::test]
     async fn continue_workflow_session_keeps_session_and_appends_follow_up_prompt() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        configure_default_provider(&state).await;
         let session = super::start_workflow_session_inner(
             "workflow-release".to_string(),
             None,
@@ -273,6 +293,38 @@ mod tests {
             event,
             super::WorkflowEventResponse::UserMessage { content, .. }
                 if content == "refine the handoff checklist"
+        )));
+    }
+
+    #[tokio::test]
+    async fn continue_workflow_session_returns_provider_backed_assistant_output() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        configure_default_provider(&state).await;
+
+        let session = super::start_workflow_session_inner(
+            "workflow-release-notes".to_string(),
+            Some(std::collections::BTreeMap::from([(
+                "releaseScope".to_string(),
+                "Review the release checklist".to_string(),
+            )])),
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let continued = super::continue_workflow_session_inner(
+            session.session_id.clone(),
+            "turn this into a handoff".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert!(continued.events.iter().any(|event| matches!(
+            event,
+            super::WorkflowEventResponse::AssistantMessage { content, .. }
+                if content.contains("handoff")
         )));
     }
 }

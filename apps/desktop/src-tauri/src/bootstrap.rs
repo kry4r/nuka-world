@@ -69,8 +69,8 @@ async fn build_app_state_from_pool(
         agents_service,
         knowledge_service,
         memory_service,
-        nuka_runtime::world::WorldRuntime::new(chat_service),
-        nuka_runtime::workflow_world::WorkflowWorldRuntime::default(),
+        nuka_runtime::world::WorldRuntime::new(chat_service.clone()),
+        nuka_runtime::workflow_world::WorkflowWorldRuntime::new(chat_service.clone()),
     ))
 }
 

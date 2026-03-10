@@ -49,26 +49,7 @@ impl ChatService {
         prompt: &str,
         session_id: Option<&str>,
     ) -> anyhow::Result<ChatTurnRecord> {
-        nuka_storage::migrations::run(&self.pool).await?;
-        self.ensure_seed_provider().await?;
-
-        let settings = nuka_storage::settings::SettingsRepository::new(self.pool.clone())
-            .load()
-            .await?;
-        let default_provider_id = settings
-            .default_provider_id
-            .ok_or_else(|| anyhow::anyhow!("default provider is not configured"))?;
-        let provider = nuka_storage::providers::ProviderRepository::new(self.pool.clone())
-            .list()
-            .await?
-            .into_iter()
-            .find(|provider| provider.id == default_provider_id)
-            .ok_or_else(|| anyhow::anyhow!("default provider not found: {default_provider_id}"))?;
-
-        self.provider_client.prepare_chat_request(
-            &provider,
-            vec![OpenAiChatMessage::user(prompt.to_string())],
-        )?;
+        let provider = self.prepare_provider_for_prompt(prompt).await?;
 
         let repo = nuka_storage::chat::ChatRepository::new(self.pool.clone());
         let mut session = match session_id {
@@ -106,6 +87,34 @@ impl ChatService {
             user_message,
             provider,
         })
+    }
+
+    pub async fn prepare_provider_for_prompt(
+        &self,
+        prompt: &str,
+    ) -> anyhow::Result<nuka_domain::provider::ProviderConfig> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        self.ensure_seed_provider().await?;
+
+        let settings = nuka_storage::settings::SettingsRepository::new(self.pool.clone())
+            .load()
+            .await?;
+        let default_provider_id = settings
+            .default_provider_id
+            .ok_or_else(|| anyhow::anyhow!("default provider is not configured"))?;
+        let provider = nuka_storage::providers::ProviderRepository::new(self.pool.clone())
+            .list()
+            .await?
+            .into_iter()
+            .find(|provider| provider.id == default_provider_id)
+            .ok_or_else(|| anyhow::anyhow!("default provider not found: {default_provider_id}"))?;
+
+        self.provider_client.prepare_chat_request(
+            &provider,
+            vec![OpenAiChatMessage::user(prompt.to_string())],
+        )?;
+
+        Ok(provider)
     }
 
     async fn ensure_seed_provider(&self) -> anyhow::Result<()> {

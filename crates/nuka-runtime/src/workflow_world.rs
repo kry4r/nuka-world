@@ -1,9 +1,21 @@
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct WorkflowWorldRuntime {
     workflow_runtime: crate::workflow::WorkflowRuntime,
 }
 
+impl Default for WorkflowWorldRuntime {
+    fn default() -> Self {
+        Self::new(crate::chat_service::ChatService::new_for_test_with_default_provider())
+    }
+}
+
 impl WorkflowWorldRuntime {
+    pub fn new(chat_service: crate::chat_service::ChatService) -> Self {
+        Self {
+            workflow_runtime: crate::workflow::WorkflowRuntime::new(chat_service),
+        }
+    }
+
     pub fn new_for_test() -> Self {
         Self::default()
     }

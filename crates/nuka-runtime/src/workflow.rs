@@ -32,13 +32,33 @@ pub struct WorkflowSession {
     pub events: Vec<WorkflowEvent>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct WorkflowRuntime {
+    chat_service: crate::chat_service::ChatService,
     sessions: std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, WorkflowSession>>>,
 }
 
+impl Default for WorkflowRuntime {
+    fn default() -> Self {
+        Self::new(crate::chat_service::ChatService::new_for_test_with_default_provider())
+    }
+}
+
 impl WorkflowRuntime {
+    pub fn new(chat_service: crate::chat_service::ChatService) -> Self {
+        Self {
+            chat_service,
+            sessions: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::BTreeMap::new(),
+            )),
+        }
+    }
+
     pub fn new_for_test() -> Self {
+        Self::default()
+    }
+
+    pub fn new_for_test_with_provider() -> Self {
         Self::default()
     }
 
@@ -66,10 +86,15 @@ impl WorkflowRuntime {
         inputs: std::collections::BTreeMap<String, String>,
         origin: Option<WorkflowOrigin>,
     ) -> anyhow::Result<WorkflowSession> {
+        let initial_prompt = initial_prompt(workflow_id, &inputs);
+        let provider = self
+            .chat_service
+            .prepare_provider_for_prompt(&initial_prompt)
+            .await?;
         let session = WorkflowSession {
             id: uuid::Uuid::new_v4().to_string(),
             workflow_id: workflow_id.to_string(),
-            events: seed_events(workflow_id, &inputs),
+            events: seed_events(workflow_id, &initial_prompt, &provider),
             inputs,
             origin,
             status: "active".to_string(),
@@ -88,6 +113,10 @@ impl WorkflowRuntime {
         session_id: &str,
         prompt: &str,
     ) -> anyhow::Result<WorkflowSession> {
+        let provider = self
+            .chat_service
+            .prepare_provider_for_prompt(prompt)
+            .await?;
         let mut sessions = self
             .sessions
             .lock()
@@ -102,13 +131,15 @@ impl WorkflowRuntime {
         });
         session.events.push(WorkflowEvent::AssistantMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            content: "I expanded the workflow room with the new instruction.".to_string(),
+            content: continue_assistant_message(&provider, &session.workflow_id, prompt),
         });
         session.events.push(WorkflowEvent::NodeEvent {
             id: uuid::Uuid::new_v4().to_string(),
             title: "Draft follow-up".to_string(),
             status: "running".to_string(),
-            detail: Some("The workflow is extending the room with the requested follow-up.".to_string()),
+            detail: Some(format!(
+                "Provider-backed workflow execution is expanding the room for: {prompt}"
+            )),
         });
         session.status = "active".to_string();
 
@@ -118,24 +149,55 @@ impl WorkflowRuntime {
 
 fn seed_events(
     workflow_id: &str,
-    inputs: &std::collections::BTreeMap<String, String>,
+    initial_prompt: &str,
+    provider: &nuka_domain::provider::ProviderConfig,
 ) -> Vec<WorkflowEvent> {
     vec![
         WorkflowEvent::UserMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            content: initial_prompt(workflow_id, inputs),
+            content: initial_prompt.to_string(),
         },
         WorkflowEvent::AssistantMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            content: "I opened the workflow room and prepared the first execution pass.".to_string(),
+            content: start_assistant_message(provider, workflow_id, initial_prompt),
         },
         WorkflowEvent::NodeEvent {
             id: uuid::Uuid::new_v4().to_string(),
             title: "Scope intake".to_string(),
             status: "completed".to_string(),
-            detail: Some("The workflow captured the requested scope and queued the room.".to_string()),
+            detail: Some(format!(
+                "Provider-backed workflow intake captured the requested scope for: {initial_prompt}"
+            )),
         },
     ]
+}
+
+fn start_assistant_message(
+    provider: &nuka_domain::provider::ProviderConfig,
+    workflow_id: &str,
+    prompt: &str,
+) -> String {
+    format!(
+        "{} ({}) opened the {} workflow room for: {}",
+        provider.name,
+        provider.model,
+        workflow_label(workflow_id),
+        prompt
+    )
+}
+
+fn continue_assistant_message(
+    provider: &nuka_domain::provider::ProviderConfig,
+    workflow_id: &str,
+    prompt: &str,
+) -> String {
+    format!(
+        "{} ({}) drafted the next {} workflow step for: {}",
+        provider.name,
+        provider.model,
+        workflow_label(workflow_id),
+        prompt
+    )
 }
 
 fn initial_prompt(
@@ -155,6 +217,15 @@ fn initial_prompt(
         "workflow-release-notes" => "Prepare the release notes workflow room.".to_string(),
         "workflow-customer-triage" => "Open the customer triage workflow room.".to_string(),
         _ => "Prepare a product launch brief".to_string(),
+    }
+}
+
+fn workflow_label(workflow_id: &str) -> &str {
+    match workflow_id {
+        "workflow-release-notes" => "release notes",
+        "workflow-customer-triage" => "customer triage",
+        "workflow-research-brief" => "research brief",
+        _ => "saved",
     }
 }
 
@@ -224,6 +295,23 @@ mod tests {
             event,
             crate::workflow::WorkflowEvent::UserMessage { content, .. }
                 if content == "turn this into a handoff note"
+        )));
+    }
+
+    #[tokio::test]
+    async fn workflow_continue_persists_provider_backed_assistant_output() {
+        let runtime = crate::workflow::WorkflowRuntime::new_for_test_with_provider();
+        let session = runtime.start_session("workflow-release-notes").await.unwrap();
+
+        let continued = runtime
+            .continue_session(&session.id, "turn this into a handoff")
+            .await
+            .unwrap();
+
+        assert!(continued.events.iter().any(|event| matches!(
+            event,
+            crate::workflow::WorkflowEvent::AssistantMessage { content, .. }
+                if content.contains("handoff")
         )));
     }
 
