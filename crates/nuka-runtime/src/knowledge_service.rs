@@ -71,9 +71,7 @@ impl KnowledgeService {
     ) -> anyhow::Result<Vec<nuka_domain::knowledge::KnowledgeCollection>> {
         nuka_storage::migrations::run(&self.pool).await?;
         let repository = nuka_storage::knowledge::KnowledgeRepository::new(self.pool.clone());
-        let collections = repository
-            .list_collections()
-            .await?;
+        let collections = repository.list_collections().await?;
 
         if collections.is_empty() {
             let collection = nuka_domain::knowledge::KnowledgeCollection::user_default();
@@ -100,19 +98,19 @@ impl KnowledgeService {
         collection_id: &str,
     ) -> anyhow::Result<nuka_storage::knowledge::KnowledgeIndexJobRecord> {
         nuka_storage::migrations::run(&self.pool).await?;
-        self.load_collection(collection_id).await?;
-        let job = match self.health().await {
-            EngineHealth::Ready { .. } => nuka_storage::knowledge::KnowledgeIndexJobRecord {
+        let collection = self.load_collection(collection_id).await?;
+        let job = match self.engine.rebuild(&collection).await {
+            Ok(summary) => nuka_storage::knowledge::KnowledgeIndexJobRecord {
                 id: uuid::Uuid::new_v4().to_string(),
                 collection_id: collection_id.to_string(),
                 status: "ready".to_string(),
-                detail: Some("Index rebuilt".to_string()),
+                detail: Some(summary.detail),
             },
-            EngineHealth::Unavailable { reason } => nuka_storage::knowledge::KnowledgeIndexJobRecord {
+            Err(error) => nuka_storage::knowledge::KnowledgeIndexJobRecord {
                 id: uuid::Uuid::new_v4().to_string(),
                 collection_id: collection_id.to_string(),
                 status: "failed".to_string(),
-                detail: Some(reason),
+                detail: Some(error.to_string()),
             },
         };
         nuka_storage::knowledge::KnowledgeRepository::new(self.pool.clone())
@@ -137,34 +135,23 @@ impl KnowledgeService {
             return Ok(Vec::new());
         }
 
-        match self.health().await {
-            EngineHealth::Ready { .. } => {
-                let needle = query.to_ascii_lowercase();
-                let mut results = Vec::new();
-                for collection in self.list_collections().await? {
-                    let collection_name = collection.name.clone();
-                    for connector in collection.connectors {
-                        if !connector.enabled {
-                            continue;
-                        }
+        let collections = self.list_collections().await?;
+        let hits = self.engine.search(&collections, query).await?;
 
-                        let nuka_domain::knowledge::KnowledgeConnectorKind::LocalFolder { path } = connector.kind;
-                        if collection_name.to_ascii_lowercase().contains(&needle)
-                            || path.to_ascii_lowercase().contains(&needle)
-                        {
-                            results.push(KnowledgeSearchResult {
-                                collection_id: collection.id.clone(),
-                                collection_name: collection_name.clone(),
-                                path: path.clone(),
-                                snippet: format!("Matched {query}"),
-                            });
-                        }
-                    }
-                }
-                Ok(results)
-            }
-            EngineHealth::Unavailable { reason } => anyhow::bail!(reason),
-        }
+        Ok(hits
+            .into_iter()
+            .filter_map(|hit| {
+                collections
+                    .iter()
+                    .find(|collection| collection.id == hit.collection_id)
+                    .map(|collection| KnowledgeSearchResult {
+                        collection_id: collection.id.clone(),
+                        collection_name: collection.name.clone(),
+                        path: hit.path,
+                        snippet: hit.snippet,
+                    })
+            })
+            .collect())
     }
 
     async fn load_collection(
@@ -204,11 +191,14 @@ fn engine_capability_labels(capabilities: EngineCapabilities) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use nuka_domain::knowledge::{
-        KnowledgeCollection, KnowledgeConnector, KnowledgeConnectorKind,
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::Arc,
+        time::{SystemTime, UNIX_EPOCH},
     };
+
+    use nuka_domain::knowledge::{KnowledgeCollection, KnowledgeConnector, KnowledgeConnectorKind};
     use nuka_knowledge::{pageindex::PageIndexEngine, process_manager::StubProcessManager};
 
     use super::KnowledgeService;
@@ -216,8 +206,21 @@ mod tests {
     fn service_with_ready_engine() -> KnowledgeService {
         KnowledgeService::new(
             crate::settings_service::test_pool(),
-            Arc::new(PageIndexEngine::new("pageindex", StubProcessManager::ready())),
+            Arc::new(PageIndexEngine::new(
+                "pageindex",
+                StubProcessManager::ready(),
+            )),
         )
+    }
+
+    fn temp_fixture_dir(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should move forward")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("nuka-runtime-{name}-{unique}"));
+        fs::create_dir_all(&path).expect("fixture directory should be created");
+        path
     }
 
     #[tokio::test]
@@ -294,6 +297,22 @@ mod tests {
     #[tokio::test]
     async fn search_skips_disabled_connectors() {
         let service = service_with_ready_engine();
+        let fixture_dir = temp_fixture_dir("disabled");
+        let disabled_dir = fixture_dir.join("disabled");
+        let enabled_dir = fixture_dir.join("enabled");
+        fs::create_dir_all(&disabled_dir).unwrap();
+        fs::create_dir_all(&enabled_dir).unwrap();
+        fs::write(
+            disabled_dir.join("notes.md"),
+            "This disabled document mentions the release checklist.\n",
+        )
+        .unwrap();
+        fs::write(
+            enabled_dir.join("notes.md"),
+            "This enabled document mentions the release checklist.\n",
+        )
+        .unwrap();
+
         let library = service
             .list_collections()
             .await
@@ -312,14 +331,14 @@ mod tests {
                     KnowledgeConnector {
                         id: "connector-disabled".to_string(),
                         kind: KnowledgeConnectorKind::LocalFolder {
-                            path: "C:/docs/disabled-dir".to_string(),
+                            path: disabled_dir.to_string_lossy().replace('\\', "/"),
                         },
                         enabled: false,
                     },
                     KnowledgeConnector {
                         id: "connector-enabled".to_string(),
                         kind: KnowledgeConnectorKind::LocalFolder {
-                            path: "C:/docs/enabled-dir".to_string(),
+                            path: enabled_dir.to_string_lossy().replace('\\', "/"),
                         },
                         enabled: true,
                     },
@@ -329,11 +348,42 @@ mod tests {
             .await
             .unwrap();
 
-        let disabled_results = service.search("disabled-dir").await.unwrap();
+        let disabled_results = service.search("disabled document").await.unwrap();
         assert!(disabled_results.is_empty());
 
-        let enabled_results = service.search("enabled-dir").await.unwrap();
+        let enabled_results = service.search("enabled document").await.unwrap();
         assert_eq!(enabled_results.len(), 1);
-        assert_eq!(enabled_results[0].path, "C:/docs/enabled-dir");
+        assert!(enabled_results[0].path.ends_with("/enabled/notes.md"));
+    }
+
+    #[tokio::test]
+    async fn search_returns_indexed_snippets_instead_of_connector_path_matches() {
+        let service = service_with_ready_engine();
+        let fixture_dir = temp_fixture_dir("search");
+        let fixture_path = fixture_dir.join("notes.md");
+        fs::write(
+            &fixture_path,
+            "The release checklist should be reviewed before every handoff.\n",
+        )
+        .unwrap();
+
+        let library = service
+            .list_collections()
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        service
+            .add_local_folder_connector(&library.id, &fixture_dir.to_string_lossy())
+            .await
+            .unwrap();
+        service.rebuild_collection(&library.id).await.unwrap();
+
+        let results = service.search("release checklist").await.unwrap();
+
+        assert!(results
+            .iter()
+            .any(|result| result.snippet.contains("release checklist")));
     }
 }
