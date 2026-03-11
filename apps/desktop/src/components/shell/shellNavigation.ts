@@ -1,4 +1,4 @@
-export type ShellPageId = "chat" | "workflow" | "agents" | "memory" | "knowledge" | "settings";
+export type ShellPageId = "chat" | "team" | "agents" | "memory" | "knowledge" | "settings";
 
 export type ShellNavigationItem = {
   id: ShellPageId;

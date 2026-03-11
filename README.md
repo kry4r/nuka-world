@@ -14,7 +14,7 @@ Nuka World now runs real desktop backend flows instead of placeholder success pa
 
 - `Bootstrap` initializes SQLite, runtime status, and the bundled `PageIndex` entrypoint on launch.
 - `Chat` sends provider-backed turns and stays truthfully blocked until a default provider exists.
-- `Workflow` starts and continues real provider-backed workflow sessions, including chat handoff origins.
+- `Team` persists generated teams, starts provider-backed runs, and resumes real run sessions in Chat tabs.
 - `Agents` loads and saves real records; `Agent draft` is also blocked until a default provider exists.
 - `Knowledge` creates the default library automatically, rebuilds indexes locally, and searches indexed snippets through bundled `PageIndex`.
 - `Memory` stays graph-first with `working`, `episodic`, and `semantic` traces, inline candidate review, and activation, consolidation, or schema views.
@@ -25,18 +25,18 @@ Nuka World now runs real desktop backend flows instead of placeholder success pa
 2. Confirm the shell reports `Knowledge ready`.
 3. Open `Settings`.
 4. Add an OpenAI-compatible provider, test the connection, and mark it as default.
-5. Return to `Chat`, `Workflow`, or `Agents`.
-6. Review pending memory candidates from the dock above the chat or workflow composer.
+5. Return to `Chat`, `Team`, or `Agents`.
+6. Review pending memory candidates from the dock above the chat composer.
 
 ## Provider gate
 
 The provider requirement is strict:
 
 - `Chat` is blocked until a default provider is configured.
-- `Workflow` start and follow-up actions are blocked until a default provider is configured.
+- `Team` creation and run actions are blocked until a default provider is configured.
 - `Agent draft` is blocked until a default provider is configured.
 - `Knowledge` remains available without a provider because the search runtime is local and bundled.
-- `Memory` remains available without a provider, but new candidates only appear after real chat or workflow runtime events.
+- `Memory` remains available without a provider, but new candidates only appear after real chat or team runtime events.
 
 ## Knowledge runtime
 
@@ -62,7 +62,7 @@ Supported local file types:
 The memory system keeps the existing graph interaction model and adds neuroscience-informed state:
 
 - `Working` traces for short-lived active context.
-- `Episodic` traces for session or workflow events.
+- `Episodic` traces for session or team-run events.
 - `Semantic` traces for reviewed long-term knowledge.
 - Inline review dock actions: `转入长期语义记忆`, `暂留为情景记忆`, `拒绝`.
 - `Activation`, `Consolidation`, and `Schema` views on the Memory page.
@@ -104,7 +104,7 @@ docs/
 - Rust toolchain
 - Node.js
 - Tauri desktop prerequisites for your platform
-- A reachable OpenAI-compatible endpoint if you want to use `Chat`, `Workflow`, or `Agent draft`
+- A reachable OpenAI-compatible endpoint if you want to use `Chat`, `Team`, or `Agent draft`
 - No separate PageIndex installation for the packaged desktop app
 
 ## Development commands

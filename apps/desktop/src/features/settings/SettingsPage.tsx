@@ -103,7 +103,7 @@ const DEFAULT_SHORTCUT_PREFERENCES: ShortcutPreferenceState = {
 
 const SHORTCUT_ROWS = [
   { action: "Open chat", shortcut: "Ctrl+L" },
-  { action: "Toggle workflow", shortcut: "Ctrl+Shift+W" },
+  { action: "Toggle team", shortcut: "Ctrl+Shift+W" },
   { action: "Open settings", shortcut: "Ctrl+," },
   { action: "Send message", shortcut: "Enter" },
 ];
