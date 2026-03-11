@@ -1585,6 +1585,10 @@ button {
   align-items: center;
 }
 
+.app-titlebar__drag--stretch {
+  align-self: stretch;
+}
+
 .app-titlebar__caption {
   color: #6d6257;
   font-size: 11px;
@@ -1781,6 +1785,11 @@ button {
 .app-sidebar__nav-label {
   font-size: 13px;
   font-weight: 600;
+}
+
+.app-shell__chrome-lock {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .app-sidebar__provider-card {

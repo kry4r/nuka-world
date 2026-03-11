@@ -26,7 +26,7 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
     providerKind === "ready"
       ? "Ready for chat and team runs."
       : providerKind === "missing"
-        ? "Open settings to add a default OpenAI-compatible provider."
+        ? null
         : providerKind === "checking"
           ? "Checking current runtime status."
           : (provider?.message ?? "Open settings to review the current provider.");
@@ -38,8 +38,13 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
         : "is-muted";
 
   return (
-    <aside aria-label="Primary" className="app-sidebar">
-      <button aria-label="Open Chat" className="app-sidebar__brand" onClick={() => onNavigate("chat")} type="button">
+    <aside aria-label="Primary" className="app-sidebar app-shell__chrome-lock">
+      <button
+        aria-label="Open Chat"
+        className="app-sidebar__brand app-shell__chrome-lock"
+        onClick={() => onNavigate("chat")}
+        type="button"
+      >
         <NukaLogo className="app-sidebar__logo" size={124} />
       </button>
 
@@ -64,7 +69,10 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
         })}
       </nav>
 
-      <section className="app-sidebar__provider-card" data-testid="sidebar-provider-card">
+      <section
+        className="app-sidebar__provider-card app-shell__chrome-lock"
+        data-testid="sidebar-provider-card"
+      >
         <div className="app-sidebar__provider-card-header">
           <span className="app-sidebar__provider-eyebrow">Provider</span>
           <span
@@ -73,7 +81,9 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
           />
         </div>
         <div className="app-sidebar__provider-name">{providerLabel}</div>
-        <p className="app-sidebar__provider-message">{providerMessage}</p>
+        {providerMessage ? (
+          <p className="app-sidebar__provider-message">{providerMessage}</p>
+        ) : null}
         <button
           className="app-sidebar__provider-action"
           onClick={() => onNavigate("settings")}

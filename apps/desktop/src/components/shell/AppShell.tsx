@@ -30,8 +30,11 @@ export function AppShell({
 
   return (
     <div className="app-shell">
-      <header className="app-titlebar" data-testid="app-titlebar">
-        <div className="app-titlebar__drag" data-tauri-drag-region>
+      <header className="app-titlebar app-shell__chrome-lock" data-testid="app-titlebar">
+        <div
+          className="app-titlebar__drag app-titlebar__drag--stretch app-shell__chrome-lock"
+          data-tauri-drag-region
+        >
           <span className="app-titlebar__caption">Nuka World Desktop</span>
         </div>
         <div className="app-titlebar__actions">

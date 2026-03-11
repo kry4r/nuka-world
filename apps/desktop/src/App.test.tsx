@@ -429,7 +429,7 @@ describe("App shell", () => {
     expect(findText(view.container, "No provider configured")).toBeTruthy();
     expect(
       findText(view.container, "Open settings to add a default OpenAI-compatible provider."),
-    ).toBeTruthy();
+    ).toBeFalsy();
     expect(findText(view.container, "Provider required")).toBeFalsy();
     expect(findText(view.container, "Required")).toBeFalsy();
     expect(providerCard?.querySelector(".status-badge")).toBeFalsy();
@@ -475,6 +475,22 @@ describe("App shell", () => {
     expect(appWindowControls.minimize).toHaveBeenCalledTimes(1);
     expect(appWindowControls.toggleMaximize).toHaveBeenCalledTimes(1);
     expect(appWindowControls.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the drag region and shell chrome as non-selectable", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    const dragRegion = view.container.querySelector(".app-titlebar__drag");
+    const sidebar = view.container.querySelector(".app-sidebar");
+    const sidebarBrand = view.container.querySelector(".app-sidebar__brand");
+    const providerCard = view.container.querySelector('[data-testid="sidebar-provider-card"]');
+
+    expect(dragRegion?.className).toContain("app-titlebar__drag--stretch");
+    expect(dragRegion?.className).toContain("app-shell__chrome-lock");
+    expect(sidebar?.className).toContain("app-shell__chrome-lock");
+    expect(sidebarBrand?.className).toContain("app-shell__chrome-lock");
+    expect(providerCard?.className).toContain("app-shell__chrome-lock");
   });
 
   it("keeps the custom window controls outside the drag region", async () => {
