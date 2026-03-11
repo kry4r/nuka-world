@@ -42,6 +42,8 @@ pub fn run() {
             commands::settings::load_settings,
             commands::settings::save_settings,
             commands::tools::integrated_tool_output_policy,
+            commands::workflow::explain_workflow,
+            commands::workflow::revise_workflow,
             commands::workflow::continue_workflow_session,
             commands::workflow::start_workflow_session,
         ])
@@ -102,6 +104,8 @@ mod tests {
             "commands::memory::delete_memory_edge",
             "commands::memory::list_pending_memory_candidates",
             "commands::memory::review_memory_candidate",
+            "commands::workflow::explain_workflow",
+            "commands::workflow::revise_workflow",
             "commands::workflow::continue_workflow_session",
         ] {
             assert!(

@@ -52,6 +52,47 @@ pub enum WorkflowSourceModeResponse {
     SpecificWorkflow,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowExplanationResponse {
+    pub workflow_id: String,
+    pub title: String,
+    pub summary: String,
+    pub steps: Vec<WorkflowExplanationStepResponse>,
+    pub dependencies: WorkflowDependenciesResponse,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowExplanationStepResponse {
+    pub id: String,
+    pub title: String,
+    pub purpose: String,
+    pub executor: String,
+    pub input_source: String,
+    pub output: String,
+    pub completion: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowDependenciesResponse {
+    pub agents: Vec<String>,
+    pub tools_and_knowledge: Vec<String>,
+    pub required_inputs: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRevisionPreviewResponse {
+    pub workflow_id: String,
+    pub prompt: String,
+    pub change_summary: String,
+    pub step_changes: Vec<String>,
+    pub dependency_changes: Vec<String>,
+    pub outcome_changes: Vec<String>,
+}
+
 #[tauri::command]
 pub async fn start_workflow_session(
     workflow_id: String,
@@ -60,6 +101,27 @@ pub async fn start_workflow_session(
     state: tauri::State<'_, crate::app_state::AppState>,
 ) -> Result<WorkflowSessionResponse, String> {
     start_workflow_session_inner(workflow_id, inputs, origin, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn explain_workflow(
+    workflow_id: String,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<WorkflowExplanationResponse, String> {
+    explain_workflow_inner(workflow_id, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn revise_workflow(
+    workflow_id: String,
+    prompt: String,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<WorkflowRevisionPreviewResponse, String> {
+    revise_workflow_inner(workflow_id, prompt, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -125,6 +187,25 @@ async fn continue_workflow_session_inner(
         .await?;
 
     Ok(WorkflowSessionResponse::from(session))
+}
+
+async fn explain_workflow_inner(
+    workflow_id: String,
+    _state: &crate::app_state::AppState,
+) -> anyhow::Result<WorkflowExplanationResponse> {
+    Ok(WorkflowExplanationResponse::from(
+        nuka_runtime::workflow::explain_template(&workflow_id).await?,
+    ))
+}
+
+async fn revise_workflow_inner(
+    workflow_id: String,
+    prompt: String,
+    _state: &crate::app_state::AppState,
+) -> anyhow::Result<WorkflowRevisionPreviewResponse> {
+    Ok(WorkflowRevisionPreviewResponse::from(
+        nuka_runtime::workflow::preview_template_revision(&workflow_id, &prompt).await?,
+    ))
 }
 
 fn memory_prompt_for_workflow(
@@ -216,6 +297,59 @@ impl From<nuka_runtime::workflow::WorkflowEvent> for WorkflowEventResponse {
                 status,
                 detail,
             },
+        }
+    }
+}
+
+impl From<nuka_domain::workflow::WorkflowExplanation> for WorkflowExplanationResponse {
+    fn from(value: nuka_domain::workflow::WorkflowExplanation) -> Self {
+        Self {
+            workflow_id: value.workflow_id,
+            title: value.title,
+            summary: value.summary,
+            steps: value
+                .steps
+                .into_iter()
+                .map(WorkflowExplanationStepResponse::from)
+                .collect(),
+            dependencies: WorkflowDependenciesResponse::from(value.dependencies),
+        }
+    }
+}
+
+impl From<nuka_domain::workflow::WorkflowExplanationStep> for WorkflowExplanationStepResponse {
+    fn from(value: nuka_domain::workflow::WorkflowExplanationStep) -> Self {
+        Self {
+            id: value.id,
+            title: value.title,
+            purpose: value.purpose,
+            executor: value.executor,
+            input_source: value.input_source,
+            output: value.output,
+            completion: value.completion,
+        }
+    }
+}
+
+impl From<nuka_domain::workflow::WorkflowDependencies> for WorkflowDependenciesResponse {
+    fn from(value: nuka_domain::workflow::WorkflowDependencies) -> Self {
+        Self {
+            agents: value.agents,
+            tools_and_knowledge: value.tools_and_knowledge,
+            required_inputs: value.required_inputs,
+        }
+    }
+}
+
+impl From<nuka_domain::workflow::WorkflowRevisionPreview> for WorkflowRevisionPreviewResponse {
+    fn from(value: nuka_domain::workflow::WorkflowRevisionPreview) -> Self {
+        Self {
+            workflow_id: value.workflow_id,
+            prompt: value.prompt,
+            change_summary: value.change_summary,
+            step_changes: value.step_changes,
+            dependency_changes: value.dependency_changes,
+            outcome_changes: value.outcome_changes,
         }
     }
 }
@@ -390,5 +524,38 @@ mod tests {
             super::WorkflowEventResponse::AssistantMessage { content, .. }
                 if content.contains("handoff")
         )));
+    }
+
+    #[tokio::test]
+    async fn explain_workflow_returns_readable_explanation_model() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+
+        let explanation = super::explain_workflow_inner(
+            "workflow-release-notes".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(explanation.workflow_id, "workflow-release-notes");
+        assert!(!explanation.steps.is_empty());
+        assert!(explanation.steps[0].executor.len() > 0);
+    }
+
+    #[tokio::test]
+    async fn revise_workflow_returns_preview_without_overwriting_template() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+
+        let preview = super::revise_workflow_inner(
+            "workflow-release-notes".to_string(),
+            "Search the knowledge base before drafting".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(preview.workflow_id, "workflow-release-notes");
+        assert!(!preview.change_summary.is_empty());
+        assert!(!preview.step_changes.is_empty());
     }
 }

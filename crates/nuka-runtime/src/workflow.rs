@@ -145,6 +145,131 @@ impl WorkflowRuntime {
 
         Ok(session.clone())
     }
+
+    pub async fn explain_template(
+        &self,
+        workflow_id: &str,
+    ) -> anyhow::Result<nuka_domain::workflow::WorkflowExplanation> {
+        explain_template(workflow_id).await
+    }
+
+    pub async fn preview_template_revision(
+        &self,
+        workflow_id: &str,
+        prompt: &str,
+    ) -> anyhow::Result<nuka_domain::workflow::WorkflowRevisionPreview> {
+        preview_template_revision(workflow_id, prompt).await
+    }
+}
+
+pub async fn explain_template(
+    workflow_id: &str,
+) -> anyhow::Result<nuka_domain::workflow::WorkflowExplanation> {
+    let definition = workflow_definition(workflow_id);
+
+    Ok(nuka_domain::workflow::WorkflowExplanation {
+        workflow_id: workflow_id.to_string(),
+        title: definition.title.to_string(),
+        summary: definition.summary.to_string(),
+        steps: definition
+            .steps
+            .iter()
+            .map(|step| nuka_domain::workflow::WorkflowExplanationStep {
+                id: step.id.to_string(),
+                title: step.title.to_string(),
+                purpose: step.purpose.to_string(),
+                executor: step.executor.to_string(),
+                input_source: step.input_source.to_string(),
+                output: step.output.to_string(),
+                completion: step.completion.to_string(),
+            })
+            .collect(),
+        dependencies: nuka_domain::workflow::WorkflowDependencies {
+            agents: definition
+                .dependencies
+                .agents
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+            tools_and_knowledge: definition
+                .dependencies
+                .tools_and_knowledge
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+            required_inputs: definition
+                .dependencies
+                .required_inputs
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+        },
+    })
+}
+
+pub async fn preview_template_revision(
+    workflow_id: &str,
+    prompt: &str,
+) -> anyhow::Result<nuka_domain::workflow::WorkflowRevisionPreview> {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        anyhow::bail!("workflow revision prompt cannot be empty");
+    }
+
+    let explanation = explain_template(workflow_id).await?;
+    let mut step_changes = Vec::new();
+    let mut dependency_changes = Vec::new();
+    let mut outcome_changes = Vec::new();
+    let prompt_lower = prompt.to_ascii_lowercase();
+
+    if prompt_lower.contains("knowledge") || prompt_lower.contains("search") {
+        step_changes.push("Insert a knowledge scan before drafting.".to_string());
+        dependency_changes
+            .push("Add the project knowledge base as a required execution dependency.".to_string());
+    }
+
+    if prompt_lower.contains("review") && prompt_lower.contains("publish") {
+        step_changes.push("Split drafting into separate review and publish stages.".to_string());
+        outcome_changes
+            .push("The workflow produces a review-ready draft before a publish step.".to_string());
+    }
+
+    if prompt_lower.contains("confirm") || prompt_lower.contains("approval") {
+        step_changes.push("Reduce the number of manual approval checkpoints.".to_string());
+        outcome_changes.push("The flow reaches a final draft with fewer pauses.".to_string());
+    }
+
+    if step_changes.is_empty() {
+        let first_step = explanation
+            .steps
+            .first()
+            .map(|step| step.title.as_str())
+            .unwrap_or("the intake step");
+        step_changes.push(format!("Adjust {first_step} to reflect: {prompt}."));
+    }
+
+    if dependency_changes.is_empty() {
+        dependency_changes.push("Keep the current workflow dependencies unchanged.".to_string());
+    }
+
+    if outcome_changes.is_empty() {
+        outcome_changes.push(format!(
+            "The revised workflow stays aligned with the request: {prompt}."
+        ));
+    }
+
+    Ok(nuka_domain::workflow::WorkflowRevisionPreview {
+        workflow_id: workflow_id.to_string(),
+        prompt: prompt.to_string(),
+        change_summary: format!(
+            "Preview an updated {} workflow with {} planned change(s).",
+            explanation.title,
+            step_changes.len()
+        ),
+        step_changes,
+        dependency_changes,
+        outcome_changes,
+    })
 }
 
 fn seed_events(
@@ -226,6 +351,142 @@ fn workflow_label(workflow_id: &str) -> &str {
         "workflow-customer-triage" => "customer triage",
         "workflow-research-brief" => "research brief",
         _ => "saved",
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WorkflowDefinition {
+    title: &'static str,
+    summary: &'static str,
+    steps: &'static [WorkflowDefinitionStep],
+    dependencies: WorkflowDefinitionDependencies,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WorkflowDefinitionStep {
+    id: &'static str,
+    title: &'static str,
+    purpose: &'static str,
+    executor: &'static str,
+    input_source: &'static str,
+    output: &'static str,
+    completion: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WorkflowDefinitionDependencies {
+    agents: &'static [&'static str],
+    tools_and_knowledge: &'static [&'static str],
+    required_inputs: &'static [&'static str],
+}
+
+fn workflow_definition(workflow_id: &str) -> WorkflowDefinition {
+    match workflow_id {
+        "workflow-release-notes" => WorkflowDefinition {
+            title: "Release Notes",
+            summary: "Turn release scope into a draft that is ready for review and publish.",
+            steps: &[
+                WorkflowDefinitionStep {
+                    id: "scope-intake",
+                    title: "Scope intake",
+                    purpose: "Collect the release scope, constraints, and target audience.",
+                    executor: "Coordinator",
+                    input_source: "Chat handoff or release scope input",
+                    output: "A scoped release brief",
+                    completion: "The brief names the release, audience, and required highlights.",
+                },
+                WorkflowDefinitionStep {
+                    id: "draft-notes",
+                    title: "Draft notes",
+                    purpose: "Compose the first release notes draft from the scoped brief.",
+                    executor: "Writer",
+                    input_source: "Scoped release brief",
+                    output: "A reviewable release notes draft",
+                    completion: "The draft covers changes, fixes, and rollout notes.",
+                },
+                WorkflowDefinitionStep {
+                    id: "final-review",
+                    title: "Final review",
+                    purpose: "Check tone, accuracy, and final publish readiness.",
+                    executor: "Reviewer",
+                    input_source: "Release notes draft",
+                    output: "A publish-ready release notes package",
+                    completion: "The draft is approved for publish or returned with edits.",
+                },
+            ],
+            dependencies: WorkflowDefinitionDependencies {
+                agents: &["Release writer", "Reviewer"],
+                tools_and_knowledge: &["Project knowledge base", "Release checklist"],
+                required_inputs: &["releaseScope"],
+            },
+        },
+        "workflow-customer-triage" => WorkflowDefinition {
+            title: "Customer Triage",
+            summary: "Turn incoming customer issues into a prioritized response plan.",
+            steps: &[
+                WorkflowDefinitionStep {
+                    id: "capture-issue",
+                    title: "Capture issue",
+                    purpose: "Summarize the user report and identify the affected surface.",
+                    executor: "Support lead",
+                    input_source: "Issue summary input",
+                    output: "A normalized issue brief",
+                    completion: "The issue has owner, severity, and customer impact notes.",
+                },
+                WorkflowDefinitionStep {
+                    id: "investigate",
+                    title: "Investigate",
+                    purpose: "Check product history, logs, and related customer context.",
+                    executor: "Investigator",
+                    input_source: "Normalized issue brief",
+                    output: "A likely cause and response recommendation",
+                    completion: "The issue has a recommended next action and response path.",
+                },
+            ],
+            dependencies: WorkflowDefinitionDependencies {
+                agents: &["Support lead"],
+                tools_and_knowledge: &["Customer history", "Knowledge base"],
+                required_inputs: &["issueSummary"],
+            },
+        },
+        _ => WorkflowDefinition {
+            title: "Saved Workflow",
+            summary: "Run a saved workflow through intake, drafting, and finalization.",
+            steps: &[
+                WorkflowDefinitionStep {
+                    id: "intake",
+                    title: "Intake",
+                    purpose: "Gather the request and convert it into a clear working brief.",
+                    executor: "Coordinator",
+                    input_source: "Chat handoff or workflow inputs",
+                    output: "A scoped brief",
+                    completion: "The workflow has a usable brief for execution.",
+                },
+                WorkflowDefinitionStep {
+                    id: "execute",
+                    title: "Execute",
+                    purpose: "Run the main drafting or analysis stage for the saved workflow.",
+                    executor: "Primary agent",
+                    input_source: "Scoped brief",
+                    output: "A first working result",
+                    completion: "The workflow produces a result the user can inspect.",
+                },
+                WorkflowDefinitionStep {
+                    id: "finalize",
+                    title: "Finalize",
+                    purpose: "Package the result into the workflow's expected final shape.",
+                    executor: "Reviewer",
+                    input_source: "First working result",
+                    output: "A final workflow output",
+                    completion: "The output is ready to return to chat or apply elsewhere.",
+                },
+            ],
+            dependencies: WorkflowDefinitionDependencies {
+                agents: &["Primary agent"],
+                tools_and_knowledge: &["Project knowledge base"],
+                required_inputs: &["goal"],
+            },
+        },
     }
 }
 
@@ -345,5 +606,18 @@ mod tests {
             crate::workflow::WorkflowEvent::UserMessage { content, .. }
                 if content == "Review the release checklist"
         ));
+    }
+
+    #[tokio::test]
+    async fn workflow_runtime_returns_readable_explanation() {
+        let runtime = crate::workflow::WorkflowRuntime::new_for_test();
+        let explanation = runtime
+            .explain_template("workflow-release-notes")
+            .await
+            .unwrap();
+
+        assert_eq!(explanation.workflow_id, "workflow-release-notes");
+        assert!(!explanation.steps.is_empty());
+        assert!(explanation.steps[0].executor.len() > 0);
     }
 }
