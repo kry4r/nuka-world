@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  createTeamFromGoal,
   listTeams,
   startTeamRun,
   updateTeam,
@@ -24,8 +23,6 @@ export function TeamPage() {
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [editorTeam, setEditorTeam] = useState<TeamRecord | null>(null);
-  const [goal, setGoal] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isStartingRun, setIsStartingRun] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,28 +68,6 @@ export function TeamPage() {
 
     setEditorTeam(cloneTeam(selectedTeam));
   }, [selectedTeam]);
-
-  const handleGenerate = async () => {
-    if (goal.trim().length === 0) {
-      return;
-    }
-
-    setIsGenerating(true);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const created = await createTeamFromGoal(goal.trim());
-      setTeams((current) => [...current, created]);
-      setSelectedTeamId(created.id);
-      setEditorTeam(cloneTeam(created));
-    } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   const handleToggleTool = (agentId: string, toolId: string, allowed: boolean) => {
     setEditorTeam((current) => {
@@ -171,15 +146,9 @@ export function TeamPage() {
 
         <TeamEditor
           error={error}
-          goal={goal}
-          isGenerating={isGenerating}
           isSaving={isSaving}
           isStartingRun={isStartingRun}
           notice={notice}
-          onGenerate={() => {
-            void handleGenerate();
-          }}
-          onGoalChange={setGoal}
           onSave={() => {
             void handleSave();
           }}

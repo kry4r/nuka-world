@@ -69,7 +69,7 @@ const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) => {
     switch (command) {
       case "list_teams":
-        return [];
+        return [sampleTeam];
       case "create_team_from_goal":
         return {
           ...sampleTeam,
@@ -161,15 +161,41 @@ async function setInputValue(container: HTMLElement, label: string, value: strin
 }
 
 describe("TeamPage", () => {
-  it("creates a team from a goal and lets the user edit agent tools before starting a run", async () => {
+  it("shows persisted teams without the goal generator copy and still allows starting a run", async () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
-
-    await setInputValue(view.container, "Team goal", "Ship the release and publish notes");
-    await clickButton(view.container, "Generate Team");
 
     expect(findText(view.container, "Release Team")).toBeTruthy();
     expect(findText(view.container, "Allowed tools")).toBeTruthy();
     expect(findText(view.container, "Start Run")).toBeTruthy();
+    expect(findText(view.container, "Provider-backed teams stay persisted and can be resumed into new runs.")).toBeFalsy();
+    expect(findText(view.container, "Generate a Team from a goal")).toBeFalsy();
+    expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
+    expect(
+      Array.from(view.container.querySelectorAll("input")).find(
+        (node) => node.getAttribute("aria-label") === "Team goal",
+      ),
+    ).toBeUndefined();
+
+    await clickButton(view.container, "Start Run");
+
+    expect(findText(view.container, "Run started: Release Team Run")).toBeTruthy();
+  });
+
+  it("anchors the empty team state to the top edge instead of centering it in the editor pane", async () => {
+    invokeMock.mockImplementationOnce(async (command: string) => {
+      if (command === "list_teams") {
+        return [];
+      }
+
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const view = await renderIntoDocument(<TeamPage />);
+    cleanups.push(view.cleanup);
+
+    const emptyTitle = view.container.querySelector(".team-editor__empty-title");
+    expect(emptyTitle?.textContent?.trim()).toBe("No teams yet");
+    expect(emptyTitle?.closest(".team-editor__empty--anchored")).toBeTruthy();
   });
 });

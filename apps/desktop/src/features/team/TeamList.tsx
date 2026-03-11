@@ -10,14 +10,12 @@ export function TeamList({ teams, selectedTeamId, onSelect }: TeamListProps) {
   return (
     <aside className="team-list" data-testid="team-list">
       <div className="team-list__header">
-        <span className="team-list__eyebrow">Teams</span>
-        <h1>Saved Teams</h1>
-        <p>Provider-backed teams stay persisted and can be resumed into new runs.</p>
+        <h1>Teams</h1>
       </div>
 
       <div className="team-list__stack">
         {teams.length === 0 ? (
-          <div className="team-list__empty">Generate a team from a goal to begin.</div>
+          <div className="team-list__empty">No teams yet.</div>
         ) : (
           teams.map((team) => {
             const isActive = team.id === selectedTeamId;

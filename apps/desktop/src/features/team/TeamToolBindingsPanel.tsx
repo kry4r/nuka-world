@@ -13,7 +13,6 @@ export function TeamToolBindingsPanel({
     <div className="team-tool-bindings">
       <div className="team-tool-bindings__header">
         <h4>Allowed tools</h4>
-        <p>Each agent gets explicit, named capabilities only.</p>
       </div>
 
       {bindings.length === 0 ? (

@@ -2609,8 +2609,6 @@ button {
 .team-list__header,
 .team-list__stack,
 .team-editor,
-.team-editor__generator,
-.team-editor__generator-copy,
 .team-editor__detail,
 .team-editor__summary-copy,
 .team-editor__summary-grid,
@@ -2626,8 +2624,6 @@ button {
   gap: 12px;
 }
 
-.team-list__eyebrow,
-.team-editor__eyebrow,
 .team-editor__summary-card span {
   color: #766d63;
   font-size: 11px;
@@ -2637,22 +2633,17 @@ button {
 }
 
 .team-list__header h1,
-.team-editor__generator-copy h2,
 .team-editor__summary-copy h2,
 .team-agent-card__copy h3,
 .team-tool-bindings__header h4 {
   margin: 0;
 }
 
-.team-list__header p,
 .team-list__item-summary,
-.team-editor__generator-copy p,
 .team-editor__summary-copy p,
 .team-editor__summary-card p,
 .team-agent-card__responsibility,
-.team-tool-bindings__header p,
-.team-tool-bindings__meta,
-.team-editor__empty .ui-card__description {
+.team-tool-bindings__meta {
   margin: 0;
   color: var(--color-text-soft);
   line-height: 1.5;
@@ -2707,11 +2698,6 @@ button {
   overflow: auto;
 }
 
-.team-editor__generator {
-  gap: 14px;
-}
-
-.team-editor__generator-form,
 .team-editor__actions {
   display: flex;
   flex-wrap: wrap;
@@ -2719,15 +2705,6 @@ button {
   align-items: flex-end;
 }
 
-.team-editor__field {
-  flex: 1;
-  min-width: 260px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.team-editor__field-label,
 .team-agent-card__copy span,
 .team-agent-card__policy {
   color: #766d63;
@@ -2740,6 +2717,16 @@ button {
   padding: 16px;
   border-radius: 18px;
   background: #fcf8f2;
+}
+
+.team-editor__empty--anchored {
+  align-self: flex-start;
+  min-width: 220px;
+  background: rgba(255, 252, 247, 0.7);
+}
+
+.team-editor__empty-title {
+  color: rgba(118, 109, 99, 0.76);
 }
 
 .team-editor__summary {
