@@ -406,18 +406,10 @@ export function MemoryPage() {
               <h1>Memory graph unavailable</h1>
               <p>{loadError}</p>
             </section>
-          ) : scopesLoaded && scopeOptions.length === 0 ? (
-            <section className="memory-empty-state">
-              <span className="memory-page__eyebrow">Memory</span>
-              <h1>No memory scopes yet</h1>
-              <p>The graph will appear here once world chat or a workflow writes local memory.</p>
-            </section>
-          ) : graph.nodes.length === 0 ? (
-            <section className="memory-empty-state">
-              <span className="memory-page__eyebrow">Memory</span>
-              <h1>No graph nodes yet</h1>
-              <p>The graph will appear here once chat, workflows, or agents write local memory.</p>
-            </section>
+          ) : (scopesLoaded && scopeOptions.length === 0) || graph.nodes.length === 0 ? (
+            <div className="memory-page__empty-copy" data-testid="memory-empty-copy">
+              No graph nodes yet
+            </div>
           ) : (
             <>
               <section className="memory-stage">

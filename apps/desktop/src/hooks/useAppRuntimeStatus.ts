@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 export type RuntimeCapabilityStatus = {
   kind: string;
   message: string;
+  label?: string | null;
 };
 
 export type RuntimeStatus = {

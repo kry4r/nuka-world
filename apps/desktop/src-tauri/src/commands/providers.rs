@@ -86,6 +86,15 @@ pub async fn test_provider_connection(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub async fn import_provider_from_env(
+    state: tauri::State<'_, AppState>,
+) -> Result<ProviderRecord, String> {
+    import_provider_from_env_inner(&state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 async fn list_providers_inner(state: &AppState) -> anyhow::Result<Vec<ProviderRecord>> {
     Ok(state
         .provider_service()
@@ -124,6 +133,25 @@ async fn test_provider_connection_inner(
     Ok(ProviderConnectionResponse {
         kind: provider_connection_status_kind(&status).to_string(),
     })
+}
+
+async fn import_provider_from_env_inner(state: &AppState) -> anyhow::Result<ProviderRecord> {
+    let provider = ProviderInput {
+        id: String::new(),
+        name: required_env("NUKA_PROVIDER_NAME")?,
+        base_url: required_env("NUKA_PROVIDER_BASE_URL")?,
+        api_key: std::env::var("NUKA_PROVIDER_API_KEY").unwrap_or_default(),
+        model: required_env("NUKA_PROVIDER_MODEL")?,
+        enabled: true,
+    }
+    .into_config();
+
+    state
+        .provider_service()
+        .save_provider(provider.clone())
+        .await?;
+
+    Ok(ProviderRecord::from(provider))
 }
 
 impl ProviderInput {
@@ -240,5 +268,24 @@ mod tests {
         .unwrap();
 
         assert_eq!(status.kind, "missing_model");
+    }
+
+    #[tokio::test]
+    async fn providers_import_from_env_creates_env_backed_provider() {
+        std::env::set_var("NUKA_PROVIDER_NAME", "Env Local");
+        std::env::set_var("NUKA_PROVIDER_BASE_URL", "http://localhost:11434/v1");
+        std::env::set_var("NUKA_PROVIDER_MODEL", "gpt-oss");
+        std::env::set_var("NUKA_PROVIDER_API_KEY", "");
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+
+        let provider = super::import_provider_from_env_inner(&state).await.unwrap();
+        assert_eq!(provider.name, "Env Local");
+    }
+}
+
+fn required_env(name: &str) -> anyhow::Result<String> {
+    match std::env::var(name) {
+        Ok(value) if !value.trim().is_empty() => Ok(value),
+        _ => anyhow::bail!("missing environment variable: {name}"),
     }
 }

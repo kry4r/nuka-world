@@ -5,6 +5,7 @@ use serde::Serialize;
 pub struct RuntimeCapabilityStatusResponse {
     pub kind: String,
     pub message: String,
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,19 +38,22 @@ pub async fn app_runtime_status_inner(
 ) -> anyhow::Result<RuntimeStatusResponse> {
     let runtime_status = state.runtime_status();
     let provider = match state.provider_service().resolve_default_provider().await {
-        Ok(_) => RuntimeCapabilityStatusResponse {
+        Ok(provider) => RuntimeCapabilityStatusResponse {
             kind: "ready".to_string(),
-            message: "Provider ready".to_string(),
+            message: "Default provider configured".to_string(),
+            label: Some(provider.name),
         },
         Err(error) if error.to_string().contains("default provider is not configured") => {
             RuntimeCapabilityStatusResponse {
                 kind: "missing".to_string(),
                 message: "Provider required".to_string(),
+                label: None,
             }
         }
         Err(error) => RuntimeCapabilityStatusResponse {
             kind: "degraded".to_string(),
             message: error.to_string(),
+            label: None,
         },
     };
 
@@ -65,6 +69,7 @@ impl From<&crate::app_state::RuntimeCapabilityStatus> for RuntimeCapabilityStatu
         Self {
             kind: value.kind().to_string(),
             message: value.message().to_string(),
+            label: None,
         }
     }
 }
@@ -77,6 +82,31 @@ mod tests {
         let status = super::app_runtime_status_inner(&state).await.unwrap();
 
         assert_eq!(status.provider.kind, "missing");
+        assert_eq!(status.provider.label, None);
         assert_eq!(status.knowledge.kind, "ready");
+    }
+
+    #[tokio::test]
+    async fn app_runtime_status_includes_default_provider_label_when_configured() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local Provider",
+            "http://localhost:11434/v1",
+            "token",
+            "gpt-oss",
+        );
+        let provider_id = provider.id.clone();
+
+        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+
+        let status = super::app_runtime_status_inner(&state).await.unwrap();
+
+        assert_eq!(status.provider.kind, "ready");
+        assert_eq!(status.provider.label.as_deref(), Some("Local Provider"));
     }
 }

@@ -51,6 +51,9 @@ create table if not exists agent_tool_bindings (
   agent_id text not null,
   tool_id text not null,
   allowed integer not null,
+  adapter_kind text not null default 'mcp',
+  purpose text not null default '',
+  cost_class text not null default 'low',
   primary key (agent_id, tool_id)
 );
 
@@ -168,4 +171,74 @@ create table if not exists runtime_state_entries (
   state_key text primary key,
   state_value text not null,
   updated_at text not null
+);
+
+create table if not exists teams (
+  id text primary key,
+  name text not null,
+  goal text not null,
+  summary text not null,
+  success_criteria text not null,
+  coordination_policy text not null,
+  status text not null,
+  created_at text not null,
+  updated_at text not null
+);
+
+create table if not exists team_agents (
+  id text primary key,
+  team_id text not null,
+  name text not null,
+  role text not null,
+  responsibility text not null,
+  system_prompt text not null,
+  tool_bindings_json text not null,
+  tool_use_policy_json text not null,
+  order_hint integer not null,
+  created_at text not null,
+  updated_at text not null
+);
+
+create table if not exists team_runs (
+  id text primary key,
+  team_id text not null,
+  title text not null,
+  goal text not null,
+  status text not null,
+  current_phase text not null,
+  lead_agent_id text,
+  charter_json text not null,
+  created_at text not null,
+  updated_at text not null
+);
+
+create table if not exists team_run_agents (
+  id text primary key,
+  run_id text not null,
+  source_team_agent_id text,
+  name text not null,
+  role text not null,
+  responsibility text not null,
+  system_prompt text not null,
+  tool_bindings_json text not null,
+  tool_use_policy_json text not null,
+  status text not null,
+  current_work text not null,
+  last_tool_activity text,
+  joined_at text not null
+);
+
+create table if not exists team_run_events (
+  id text primary key,
+  run_id text not null,
+  kind text not null,
+  agent_id text,
+  title text not null,
+  content text not null,
+  status text,
+  tool_name text,
+  tool_call_id text,
+  tool_target text,
+  sequence integer not null,
+  created_at text not null
 );

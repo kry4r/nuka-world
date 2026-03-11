@@ -20,6 +20,48 @@ pub async fn handle_runtime_event(
                 )
                 .await?;
         }
+        crate::runtime_events::RuntimeEvent::TeamRunStarted {
+            run_id,
+            team_id,
+            prompt,
+        } => {
+            service
+                .record_runtime_candidate(
+                    nuka_domain::memory::MemorySurface::Workflow,
+                    &run_id,
+                    &prompt,
+                    &format!("Team run {run_id} from team {team_id} opened for review"),
+                    nuka_domain::memory::MemoryScope {
+                        id: format!("team:{team_id}"),
+                        name: format!("Team {}", workflow_scope_name(&team_id)),
+                        workflow_id: Some(format!("team:{team_id}")),
+                        session_id: Some(run_id.clone()),
+                        agent_id: None,
+                    },
+                )
+                .await?;
+        }
+        crate::runtime_events::RuntimeEvent::TeamRunRoundCompleted {
+            run_id,
+            team_id,
+            prompt,
+        } => {
+            service
+                .record_runtime_candidate(
+                    nuka_domain::memory::MemorySurface::Workflow,
+                    &run_id,
+                    &prompt,
+                    &format!("Team run round {run_id} from team {team_id} proposed for review"),
+                    nuka_domain::memory::MemoryScope {
+                        id: format!("team:{team_id}"),
+                        name: format!("Team {}", workflow_scope_name(&team_id)),
+                        workflow_id: Some(format!("team:{team_id}")),
+                        session_id: Some(run_id.clone()),
+                        agent_id: None,
+                    },
+                )
+                .await?;
+        }
         crate::runtime_events::RuntimeEvent::WorkflowSessionStarted {
             session_id,
             workflow_id,

@@ -7,7 +7,7 @@ use nuka_integrations::providers::{
 #[derive(Debug, Clone)]
 pub struct ChatTurnRecord {
     pub session: nuka_domain::chat::ChatSessionSummary,
-    pub user_message: nuka_domain::chat::ChatMessage,
+    pub messages: Vec<nuka_domain::chat::ChatMessage>,
     pub provider: nuka_domain::provider::ProviderConfig,
 }
 
@@ -16,6 +16,25 @@ pub struct ChatService {
     pool: sqlx::SqlitePool,
     provider_client: OpenAiCompatibleProvider,
     seed_provider: Option<nuka_domain::provider::ProviderConfig>,
+    seed_completion: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn chat_service_persists_assistant_completion() {
+        let service = super::ChatService::new_for_test_with_default_provider();
+        let turn = service
+            .send_message("Summarize the release notes", None)
+            .await
+            .unwrap();
+
+        assert_eq!(turn.messages.len(), 2);
+        assert!(matches!(
+            turn.messages[1].role,
+            nuka_domain::chat::ChatMessageRole::Assistant
+        ));
+    }
 }
 
 impl ChatService {
@@ -24,6 +43,7 @@ impl ChatService {
             pool,
             provider_client: OpenAiCompatibleProvider::default(),
             seed_provider: None,
+            seed_completion: None,
         }
     }
 
@@ -32,15 +52,23 @@ impl ChatService {
     }
 
     pub fn new_for_test_with_default_provider() -> Self {
+        let mut service =
+            Self::new_for_test_with_seeded_completion(crate::settings_service::test_pool());
+        service.seed_provider = Some(nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        ));
+        service
+    }
+
+    pub fn new_for_test_with_seeded_completion(pool: sqlx::SqlitePool) -> Self {
         Self {
-            pool: crate::settings_service::test_pool(),
+            pool,
             provider_client: OpenAiCompatibleProvider::default(),
-            seed_provider: Some(nuka_domain::provider::ProviderConfig::openai_compatible(
-                "Local",
-                "http://localhost:11434/v1",
-                "",
-                "gpt-oss",
-            )),
+            seed_provider: None,
+            seed_completion: Some("Seeded assistant response".to_string()),
         }
     }
 
@@ -80,11 +108,45 @@ impl ChatService {
         };
         repo.append_message(user_message.clone()).await?;
 
-        session.message_count += 1;
+        let completion_messages = repo
+            .list_messages(&session.id)
+            .await?
+            .into_iter()
+            .map(chat_message_to_provider_message)
+            .collect::<Vec<_>>();
+        let completion = match &self.seed_completion {
+            Some(content) => nuka_integrations::providers::types::OpenAiChatCompletionResponse {
+                id: uuid::Uuid::new_v4().to_string(),
+                choices: vec![nuka_integrations::providers::types::OpenAiChatCompletionChoice {
+                    message: OpenAiChatMessage {
+                        role: "assistant".to_string(),
+                        content: content.clone(),
+                    },
+                }],
+            },
+            None => self
+                .provider_client
+                .complete_chat(&provider, completion_messages)
+                .await?,
+        };
+
+        let assistant_message = nuka_domain::chat::ChatMessage {
+            id: uuid::Uuid::new_v4().to_string(),
+            session_id: session.id.clone(),
+            role: nuka_domain::chat::ChatMessageRole::Assistant,
+            content: completion
+                .choices
+                .first()
+                .map(|choice| choice.message.content.clone())
+                .unwrap_or_default(),
+        };
+        repo.append_message(assistant_message.clone()).await?;
+
+        session.message_count += 2;
 
         Ok(ChatTurnRecord {
             session,
-            user_message,
+            messages: vec![user_message, assistant_message],
             provider,
         })
     }
@@ -132,5 +194,18 @@ impl ChatService {
         }
 
         Ok(())
+    }
+}
+
+fn chat_message_to_provider_message(message: nuka_domain::chat::ChatMessage) -> OpenAiChatMessage {
+    OpenAiChatMessage {
+        role: match message.role {
+            nuka_domain::chat::ChatMessageRole::System => "system",
+            nuka_domain::chat::ChatMessageRole::User => "user",
+            nuka_domain::chat::ChatMessageRole::Assistant => "assistant",
+            nuka_domain::chat::ChatMessageRole::Tool => "tool",
+        }
+        .to_string(),
+        content: message.content,
     }
 }

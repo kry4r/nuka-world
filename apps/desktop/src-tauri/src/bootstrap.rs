@@ -39,6 +39,16 @@ async fn build_app_state_from_pool(
 
     let settings_service = nuka_runtime::settings_service::SettingsService::new(pool.clone());
     let provider_service = nuka_runtime::providers::ProvidersService::new(pool.clone());
+    #[cfg(test)]
+    let team_service =
+        nuka_runtime::team_service::TeamService::new_for_test_with_seeded_completion(pool.clone());
+    #[cfg(not(test))]
+    let team_service = nuka_runtime::team_service::TeamService::new(pool.clone());
+    #[cfg(test)]
+    let team_run_service = nuka_runtime::team_run_service::TeamRunService::
+        new_for_test_with_seeded_completion(pool.clone());
+    #[cfg(not(test))]
+    let team_run_service = nuka_runtime::team_run_service::TeamRunService::new(pool.clone());
     let agents_service = nuka_runtime::agents::AgentsService::new(pool.clone());
     let knowledge_service = nuka_runtime::knowledge_service::KnowledgeService::new(
         pool.clone(),
@@ -47,7 +57,13 @@ async fn build_app_state_from_pool(
             nuka_knowledge::process_manager::FilesystemProcessManager,
         )),
     );
+    #[cfg(test)]
+    let chat_service =
+        nuka_runtime::chat_service::ChatService::new_for_test_with_seeded_completion(pool.clone());
+    #[cfg(not(test))]
     let chat_service = nuka_runtime::chat_service::ChatService::new(pool.clone());
+    let workspace_sessions_service =
+        nuka_runtime::workspace_sessions::WorkspaceSessionsService::new(pool.clone());
     let memory_service = nuka_runtime::memory_service::MemoryService::new(pool);
     let settings = settings_service.load().await?;
     let knowledge_health = knowledge_service.health().await;
@@ -63,9 +79,12 @@ async fn build_app_state_from_pool(
         ),
         provider_service,
         settings_service,
+        team_service,
+        team_run_service,
         agents_service,
         knowledge_service,
         memory_service,
+        workspace_sessions_service,
         nuka_runtime::world::WorldRuntime::new(chat_service.clone()),
         nuka_runtime::workflow_world::WorkflowWorldRuntime::new(chat_service.clone()),
     ))

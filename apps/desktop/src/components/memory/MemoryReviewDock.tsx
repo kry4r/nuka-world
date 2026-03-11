@@ -11,7 +11,7 @@ const DECISION_OPTIONS: Array<{
 ];
 
 function surfaceLabel(surface: "chat" | "workflow") {
-  return surface === "chat" ? "Chat" : "Workflow";
+  return surface === "chat" ? "Chat" : "Team";
 }
 
 export function MemoryReviewDock({

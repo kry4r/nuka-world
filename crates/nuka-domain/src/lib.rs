@@ -3,6 +3,7 @@ pub mod chat;
 pub mod knowledge;
 pub mod memory;
 pub mod provider;
+pub mod team;
 pub mod tool;
 pub mod workflow;
 
@@ -34,5 +35,31 @@ mod tests {
         let workflow = WorkflowTemplate::saved("code-review");
         assert_eq!(workflow.visibility, WorkflowVisibility::Private);
         assert!(workflow.inputs.is_empty());
+    }
+
+    #[test]
+    fn team_defaults_to_ready_with_budget_defaults() {
+        let team = crate::team::Team::new(
+            "team-release",
+            "Release Team",
+            "Ship the release cleanly",
+        );
+        assert_eq!(team.status, crate::team::TeamStatus::Ready);
+        assert!(team.agents.is_empty());
+
+        let charter = crate::team::RunCharter::default_for_goal("Ship the release cleanly");
+        assert_eq!(charter.max_active_agents_per_round, 3);
+        assert_eq!(charter.max_messages_per_agent_per_round, 2);
+    }
+
+    #[test]
+    fn agent_tool_binding_carries_adapter_and_cost_metadata() {
+        let binding = crate::tool::AgentToolBinding::allowed_cli(
+            "cli:git-read",
+            "Inspect repo state",
+        );
+        assert_eq!(binding.tool_id, "cli:git-read");
+        assert_eq!(binding.adapter_kind, crate::tool::ToolAdapterKind::Cli);
+        assert_eq!(binding.cost_class, crate::tool::ToolCostClass::Medium);
     }
 }

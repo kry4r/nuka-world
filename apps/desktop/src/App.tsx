@@ -6,13 +6,7 @@ import { ChatPage } from "./features/chat/ChatPage";
 import { KnowledgePage } from "./features/knowledge/KnowledgePage";
 import { MemoryPage } from "./features/memory/MemoryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
-import { WorkflowPage } from "./features/workflow/WorkflowPage";
-import {
-  getWorkflowSummary,
-  type WorkflowContextToken,
-  type WorkflowLaunchIntent,
-  type WorkflowSummary,
-} from "./lib/workflow";
+import { TeamPage } from "./features/team/TeamPage";
 
 type AppPage = ShellPageId;
 
@@ -23,12 +17,6 @@ type AppPageDefinition = {
 
 export default function App() {
   const [activePage, setActivePage] = useState<AppPage>("chat");
-  const [workflowIntent, setWorkflowIntent] = useState<WorkflowLaunchIntent | null>(null);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
-  const [selectedWorkflowSummary, setSelectedWorkflowSummary] =
-    useState<WorkflowSummary | null>(null);
-  const [chatWorkflowToken, setChatWorkflowToken] =
-    useState<WorkflowContextToken | null>(null);
 
   useEffect(() => {
     const handleNavigation = (event: Event) => {
@@ -47,55 +35,14 @@ export default function App() {
     };
   }, []);
 
-  const handleWorkflowHandoff = (handoff: WorkflowLaunchIntent) => {
-    setWorkflowIntent(handoff);
-
-    if (handoff.kind === "open_workflow_room") {
-      const workflowSummary = getWorkflowSummary(handoff.workflowId);
-      setSelectedWorkflowId(handoff.workflowId);
-      setSelectedWorkflowSummary(workflowSummary);
-      setChatWorkflowToken(
-        workflowSummary
-          ? {
-              workflowId: workflowSummary.id,
-              label: workflowSummary.title,
-            }
-          : {
-              workflowId: handoff.workflowId,
-              label: handoff.workflowId,
-            },
-      );
-      setActivePage("chat");
-      return;
-    }
-
-    setSelectedWorkflowId(null);
-    setSelectedWorkflowSummary(null);
-    setChatWorkflowToken(null);
-    setActivePage("workflow");
-  };
-
   const pageDefinitions: Record<AppPage, AppPageDefinition> = {
     chat: {
       label: "Chat",
-      render: () => (
-        <ChatPage
-          onWorkflowHandoff={(handoff) => {
-            handleWorkflowHandoff(handoff);
-          }}
-        />
-      ),
+      render: () => <ChatPage />,
     },
-    workflow: {
-      label: "Workflow",
-      render: () => (
-        <WorkflowPage
-          intent={workflowIntent}
-          onIntentHandled={() => {
-            setWorkflowIntent(null);
-          }}
-        />
-      ),
+    team: {
+      label: "Team",
+      render: () => <TeamPage />,
     },
     agents: {
       label: "Agents",
@@ -129,11 +76,6 @@ export default function App() {
       activePage={activePage}
       navigation={navigation}
       onNavigate={(page) => {
-        if (page === "chat") {
-          setActivePage("chat");
-          return;
-        }
-
         setActivePage(page);
       }}
     >

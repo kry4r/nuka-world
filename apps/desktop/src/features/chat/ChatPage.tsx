@@ -1,60 +1,53 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NukaLockup } from "@/components/brand/NukaLockup";
-import { routeWorldPrompt, type ChatMessage, type ChatMode, type ChatRouteResponse } from "@/lib/chat";
+import { routeWorldPrompt, type ChatMessage, type ChatRouteResponse } from "@/lib/chat";
 import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
 import { useProviderGate } from "@/hooks/useProviderGate";
 import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
-import { WORKFLOW_DEFINITIONS, type WorkflowLaunchIntent } from "@/lib/workflow";
+import { useWorkspaceSessions } from "@/hooks/useWorkspaceSessions";
+import {
+  addTeamRunAgent,
+  continueTeamRun,
+  createTeamFromGoal,
+  listTeams,
+  startTeamRun,
+  type TeamRecord,
+  type TeamRunRecord,
+} from "@/lib/team";
 import { ConversationEventBlock } from "./ConversationEventBlock";
+import { SessionTabs } from "./SessionTabs";
 import { SuggestionStrip } from "./SuggestionStrip";
+import { TeamRunPanel, type TeamRunPanelAgentDraft } from "./TeamRunPanel";
 
 const CHAT_ONLY_SUGGESTIONS = [
   "Summarize today's notes",
-  "Plan my next workflow",
+  "Plan my next team",
   "Review recent changes",
 ];
 
-const CREATE_WORKFLOW_SUGGESTIONS = [
-  "Outline the workflow goal",
-  "List the key steps",
+const CREATE_TEAM_SUGGESTIONS = [
+  "Outline the team goal",
+  "List the needed roles",
   "Define the success criteria",
 ];
 
-const SPECIFIC_WORKFLOW_SUGGESTIONS = [
-  "Review required inputs",
-  "Check the next node",
-  "Summarize workflow progress",
+const CHOOSE_TEAM_SUGGESTIONS = [
+  "Kick off the run",
+  "Highlight the biggest risk",
+  "List the first checkpoint",
 ];
 
-type ComposerEntryMode = "direct" | "choose_workflow" | "create_workflow";
+type ComposerEntryMode = "direct" | "choose_team" | "create_team";
 
-type WorkflowToken = {
-  workflowId: string;
-  label: string;
-};
-
-const SAVED_WORKFLOW_OPTIONS = WORKFLOW_DEFINITIONS.map(({ id, label }) => ({
-  id,
-  label,
-}));
-
-const META_SEPARATOR = " · ";
-const SESSION_ELLIPSIS = "…";
+const META_SEPARATOR = " 路 ";
+const SESSION_ELLIPSIS = "鈥?";
 
 function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
-  if (!route) {
+  if (!route || route.kind === "direct_reply") {
     return "Direct reply";
   }
 
-  switch (route.kind) {
-    case "existing_workflow":
-      return `Existing workflow${META_SEPARATOR}${route.workflowId}`;
-    case "new_workflow":
-      return "Workflow draft";
-    case "direct_reply":
-    default:
-      return "Direct reply";
-  }
+  return "Direct reply";
 }
 
 function formatSession(sessionId: string | undefined) {
@@ -65,72 +58,24 @@ function formatSession(sessionId: string | undefined) {
   return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? SESSION_ELLIPSIS : ""}`;
 }
 
-function workflowLabel(workflowId: string) {
-  return (
-    SAVED_WORKFLOW_OPTIONS.find((workflow) => workflow.id === workflowId)?.label ??
-    workflowId
-  );
-}
-
-function resolveDraftMode(
-  entryMode: ComposerEntryMode,
-  workflowId: string,
-): ChatMode | null {
+function suggestionsForMode(entryMode: ComposerEntryMode) {
   switch (entryMode) {
-    case "create_workflow":
-      return { kind: "create_workflow" };
-    case "choose_workflow":
-      return workflowId.trim()
-        ? { kind: "specific_workflow", workflowId: workflowId.trim() }
-        : null;
+    case "create_team":
+      return CREATE_TEAM_SUGGESTIONS;
+    case "choose_team":
+      return CHOOSE_TEAM_SUGGESTIONS;
     case "direct":
-    default:
-      return { kind: "chat_only" };
-  }
-}
-
-function resolveActiveMode(sessionMode: ChatMode | null, draftMode: ChatMode | null): ChatMode {
-  if (!sessionMode) {
-    return draftMode ?? { kind: "chat_only" };
-  }
-
-  if (
-    sessionMode.kind === "chat_only" &&
-    draftMode &&
-    draftMode.kind !== "chat_only"
-  ) {
-    return draftMode;
-  }
-
-  return sessionMode;
-}
-
-function mergeSessionMode(current: ChatMode | null, nextMode: ChatMode): ChatMode {
-  if (!current || current.kind === "chat_only") {
-    return nextMode;
-  }
-
-  return current;
-}
-
-function suggestionsForMode(mode: ChatMode) {
-  switch (mode.kind) {
-    case "create_workflow":
-      return CREATE_WORKFLOW_SUGGESTIONS;
-    case "specific_workflow":
-      return SPECIFIC_WORKFLOW_SUGGESTIONS;
-    case "chat_only":
     default:
       return CHAT_ONLY_SUGGESTIONS;
   }
 }
 
-function entrySummary(entryMode: ComposerEntryMode, selectedWorkflowId: string) {
+function entrySummary(entryMode: ComposerEntryMode, selectedTeam: TeamRecord | null) {
   switch (entryMode) {
-    case "create_workflow":
-      return "Create workflow";
-    case "choose_workflow":
-      return selectedWorkflowId ? `Workflow: ${workflowLabel(selectedWorkflowId)}` : "Choose workflow";
+    case "create_team":
+      return "Create team";
+    case "choose_team":
+      return selectedTeam ? `Team: ${selectedTeam.name}` : "Choose team";
     case "direct":
     default:
       return "Direct chat";
@@ -143,9 +88,9 @@ function composerPlaceholder(landing: boolean, entryMode: ComposerEntryMode) {
   }
 
   switch (entryMode) {
-    case "create_workflow":
-      return "Describe the workflow you want to generate...";
-    case "choose_workflow":
+    case "create_team":
+      return "Describe the team goal you want to run...";
+    case "choose_team":
       return "";
     case "direct":
     default:
@@ -203,53 +148,100 @@ function ComposerCloseIcon() {
   );
 }
 
-type ChatPageProps = {
-  onWorkflowHandoff?: (handoff: WorkflowLaunchIntent) => void;
-};
-
-export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
+export function ChatPage() {
   const providerGate = useProviderGate();
+  const workspaceSessions = useWorkspaceSessions();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [session, setSession] = useState<ChatRouteResponse | null>(null);
-  const [sessionMode, setSessionMode] = useState<ChatMode | null>(null);
   const [entryMode, setEntryMode] = useState<ComposerEntryMode>("direct");
   const [entryMenuOpen, setEntryMenuOpen] = useState(false);
-  const [workflowPickerOpen, setWorkflowPickerOpen] = useState(false);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
-  const [workflowToken, setWorkflowToken] = useState<WorkflowToken | null>(null);
-  const [workflowHandoff, setWorkflowHandoff] = useState<WorkflowLaunchIntent | null>(null);
+  const [teamPickerOpen, setTeamPickerOpen] = useState(false);
+  const [availableTeams, setAvailableTeams] = useState<TeamRecord[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
+  const [teamRunState, setTeamRunState] = useState<TeamRunRecord | null>(null);
+  const [teamRunError, setTeamRunError] = useState<string | null>(null);
+  const [isTeamRunBusy, setIsTeamRunBusy] = useState(false);
+  const activeDirectSession =
+    workspaceSessions.activeSession?.kind === "direct_chat"
+      ? workspaceSessions.activeSession
+      : null;
+  const workspaceTeamRun =
+    workspaceSessions.activeSession?.kind === "team_run"
+      ? workspaceSessions.activeSession.run
+      : null;
+  const activeTeamRun = teamRunState ?? workspaceTeamRun;
+  const activeSessionRecord = activeDirectSession?.session ?? session?.session ?? null;
+  const activeMessages = activeDirectSession?.messages ?? messages;
+  const activeRoute =
+    activeSessionRecord?.id && activeSessionRecord.id === session?.session.id
+      ? session?.route
+      : null;
+  const selectedTeam = useMemo(
+    () => availableTeams.find((team) => team.id === selectedTeamId) ?? null,
+    [availableTeams, selectedTeamId],
+  );
   const memoryReviewDock = useMemoryReviewDock(
     "chat",
-    session?.session.id ?? null,
-    session?.session.messageCount ?? null,
+    activeDirectSession?.session.id ?? session?.session.id ?? null,
+    activeDirectSession?.session.messageCount ?? session?.session.messageCount ?? null,
   );
 
-  const landing = messages.length === 0;
-  const draftMode = resolveDraftMode(entryMode, selectedWorkflowId);
-  const composerMode = resolveActiveMode(sessionMode, draftMode);
-  const showWorkflowChooser = entryMode === "choose_workflow" && !workflowToken;
-  const showCreateWorkflowPill =
-    entryMode === "create_workflow" &&
-    !workflowToken &&
-    workflowHandoff?.kind !== "open_workflow_lobby";
+  const landing = activeMessages.length === 0 && workspaceSessions.sessions.length === 0 && !activeTeamRun;
+  const showTeamChooser = entryMode === "choose_team";
+  const showCreateTeamPill = entryMode === "create_team";
+
+  useEffect(() => {
+    let alive = true;
+
+    void listTeams()
+      .then((teams) => {
+        if (!alive) {
+          return;
+        }
+
+        setAvailableTeams(Array.isArray(teams) ? teams : []);
+      })
+      .catch(() => {
+        if (!alive) {
+          return;
+        }
+
+        setAvailableTeams([]);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setTeamRunState(workspaceTeamRun);
+    setTeamRunError(null);
+  }, [workspaceTeamRun]);
 
   const handleEntryModeSelect = (nextMode: ComposerEntryMode) => {
-    if (!sessionMode || sessionMode.kind === "chat_only") {
-      setEntryMode(nextMode);
-    }
-
-    if (nextMode === "choose_workflow") {
-      setSelectedWorkflowId("");
-      setWorkflowPickerOpen(true);
-    } else {
-      setSelectedWorkflowId("");
-      setWorkflowPickerOpen(false);
-    }
-
+    setEntryMode(nextMode);
     setEntryMenuOpen(false);
+    setError(null);
+
+    if (nextMode === "choose_team") {
+      setTeamPickerOpen(true);
+      return;
+    }
+
+    setSelectedTeamId("");
+    setTeamPickerOpen(false);
+  };
+
+  const handleSessionSelect = (sessionId: string) => {
+    workspaceSessions.setActiveSessionId(sessionId);
+    setEntryMenuOpen(false);
+    setTeamPickerOpen(false);
+    setSelectedTeamId("");
+    setEntryMode("direct");
     setError(null);
   };
 
@@ -263,63 +255,61 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
       return;
     }
 
-    const nextDraftMode = resolveDraftMode(entryMode, selectedWorkflowId);
-    if (!nextDraftMode) {
-      setError("Select a workflow before sending.");
+    if (entryMode === "choose_team" && !selectedTeamId.trim()) {
+      setError("Select a team before sending.");
       return;
     }
-
-    const mode = resolveActiveMode(sessionMode, nextDraftMode);
 
     setPrompt("");
     setError(null);
     setEntryMenuOpen(false);
-    setWorkflowPickerOpen(false);
+    setTeamPickerOpen(false);
     setIsRouting(true);
 
     try {
-      const response = await routeWorldPrompt(value, session?.session.id, mode);
+      if (entryMode === "create_team") {
+        const created = await createTeamFromGoal(value);
+        setAvailableTeams((current) => {
+          const existingIndex = current.findIndex((team) => team.id === created.id);
+          if (existingIndex === -1) {
+            return [...current, created];
+          }
+
+          return current.map((team, index) => (index === existingIndex ? created : team));
+        });
+        const run = await startTeamRun(created.id);
+        setTeamRunState(run);
+        setSelectedTeamId(created.id);
+        setEntryMode("direct");
+        void workspaceSessions.refresh({
+          id: run.id,
+          kind: "team_run",
+        });
+        return;
+      }
+
+      if (entryMode === "choose_team") {
+        let run = await startTeamRun(selectedTeamId.trim());
+        run = await continueTeamRun(run.id, value);
+        setTeamRunState(run);
+        setSelectedTeamId("");
+        setEntryMode("direct");
+        void workspaceSessions.refresh({
+          id: run.id,
+          kind: "team_run",
+        });
+        return;
+      }
+
+      const response = await routeWorldPrompt(value, activeSessionRecord?.id, {
+        kind: "chat_only",
+      });
       setMessages((current) => [...current, ...response.messages]);
       setSession(response);
-      setSessionMode((current) => mergeSessionMode(current, mode));
-
-      if (
-        mode.kind === "specific_workflow" &&
-        response.route.kind === "existing_workflow"
-      ) {
-        const handoff: WorkflowLaunchIntent = {
-          kind: "open_workflow_room",
-          workflowId: response.route.workflowId,
-          prompt: value,
-          origin: {
-            sourceMode: "specific_workflow",
-            sourceSessionId: response.session.id,
-          },
-        };
-
-        setWorkflowToken({
-          workflowId: response.route.workflowId,
-          label: workflowLabel(response.route.workflowId),
-        });
-        setWorkflowHandoff(handoff);
-        onWorkflowHandoff?.(handoff);
-      } else if (
-        mode.kind === "create_workflow" &&
-        response.route.kind === "new_workflow"
-      ) {
-        setWorkflowToken(null);
-        setWorkflowHandoff({
-          kind: "open_workflow_lobby",
-          prompt: value,
-          origin: {
-            sourceMode: "create_workflow",
-            sourceSessionId: response.session.id,
-          },
-        });
-      } else {
-        setWorkflowToken(null);
-        setWorkflowHandoff(null);
-      }
+      void workspaceSessions.refresh({
+        id: response.session.id,
+        kind: "direct_chat",
+      });
     } catch (caughtError) {
       const message =
         caughtError instanceof Error ? caughtError.message : String(caughtError);
@@ -329,83 +319,78 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
     }
   };
 
+  const handleContinueTeamRun = async (nextPrompt: string) => {
+    if (!activeTeamRun || isTeamRunBusy) {
+      return;
+    }
+
+    setIsTeamRunBusy(true);
+    setTeamRunError(null);
+
+    try {
+      const updated = await continueTeamRun(activeTeamRun.id, nextPrompt);
+      setTeamRunState(updated);
+      void workspaceSessions.refresh({
+        id: updated.id,
+        kind: "team_run",
+      });
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setTeamRunError(message);
+    } finally {
+      setIsTeamRunBusy(false);
+    }
+  };
+
+  const handleAddTeamRunAgent = async (agent: TeamRunPanelAgentDraft) => {
+    if (!activeTeamRun || isTeamRunBusy) {
+      return;
+    }
+
+    setIsTeamRunBusy(true);
+    setTeamRunError(null);
+
+    try {
+      const updated = await addTeamRunAgent(activeTeamRun.id, {
+        name: agent.name,
+        role: agent.role,
+        responsibility: agent.responsibility,
+        systemPrompt: `Join as ${agent.role} and focus on ${agent.responsibility}.`,
+        toolBindings: [],
+        toolUsePolicy: {
+          maxCallsPerRound: 1,
+          summarizeOutput: true,
+        },
+        joinReason: agent.responsibility,
+      });
+      setTeamRunState(updated);
+      void workspaceSessions.refresh({
+        id: updated.id,
+        kind: "team_run",
+      });
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setTeamRunError(message);
+    } finally {
+      setIsTeamRunBusy(false);
+    }
+  };
+
   const composer = (
     <div
       aria-label="World chat composer"
       className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}
     >
-      {workflowToken ? (
-        <div className="composer__workflow-token" data-testid="chat-workflow-token">
-          <span className="composer__workflow-token-label">{workflowToken.label}</span>
-          <div className="composer__workflow-token-actions">
-            <button
-              className="composer__token-action"
-              onClick={() => {
-                if (workflowHandoff?.kind === "open_workflow_room") {
-                  onWorkflowHandoff?.(workflowHandoff);
-                  window.dispatchEvent(
-                    new CustomEvent("nuka:navigate", {
-                      detail: { page: "workflow" },
-                    }),
-                  );
-                }
-              }}
-              type="button"
-            >
-              Open Workflow
-            </button>
-            <button
-              className="composer__token-action"
-              onClick={() => {
-                setWorkflowToken(null);
-                setWorkflowHandoff(null);
-                setSelectedWorkflowId("");
-                setWorkflowPickerOpen(false);
-                setEntryMode("direct");
-                setSessionMode({ kind: "chat_only" });
-              }}
-              type="button"
-            >
-              Clear Workflow
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {workflowHandoff?.kind === "open_workflow_lobby" ? (
-        <div className="composer__draft-status">
-          <span>Workflow draft ready</span>
-          <button
-            className="composer__token-action"
-            onClick={() => onWorkflowHandoff?.(workflowHandoff)}
-            type="button"
-          >
-            Open Workflow
-          </button>
-        </div>
-      ) : null}
-
       {!landing ? (
         <SuggestionStrip
           disabled={!providerGate.ready || isRouting}
           onSelect={(choice) => {
             void handleSend(choice);
           }}
-          suggestions={suggestionsForMode(composerMode)}
+          suggestions={suggestionsForMode(entryMode)}
         />
-      ) : null}
-
-      {providerGate.blocked ? (
-        <div className="composer__inline-feedback" data-testid="chat-provider-inline">
-          <span>{providerGate.message}</span>
-          <button
-            className="composer__token-action"
-            onClick={providerGate.openSettings}
-            type="button"
-          >
-            Open Settings
-          </button>
-        </div>
       ) : null}
 
       {error ? (
@@ -414,7 +399,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
 
       <div
         className={`composer__bar ${
-          showWorkflowChooser || showCreateWorkflowPill ? "composer__bar--pill" : ""
+          showTeamChooser || showCreateTeamPill ? "composer__bar--pill" : ""
         }`}
       >
         <div className="composer__menu">
@@ -444,42 +429,42 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
               </button>
               <button
                 className="composer__entry-option"
-                onClick={() => handleEntryModeSelect("choose_workflow")}
+                onClick={() => handleEntryModeSelect("choose_team")}
                 type="button"
               >
-                Choose workflow
+                Choose team
               </button>
               <button
                 className="composer__entry-option"
-                onClick={() => handleEntryModeSelect("create_workflow")}
+                onClick={() => handleEntryModeSelect("create_team")}
                 type="button"
               >
-                Create workflow
+                Create team
               </button>
             </div>
           ) : null}
         </div>
 
-        {showWorkflowChooser ? (
-          <div className="composer__workflow-pill" data-testid="chat-workflow-chooser">
+        {showTeamChooser ? (
+          <div className="composer__workflow-pill" data-testid="chat-team-chooser">
             <button
-              aria-expanded={workflowPickerOpen}
+              aria-expanded={teamPickerOpen}
               aria-haspopup="listbox"
               className="composer__workflow-trigger"
-              onClick={() => setWorkflowPickerOpen((current) => !current)}
+              onClick={() => setTeamPickerOpen((current) => !current)}
               type="button"
             >
               <span className="composer__workflow-trigger-label">
-                {selectedWorkflowId ? workflowLabel(selectedWorkflowId) : "Select workflow"}
+                {selectedTeam ? selectedTeam.name : "Select team"}
               </span>
               <ComposerChevronIcon />
             </button>
             <button
-              aria-label="Clear workflow chooser"
+              aria-label="Clear team chooser"
               className="composer__workflow-clear"
               onClick={() => {
-                setSelectedWorkflowId("");
-                setWorkflowPickerOpen(false);
+                setSelectedTeamId("");
+                setTeamPickerOpen(false);
                 setEntryMode("direct");
                 setError(null);
               }}
@@ -488,25 +473,25 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
               <ComposerCloseIcon />
             </button>
 
-            {workflowPickerOpen ? (
+            {teamPickerOpen ? (
               <div
                 className="composer__workflow-options"
-                data-testid="chat-workflow-options"
+                data-testid="chat-team-options"
                 role="listbox"
               >
-                {SAVED_WORKFLOW_OPTIONS.map((workflow) => (
+                {availableTeams.map((team) => (
                   <button
                     className="composer__workflow-option"
-                    data-workflow-id={workflow.id}
-                    key={workflow.id}
+                    data-team-id={team.id}
+                    key={team.id}
                     onClick={() => {
-                      setSelectedWorkflowId(workflow.id);
-                      setWorkflowPickerOpen(false);
+                      setSelectedTeamId(team.id);
+                      setTeamPickerOpen(false);
                       setError(null);
                     }}
                     type="button"
                   >
-                    {workflow.label}
+                    {team.name}
                   </button>
                 ))}
               </div>
@@ -514,14 +499,14 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
           </div>
         ) : null}
 
-        {showCreateWorkflowPill ? (
+        {showCreateTeamPill ? (
           <div className="composer__workflow-pill composer__workflow-pill--static" data-testid="chat-create-pill">
-            <span className="composer__workflow-trigger-label">Create workflow</span>
+            <span className="composer__workflow-trigger-label">Create team</span>
             <button
-              aria-label="Clear create workflow"
+              aria-label="Clear create team"
               className="composer__workflow-clear"
               onClick={() => {
-                setWorkflowPickerOpen(false);
+                setTeamPickerOpen(false);
                 setEntryMode("direct");
                 setError(null);
               }}
@@ -580,10 +565,24 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
     <div className={`page-layout chat-page ${landing ? "is-landing" : "is-active"}`}>
       <div className="page-layout__body chat-page__body">
         <div className="chat-stage">
+          <SessionTabs
+            activeSessionId={workspaceSessions.activeSessionId}
+            onSelect={handleSessionSelect}
+            sessions={workspaceSessions.sessions}
+          />
+
           <div
             className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}
           >
-            {landing ? (
+            {activeTeamRun ? (
+              <TeamRunPanel
+                error={teamRunError}
+                isBusy={isTeamRunBusy}
+                onAddAgent={handleAddTeamRunAgent}
+                onContinue={handleContinueTeamRun}
+                run={activeTeamRun}
+              />
+            ) : landing ? (
               <div className="chat-landing-stack" data-testid="chat-landing-stack">
                 <div aria-label="World chat landing hero" className="chat-hero">
                   <NukaLockup className="chat-hero__lockup" width={240} />
@@ -595,18 +594,20 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
               <section aria-label="World conversation surface" className="chat-surface">
                 <header className="chat-surface__header">
                   <div className="chat-surface__identity">
-                    <span className="chat-surface__eyebrow">{entrySummary(entryMode, selectedWorkflowId)}</span>
+                    <span className="chat-surface__eyebrow">
+                      {entrySummary(entryMode, selectedTeam)}
+                    </span>
                     <span className="chat-surface__meta">
-                      Session {formatSession(session?.session.id)}
+                      Session {formatSession(activeSessionRecord?.id)}
                       {META_SEPARATOR}
-                      {formatRoute(session?.route)}
+                      {formatRoute(activeRoute)}
                     </span>
                   </div>
                 </header>
 
                 <div className="chat-feed" role="log">
                   <div className="chat-feed__stack">
-                    {messages.map((message) => (
+                    {activeMessages.map((message) => (
                       <ConversationEventBlock key={message.id} message={message} />
                     ))}
                     <MemoryReviewDock {...memoryReviewDock} />
@@ -615,7 +616,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
               </section>
             )}
 
-            {landing ? null : composer}
+            {landing || activeTeamRun ? null : composer}
           </div>
         </div>
       </div>
