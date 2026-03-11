@@ -1,5 +1,4 @@
 import { NukaLogo } from "@/components/brand/NukaLogo";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useAppRuntimeStatus } from "@/hooks/useAppRuntimeStatus";
 import type { ShellNavigationItem, ShellPageId } from "./shellNavigation";
 
@@ -16,19 +15,27 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
   const provider = status?.provider;
   const providerKind = error ? "degraded" : provider?.kind ?? "checking";
   const providerLabel =
-    provider?.label ?? (providerKind === "ready" ? "Configured provider" : "No default provider");
-  const providerMessage =
-    provider?.message ?? (error ? "Provider unavailable" : "Checking provider status");
-  const providerBadgeTone =
-    providerKind === "ready" ? "accent" : providerKind === "missing" ? "warning" : "soft";
-  const providerBadgeLabel =
     providerKind === "ready"
-      ? "Configured"
+      ? (provider?.label ?? "Configured provider")
       : providerKind === "missing"
-        ? "Required"
+        ? "No provider configured"
         : providerKind === "checking"
-          ? "Checking"
-          : "Issue";
+          ? "Checking provider status"
+          : "Provider unavailable";
+  const providerMessage =
+    providerKind === "ready"
+      ? "Ready for chat and team runs."
+      : providerKind === "missing"
+        ? "Open settings to add a default OpenAI-compatible provider."
+        : providerKind === "checking"
+          ? "Checking current runtime status."
+          : (provider?.message ?? "Open settings to review the current provider.");
+  const providerStatusClass =
+    providerKind === "ready"
+      ? "is-ready"
+      : providerKind === "missing"
+        ? "is-warning"
+        : "is-muted";
 
   return (
     <aside aria-label="Primary" className="app-sidebar">
@@ -59,10 +66,12 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
 
       <section className="app-sidebar__provider-card" data-testid="sidebar-provider-card">
         <div className="app-sidebar__provider-card-header">
-          <span className="app-sidebar__provider-eyebrow">Runtime</span>
-          <StatusBadge tone={providerBadgeTone}>{providerBadgeLabel}</StatusBadge>
+          <span className="app-sidebar__provider-eyebrow">Provider</span>
+          <span
+            aria-hidden="true"
+            className={`app-sidebar__provider-status-dot ${providerStatusClass}`}
+          />
         </div>
-        <div className="app-sidebar__provider-title">Current Provider</div>
         <div className="app-sidebar__provider-name">{providerLabel}</div>
         <p className="app-sidebar__provider-message">{providerMessage}</p>
         <button

@@ -409,9 +409,10 @@ describe("App shell", () => {
 
     expect(providerCard).toBeTruthy();
     expect(providerCard?.nextElementSibling).toBe(settingsButton);
-    expect(findText(view.container, "Current Provider")).toBeTruthy();
+    expect(findText(view.container, "Provider")).toBeTruthy();
     expect(findText(view.container, "Local Provider")).toBeTruthy();
-    expect(findText(view.container, "Configured")).toBeTruthy();
+    expect(findText(view.container, "Ready for chat and team runs.")).toBeTruthy();
+    expect(providerCard?.querySelector(".status-badge")).toBeFalsy();
   });
 
   it("shows a missing-provider card above settings and opens settings from the card action", async () => {
@@ -425,7 +426,13 @@ describe("App shell", () => {
     const providerCard = view.container.querySelector('[data-testid="sidebar-provider-card"]');
 
     expect(providerCard).toBeTruthy();
-    expect(findText(view.container, "Provider required")).toBeTruthy();
+    expect(findText(view.container, "No provider configured")).toBeTruthy();
+    expect(
+      findText(view.container, "Open settings to add a default OpenAI-compatible provider."),
+    ).toBeTruthy();
+    expect(findText(view.container, "Provider required")).toBeFalsy();
+    expect(findText(view.container, "Required")).toBeFalsy();
+    expect(providerCard?.querySelector(".status-badge")).toBeFalsy();
 
     await act(async () => {
       getButtonByText(view.container, "Open Settings")?.dispatchEvent(
@@ -501,7 +508,7 @@ describe("App shell", () => {
       await Promise.resolve();
     });
 
-    expect(view.container.textContent).toContain("Provider required");
+    expect(view.container.textContent).toContain("No provider configured");
   });
 
   it("keeps chat as the default page before any workflow handoff", async () => {
