@@ -100,14 +100,19 @@ function setCheckboxValue(element: HTMLInputElement, checked: boolean) {
 }
 
 describe("SettingsPage", () => {
-  it("renders a desktop settings surface with section nav and control surface", async () => {
+  it("renders compact settings sections including a minimal shortcuts panel", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
     expect(view.container.querySelector('[data-testid="settings-section-nav"]')).toBeTruthy();
     expect(view.container.querySelector('[data-testid="settings-control-surface"]')).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="settings-context-guide"]')).toBeFalsy();
-    expect(view.container.querySelector('[data-testid="settings-accordion-stack"]')).toBeFalsy();
+    expect(findText(view.container, "General")).toBeTruthy();
+    expect(findText(view.container, "Providers")).toBeTruthy();
+    expect(findText(view.container, "Appearance")).toBeTruthy();
+    expect(findText(view.container, "Shortcuts")).toBeTruthy();
+    expect(findText(view.container, "Runtime")).toBeTruthy();
+    expect(view.container.textContent).not.toContain("configured");
+    expect(view.container.textContent).not.toContain("Application Settings");
   });
 
   it("renders provider status truthfully in the redesigned provider surface", async () => {
@@ -126,31 +131,53 @@ describe("SettingsPage", () => {
     expect(view.container.querySelector('[data-testid="provider-status-badge"]')).toBeTruthy();
   });
 
+  it("renders a minimal shortcuts section without a keyboard editor", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const shortcutsButton = findButton(view.container, "Shortcuts");
+    expect(shortcutsButton).toBeTruthy();
+
+    await act(async () => {
+      shortcutsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(findText(view.container, "Common shortcuts")).toBeTruthy();
+    expect(findText(view.container, "Restore defaults")).toBeTruthy();
+    expect(view.container.textContent).not.toContain("Keyboard editor");
+  });
+
   it("loads appearance state from the backend and saves through tauri", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
-    expect(findText(view.container, "Application Settings")).toBeTruthy();
-    expect(findText(view.container, "Appearance Defaults")).toBeTruthy();
-    expect(findText(view.container, "+ Add Provider")).toBeTruthy();
-    expect(findText(view.container, "Language")).toBeTruthy();
+    const appearanceButton = findButton(view.container, "Appearance");
+    expect(appearanceButton).toBeTruthy();
 
-    const languageSelect = view.container.querySelector(
-      'select[aria-label="Language"]',
+    await act(async () => {
+      appearanceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(findText(view.container, "Appearance Defaults")).toBeTruthy();
+    expect(findText(view.container, "Interface Font")).toBeTruthy();
+    expect(findText(view.container, "Message Font")).toBeTruthy();
+
+    const interfaceFontSelect = view.container.querySelector(
+      'select[aria-label="Interface Font"]',
     ) as HTMLSelectElement | null;
     const saveButton = findButton(view.container, "Save Appearance");
 
-    expect(languageSelect?.value).toBe("English (US)");
+    expect(interfaceFontSelect?.value).toBe("Inter");
     expect(saveButton?.hasAttribute("disabled")).toBe(true);
 
     await act(async () => {
-      if (!languageSelect) {
-        throw new Error("Language select missing");
+      if (!interfaceFontSelect) {
+        throw new Error("Interface font select missing");
       }
-      setFormValue(languageSelect, "Chinese (Simplified)");
+      setFormValue(interfaceFontSelect, "IBM Plex Sans");
     });
 
-    expect(languageSelect?.value).toBe("Chinese (Simplified)");
+    expect(interfaceFontSelect?.value).toBe("IBM Plex Sans");
     expect(saveButton?.hasAttribute("disabled")).toBe(false);
 
     await act(async () => {
@@ -160,7 +187,7 @@ describe("SettingsPage", () => {
     expect(invokeMock).toHaveBeenCalledWith(
       "save_settings",
       expect.objectContaining({
-        payload: expect.objectContaining({ language: "Chinese (Simplified)" }),
+        payload: expect.objectContaining({ interfaceFont: "IBM Plex Sans" }),
       }),
     );
   });
@@ -183,11 +210,12 @@ describe("SettingsPage", () => {
       addProviderButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(findText(view.container, "2 configured")).toBeTruthy();
-
     const providerNameInputs = Array.from(
       view.container.querySelectorAll('input[aria-label="Provider name"]'),
     ) as HTMLInputElement[];
+
+    expect(providerNameInputs).toHaveLength(2);
+
     const newestProvider = providerNameInputs[providerNameInputs.length - 1] ?? null;
 
     await act(async () => {
