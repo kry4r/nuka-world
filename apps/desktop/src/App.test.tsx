@@ -7,6 +7,7 @@ const runtimeStatusState = {
   provider: {
     kind: "ready",
     message: "Provider ready",
+    label: "Local Provider" as string | null,
   },
   knowledge: {
     kind: "ready",
@@ -374,6 +375,7 @@ afterEach(async () => {
   appWindowControls.toggleMaximize.mockClear();
   runtimeStatusState.provider.kind = "ready";
   runtimeStatusState.provider.message = "Provider ready";
+  runtimeStatusState.provider.label = "Local Provider";
 
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
@@ -390,6 +392,50 @@ describe("App shell", () => {
 
     expect(findText(view.container, "Team")).toBeTruthy();
     expect(view.container.querySelector('button[aria-label="Workflow"]')).toBeFalsy();
+  });
+
+  it("shows the current provider card above settings when a default provider is configured", async () => {
+    runtimeStatusState.provider.kind = "ready";
+    runtimeStatusState.provider.message = "Default provider configured";
+    runtimeStatusState.provider.label = "Local Provider";
+
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    const providerCard = view.container.querySelector('[data-testid="sidebar-provider-card"]');
+    const settingsButton = view.container.querySelector(
+      'button[aria-label="Settings"]',
+    ) as HTMLButtonElement | null;
+
+    expect(providerCard).toBeTruthy();
+    expect(providerCard?.nextElementSibling).toBe(settingsButton);
+    expect(findText(view.container, "Current Provider")).toBeTruthy();
+    expect(findText(view.container, "Local Provider")).toBeTruthy();
+    expect(findText(view.container, "Configured")).toBeTruthy();
+  });
+
+  it("shows a missing-provider card above settings and opens settings from the card action", async () => {
+    runtimeStatusState.provider.kind = "missing";
+    runtimeStatusState.provider.message = "Provider required";
+    runtimeStatusState.provider.label = null;
+
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    const providerCard = view.container.querySelector('[data-testid="sidebar-provider-card"]');
+
+    expect(providerCard).toBeTruthy();
+    expect(findText(view.container, "Provider required")).toBeTruthy();
+
+    await act(async () => {
+      getButtonByText(view.container, "Open Settings")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector('.app-shell__page[data-active-page="settings"]')).toBeTruthy();
   });
 
   it("renders a custom title bar and wires window controls", async () => {

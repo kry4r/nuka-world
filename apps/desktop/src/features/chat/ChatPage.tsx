@@ -395,19 +395,6 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
         />
       ) : null}
 
-      {providerGate.blocked ? (
-        <div className="composer__inline-feedback" data-testid="chat-provider-inline">
-          <span>{providerGate.message}</span>
-          <button
-            className="composer__token-action"
-            onClick={providerGate.openSettings}
-            type="button"
-          >
-            Open Settings
-          </button>
-        </div>
-      ) : null}
-
       {error ? (
         <div className="composer__inline-feedback composer__inline-feedback--error">{error}</div>
       ) : null}

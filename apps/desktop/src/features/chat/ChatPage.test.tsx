@@ -241,7 +241,7 @@ describe("ChatPage", () => {
     expect(composerInput?.getAttribute("placeholder")).toContain("Describe the workflow");
   });
 
-  it("keeps provider feedback inline near the composer", async () => {
+  it("removes provider feedback inline from the composer", async () => {
     providerGateState.ready = false;
     providerGateState.blocked = true;
     providerGateState.message = "Provider required";
@@ -250,9 +250,9 @@ describe("ChatPage", () => {
     cleanups.push(view.cleanup);
 
     expect(view.container.querySelector("textarea")).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="chat-provider-inline"]')).toBeTruthy();
-    expect(findText(view.container, "Provider required")).toBeTruthy();
-    expect(findText(view.container, "Open Settings")).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="chat-provider-inline"]')).toBeFalsy();
+    expect(findText(view.container, "Provider required")).toBeFalsy();
+    expect(findText(view.container, "Open Settings")).toBeFalsy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
   });
 
