@@ -7,6 +7,8 @@ pub mod providers;
 pub mod runtime_state;
 pub mod sessions;
 pub mod settings;
+pub mod team_runs;
+pub mod teams;
 pub mod tools;
 pub mod workflows;
 pub mod knowledge;
@@ -19,6 +21,10 @@ mod tests {
         knowledge::{KnowledgeCollection, KnowledgeConnector, KnowledgeConnectorKind},
         memory::MemoryScope,
         provider::{ProviderConfig, ProviderKind},
+        team::{
+            RunCharter, Team, TeamAgent, TeamRun, TeamRunAgent, TeamRunAgentStatus, TeamRunEvent,
+            TeamRunStatus, TeamStatus,
+        },
         tool::AgentToolBinding,
         workflow::WorkflowVisibility,
     };
@@ -72,6 +78,115 @@ mod tests {
             workflow_id: Some("workflow-review".to_string()),
             session_id: Some("session-review".to_string()),
             agent_id: Some("agent-reviewer".to_string()),
+        }
+    }
+
+    fn sample_team() -> Team {
+        Team {
+            id: "team-release".to_string(),
+            name: "Release Team".to_string(),
+            goal: "Ship the release cleanly".to_string(),
+            summary: "Coordinates release readiness and notes.".to_string(),
+            success_criteria: "Release ships without regressions.".to_string(),
+            coordination_policy: "Coordinator runs bounded review rounds.".to_string(),
+            created_at: "2026-03-11T00:00:00Z".to_string(),
+            updated_at: "2026-03-11T00:00:00Z".to_string(),
+            status: TeamStatus::Ready,
+            agents: vec![
+                TeamAgent {
+                    id: "team-agent-coordinator".to_string(),
+                    team_id: "team-release".to_string(),
+                    name: "Coordinator".to_string(),
+                    role: "Coordinator".to_string(),
+                    responsibility: "Drive the meeting agenda".to_string(),
+                    system_prompt: "Coordinate the release team.".to_string(),
+                    tool_bindings: vec![AgentToolBinding::allowed_cli(
+                        "cli:git-read",
+                        "Inspect repository status",
+                    )],
+                    tool_use_policy: Default::default(),
+                    order_hint: 0,
+                    created_at: "2026-03-11T00:00:00Z".to_string(),
+                    updated_at: "2026-03-11T00:00:00Z".to_string(),
+                },
+                TeamAgent {
+                    id: "team-agent-writer".to_string(),
+                    team_id: "team-release".to_string(),
+                    name: "Release Writer".to_string(),
+                    role: "Writer".to_string(),
+                    responsibility: "Draft the final release notes".to_string(),
+                    system_prompt: "Write concise release notes.".to_string(),
+                    tool_bindings: vec![AgentToolBinding::allowed("mcp:filesystem")],
+                    tool_use_policy: Default::default(),
+                    order_hint: 1,
+                    created_at: "2026-03-11T00:00:00Z".to_string(),
+                    updated_at: "2026-03-11T00:00:00Z".to_string(),
+                },
+            ],
+        }
+    }
+
+    fn sample_run() -> TeamRun {
+        TeamRun {
+            id: "run-release".to_string(),
+            team_id: "team-release".to_string(),
+            title: "Release Team Run".to_string(),
+            goal: "Ship the release cleanly".to_string(),
+            status: TeamRunStatus::Active,
+            current_phase: "planning".to_string(),
+            lead_agent_id: Some("run-agent-coordinator".to_string()),
+            charter: RunCharter::default_for_goal("Ship the release cleanly"),
+            created_at: "2026-03-11T00:00:00Z".to_string(),
+            updated_at: "2026-03-11T00:00:00Z".to_string(),
+            agents: vec![
+                TeamRunAgent {
+                    id: "run-agent-coordinator".to_string(),
+                    run_id: "run-release".to_string(),
+                    source_team_agent_id: Some("team-agent-coordinator".to_string()),
+                    name: "Coordinator".to_string(),
+                    role: "Coordinator".to_string(),
+                    responsibility: "Drive the meeting agenda".to_string(),
+                    system_prompt: "Coordinate the release team.".to_string(),
+                    tool_bindings: vec![AgentToolBinding::allowed_cli(
+                        "cli:git-read",
+                        "Inspect repository status",
+                    )],
+                    tool_use_policy: Default::default(),
+                    status: TeamRunAgentStatus::Thinking,
+                    current_work: "Breaking down the release goal".to_string(),
+                    last_tool_activity: Some("cli:git-read".to_string()),
+                    joined_at: "2026-03-11T00:00:00Z".to_string(),
+                },
+                TeamRunAgent {
+                    id: "run-agent-writer".to_string(),
+                    run_id: "run-release".to_string(),
+                    source_team_agent_id: Some("team-agent-writer".to_string()),
+                    name: "Release Writer".to_string(),
+                    role: "Writer".to_string(),
+                    responsibility: "Draft the final release notes".to_string(),
+                    system_prompt: "Write concise release notes.".to_string(),
+                    tool_bindings: vec![AgentToolBinding::allowed("mcp:filesystem")],
+                    tool_use_policy: Default::default(),
+                    status: TeamRunAgentStatus::Waiting,
+                    current_work: "Waiting for coordinator".to_string(),
+                    last_tool_activity: None,
+                    joined_at: "2026-03-11T00:00:00Z".to_string(),
+                },
+            ],
+            events: vec![TeamRunEvent {
+                id: "event-checkpoint".to_string(),
+                run_id: "run-release".to_string(),
+                kind: "checkpoint_summary".to_string(),
+                agent_id: Some("run-agent-coordinator".to_string()),
+                title: "Round 1 checkpoint".to_string(),
+                content: "Coordinator summarized the first round.".to_string(),
+                status: Some("active".to_string()),
+                tool_name: Some("cli:git-read".to_string()),
+                tool_call_id: Some("tool-call-1".to_string()),
+                tool_target: Some("repo".to_string()),
+                sequence: 1,
+                created_at: "2026-03-11T00:00:00Z".to_string(),
+            }],
         }
     }
 
@@ -202,8 +317,10 @@ mod tests {
         let scopes = memory_repo.list().await.unwrap();
 
         assert_eq!(runtime_value.as_deref(), Some("ready"));
-        assert_eq!(scopes.len(), 1);
-        assert_eq!(scopes[0].workflow_id.as_deref(), Some("workflow-review"));
+        assert!(scopes.iter().any(|scope| {
+            scope.id == "memory-review"
+                && scope.workflow_id.as_deref() == Some("workflow-review")
+        }));
     }
 
     #[tokio::test]
@@ -233,5 +350,31 @@ mod tests {
         assert_eq!(items[0].name, "engineering-room");
         assert_eq!(items[0].visibility, WorkflowVisibility::Private);
         assert!(items[0].inputs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn saves_and_reads_team_definitions_and_agents() {
+        let db = crate::db::open_in_memory().await.unwrap();
+        crate::migrations::run(&db).await.unwrap();
+
+        let repo = crate::teams::TeamRepository::new(db.clone());
+        repo.save_team(sample_team()).await.unwrap();
+
+        let teams = repo.list_teams().await.unwrap();
+        assert_eq!(teams.len(), 1);
+        assert_eq!(teams[0].agents.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn saves_and_reads_team_run_snapshot_and_events() {
+        let db = crate::db::open_in_memory().await.unwrap();
+        crate::migrations::run(&db).await.unwrap();
+
+        let repo = crate::team_runs::TeamRunRepository::new(db.clone());
+        repo.create_run(sample_run()).await.unwrap();
+
+        let loaded = repo.load_run("run-release").await.unwrap().unwrap();
+        assert_eq!(loaded.agents.len(), 2);
+        assert!(!loaded.events.is_empty());
     }
 }

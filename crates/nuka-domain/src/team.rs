@@ -1,13 +1,13 @@
 use crate::tool::{AgentToolBinding, ToolUsePolicy};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TeamStatus {
     Ready,
     Archived,
     Deleted,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TeamRunStatus {
     Active,
     WaitingForAgents,
@@ -17,7 +17,7 @@ pub enum TeamRunStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TeamRunAgentStatus {
     Thinking,
     Drafting,
@@ -27,7 +27,7 @@ pub enum TeamRunAgentStatus {
     Done,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RunCharter {
     pub goal: String,
     pub success_criteria: String,
@@ -60,7 +60,7 @@ impl RunCharter {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TeamAgent {
     pub id: String,
     pub team_id: String,
@@ -75,7 +75,7 @@ pub struct TeamAgent {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Team {
     pub id: String,
     pub name: String,
@@ -110,7 +110,7 @@ impl Team {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TeamRunAgent {
     pub id: String,
     pub run_id: String,
@@ -127,7 +127,7 @@ pub struct TeamRunAgent {
     pub joined_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TeamRunEvent {
     pub id: String,
     pub run_id: String,
@@ -143,7 +143,7 @@ pub struct TeamRunEvent {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TeamRun {
     pub id: String,
     pub team_id: String,

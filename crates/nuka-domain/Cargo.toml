@@ -5,4 +5,5 @@ license = "Apache-2.0"
 edition = "2021"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 uuid = { version = "1", features = ["v4"] }

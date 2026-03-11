@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AgentToolBinding {
     pub tool_id: String,
     pub allowed: bool,
@@ -7,28 +7,28 @@ pub struct AgentToolBinding {
     pub cost_class: ToolCostClass,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum IntegratedToolKind {
     Codex,
     ClaudeCode,
     OpenCode,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ToolAdapterKind {
     Mcp,
     Cli,
     IntegratedAgent,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ToolCostClass {
     Low,
     Medium,
     High,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ToolUsePolicy {
     pub max_calls_per_round: Option<usize>,
     pub summarize_output: bool,

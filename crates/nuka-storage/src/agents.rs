@@ -1,4 +1,7 @@
-use nuka_domain::{agent::AgentPreset, tool::AgentToolBinding};
+use nuka_domain::{
+    agent::AgentPreset,
+    tool::{AgentToolBinding, ToolAdapterKind, ToolCostClass},
+};
 use sqlx::Row;
 
 pub struct AgentRepository {
@@ -47,11 +50,19 @@ impl AgentRepository {
 
         for binding in agent.tool_bindings {
             sqlx::query(
-                "insert into agent_tool_bindings (agent_id, tool_id, allowed) values (?1, ?2, ?3)",
+                r#"
+                insert into agent_tool_bindings (
+                  agent_id, tool_id, allowed, adapter_kind, purpose, cost_class
+                )
+                values (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
             )
             .bind(agent.id.clone())
             .bind(binding.tool_id)
             .bind(binding.allowed as i64)
+            .bind(adapter_kind_as_str(&binding.adapter_kind))
+            .bind(binding.purpose)
+            .bind(cost_class_as_str(&binding.cost_class))
             .execute(&mut *tx)
             .await?;
         }
@@ -71,17 +82,19 @@ impl AgentRepository {
         for row in rows {
             let id: String = row.get("id");
             let bindings = sqlx::query(
-                "select tool_id, allowed from agent_tool_bindings where agent_id = ?1 order by tool_id asc",
+                r#"
+                select tool_id, allowed, adapter_kind, purpose, cost_class
+                from agent_tool_bindings
+                where agent_id = ?1
+                order by tool_id asc
+                "#,
             )
             .bind(&id)
             .fetch_all(&self.pool)
             .await?
             .into_iter()
-            .map(|binding| AgentToolBinding {
-                tool_id: binding.get("tool_id"),
-                allowed: binding.get::<i64, _>("allowed") != 0,
-            })
-            .collect();
+            .map(map_binding_row)
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
             agents.push(AgentPreset {
                 id,
@@ -115,6 +128,16 @@ impl AgentRepository {
     }
 }
 
+fn map_binding_row(binding: sqlx::sqlite::SqliteRow) -> anyhow::Result<AgentToolBinding> {
+    Ok(AgentToolBinding {
+        tool_id: binding.get("tool_id"),
+        allowed: binding.get::<i64, _>("allowed") != 0,
+        adapter_kind: parse_adapter_kind(&binding.get::<String, _>("adapter_kind"))?,
+        purpose: binding.get("purpose"),
+        cost_class: parse_cost_class(&binding.get::<String, _>("cost_class"))?,
+    })
+}
+
 fn encode_list(items: &[String]) -> String {
     items.join("\n")
 }
@@ -124,5 +147,39 @@ fn decode_list(items: &str) -> Vec<String> {
         Vec::new()
     } else {
         items.split('\n').map(str::to_string).collect()
+    }
+}
+
+fn adapter_kind_as_str(kind: &ToolAdapterKind) -> &'static str {
+    match kind {
+        ToolAdapterKind::Mcp => "mcp",
+        ToolAdapterKind::Cli => "cli",
+        ToolAdapterKind::IntegratedAgent => "integrated_agent",
+    }
+}
+
+fn parse_adapter_kind(kind: &str) -> anyhow::Result<ToolAdapterKind> {
+    match kind {
+        "mcp" => Ok(ToolAdapterKind::Mcp),
+        "cli" => Ok(ToolAdapterKind::Cli),
+        "integrated_agent" => Ok(ToolAdapterKind::IntegratedAgent),
+        other => anyhow::bail!("unknown tool adapter kind: {other}"),
+    }
+}
+
+fn cost_class_as_str(cost_class: &ToolCostClass) -> &'static str {
+    match cost_class {
+        ToolCostClass::Low => "low",
+        ToolCostClass::Medium => "medium",
+        ToolCostClass::High => "high",
+    }
+}
+
+fn parse_cost_class(cost_class: &str) -> anyhow::Result<ToolCostClass> {
+    match cost_class {
+        "low" => Ok(ToolCostClass::Low),
+        "medium" => Ok(ToolCostClass::Medium),
+        "high" => Ok(ToolCostClass::High),
+        other => anyhow::bail!("unknown tool cost class: {other}"),
     }
 }

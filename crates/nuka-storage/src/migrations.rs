@@ -21,6 +21,48 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
         .await?;
     }
 
+    let has_agent_binding_adapter_kind: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('agent_tool_bindings') where name = 'adapter_kind'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_agent_binding_adapter_kind == 0 {
+        sqlx::query(
+            "alter table agent_tool_bindings add column adapter_kind text not null default 'mcp'",
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    let has_agent_binding_purpose: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('agent_tool_bindings') where name = 'purpose'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_agent_binding_purpose == 0 {
+        sqlx::query(
+            "alter table agent_tool_bindings add column purpose text not null default ''",
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    let has_agent_binding_cost_class: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('agent_tool_bindings') where name = 'cost_class'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_agent_binding_cost_class == 0 {
+        sqlx::query(
+            "alter table agent_tool_bindings add column cost_class text not null default 'low'",
+        )
+        .execute(pool)
+        .await?;
+    }
+
     let has_memory_trace_type: i64 = sqlx::query_scalar(
         "select count(*) from pragma_table_info('memory_nodes') where name = 'trace_type'",
     )
