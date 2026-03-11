@@ -7,6 +7,7 @@ pub mod providers;
 pub mod runtime_events;
 pub mod session;
 pub mod settings_service;
+pub mod team_service;
 pub mod workflow;
 pub mod workflow_world;
 pub mod world;

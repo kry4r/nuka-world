@@ -50,6 +50,7 @@ pub struct AppState {
     runtime_status: AppRuntimeStatus,
     provider_service: nuka_runtime::providers::ProvidersService,
     settings_service: nuka_runtime::settings_service::SettingsService,
+    team_service: nuka_runtime::team_service::TeamService,
     agents_service: nuka_runtime::agents::AgentsService,
     knowledge_service: nuka_runtime::knowledge_service::KnowledgeService,
     memory_service: nuka_runtime::memory_service::MemoryService,
@@ -64,6 +65,7 @@ impl AppState {
         runtime_status: AppRuntimeStatus,
         provider_service: nuka_runtime::providers::ProvidersService,
         settings_service: nuka_runtime::settings_service::SettingsService,
+        team_service: nuka_runtime::team_service::TeamService,
         agents_service: nuka_runtime::agents::AgentsService,
         knowledge_service: nuka_runtime::knowledge_service::KnowledgeService,
         memory_service: nuka_runtime::memory_service::MemoryService,
@@ -75,6 +77,7 @@ impl AppState {
             runtime_status,
             provider_service,
             settings_service,
+            team_service,
             agents_service,
             knowledge_service,
             memory_service,
@@ -105,6 +108,10 @@ impl AppState {
 
     pub fn agents_service(&self) -> &nuka_runtime::agents::AgentsService {
         &self.agents_service
+    }
+
+    pub fn team_service(&self) -> &nuka_runtime::team_service::TeamService {
+        &self.team_service
     }
 
     pub fn knowledge_service(&self) -> &nuka_runtime::knowledge_service::KnowledgeService {

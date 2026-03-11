@@ -2156,6 +2156,8 @@ dependencies = [
  "nuka-integrations",
  "nuka-knowledge",
  "nuka-storage",
+ "serde",
+ "serde_json",
  "sqlx",
  "tokio",
  "uuid",

@@ -39,6 +39,7 @@ async fn build_app_state_from_pool(
 
     let settings_service = nuka_runtime::settings_service::SettingsService::new(pool.clone());
     let provider_service = nuka_runtime::providers::ProvidersService::new(pool.clone());
+    let team_service = nuka_runtime::team_service::TeamService::new(pool.clone());
     let agents_service = nuka_runtime::agents::AgentsService::new(pool.clone());
     let knowledge_service = nuka_runtime::knowledge_service::KnowledgeService::new(
         pool.clone(),
@@ -67,6 +68,7 @@ async fn build_app_state_from_pool(
         ),
         provider_service,
         settings_service,
+        team_service,
         agents_service,
         knowledge_service,
         memory_service,
