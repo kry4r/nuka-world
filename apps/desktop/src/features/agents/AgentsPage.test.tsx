@@ -101,14 +101,24 @@ describe("AgentsPage", () => {
     expect(view.container.textContent).toContain("Open Settings");
   });
 
-  it("renders an agent library and editor split instead of a generic card grid", async () => {
+  it("shows only the generation surface when no agents exist", async () => {
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "list_agents") {
+        return [];
+      }
+
+      return defaultInvokeImplementation(command, args);
+    });
+
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
 
-    expect(view.container.querySelector('[data-testid="agents-library"]')).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="agents-editor"]')).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="agents-quick-create"]')).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="agents-card-grid"]')).toBeFalsy();
+    expect(findButton(view.container, "Create")).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Agent request"]')).toBeTruthy();
+    expect(view.container.textContent).not.toContain("Agent Details");
+    expect(view.container.textContent).not.toContain("Agent Library");
+    expect(view.container.querySelector('[data-testid="agents-list"]')).toBeFalsy();
+    expect(view.container.querySelector('[data-testid="agents-detail"]')).toBeFalsy();
   });
 
   it("lists saved agents from the backend", async () => {
@@ -119,22 +129,17 @@ describe("AgentsPage", () => {
     expect(findText(view.container, "Synthesis and retrieval")).toBeTruthy();
   });
 
-  it("opens an existing agent detail panel", async () => {
+  it("shows saved agents in a list with inline detail instead of a duplicate inspector", async () => {
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
 
-    const openAgent = findButton(view.container, "Researcher");
-    expect(openAgent).toBeTruthy();
-
-    await act(async () => {
-      openAgent?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(findText(view.container, "Agent Details")).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="agents-list"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="agents-detail"]')).toBeTruthy();
+    expect(view.container.textContent).not.toContain("Agent Library");
+    expect(view.container.textContent).not.toContain("Agent Details");
     expect(findText(view.container, "Summarize findings and cite sources.")).toBeTruthy();
     expect(findText(view.container, "search_knowledge")).toBeTruthy();
-    expect(findText(view.container, "Provider context")).toBeTruthy();
-    expect(findText(view.container, "Memory and knowledge bindings")).toBeTruthy();
+    expect(findText(view.container, "Provider")).toBeTruthy();
   });
 
   it("creates an agent draft via backend draft generation", async () => {
@@ -263,5 +268,29 @@ describe("AgentsPage", () => {
 
     expect(findText(view.container, "Agent Action Error")).toBeTruthy();
     expect(findText(view.container, "delete failed")).toBeTruthy();
+  });
+
+  it("labels saved-agent save failures separately from draft save failures", async () => {
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "save_agent") {
+        throw new Error("save failed");
+      }
+
+      return defaultInvokeImplementation(command, args);
+    });
+
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    const saveButton = findButton(view.container, "Save Changes");
+    expect(saveButton).toBeTruthy();
+
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Agent Save Error")).toBeTruthy();
+    expect(findText(view.container, "save failed")).toBeTruthy();
   });
 });
