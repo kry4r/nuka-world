@@ -4,6 +4,16 @@ pub enum RuntimeEvent {
         session_id: String,
         prompt: String,
     },
+    TeamRunStarted {
+        run_id: String,
+        team_id: String,
+        prompt: String,
+    },
+    TeamRunRoundCompleted {
+        run_id: String,
+        team_id: String,
+        prompt: String,
+    },
     WorkflowSessionStarted {
         session_id: String,
         workflow_id: String,

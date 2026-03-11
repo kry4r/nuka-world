@@ -8,6 +8,8 @@ pub mod runtime_events;
 pub mod session;
 pub mod settings_service;
 pub mod team_service;
+pub mod team_run_service;
+pub mod workspace_sessions;
 pub mod workflow;
 pub mod workflow_world;
 pub mod world;
