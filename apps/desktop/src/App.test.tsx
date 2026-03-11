@@ -301,6 +301,7 @@ const { appWindowControls } = vi.hoisted(() => ({
   appWindowControls: {
     close: vi.fn(async () => undefined),
     minimize: vi.fn(async () => undefined),
+    startDragging: vi.fn(async () => undefined),
     toggleMaximize: vi.fn(async () => undefined),
   },
 }));
@@ -313,6 +314,7 @@ vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
     close: appWindowControls.close,
     minimize: appWindowControls.minimize,
+    startDragging: appWindowControls.startDragging,
     toggleMaximize: appWindowControls.toggleMaximize,
   }),
 }));
@@ -372,6 +374,7 @@ afterEach(async () => {
   invokeMock.mockClear();
   appWindowControls.close.mockClear();
   appWindowControls.minimize.mockClear();
+  appWindowControls.startDragging.mockClear();
   appWindowControls.toggleMaximize.mockClear();
   runtimeStatusState.provider.kind = "ready";
   runtimeStatusState.provider.message = "Provider ready";
@@ -512,6 +515,30 @@ describe("App shell", () => {
 
     expect(titlebar?.firstElementChild).toBe(dragRegion);
     expect(dragRegion?.hasAttribute("data-tauri-drag-region")).toBe(true);
+  });
+
+  it("starts native dragging from the titlebar chrome but not from window controls", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    const titlebar = view.container.querySelector('[data-testid="app-titlebar"]');
+    const closeButton = view.container.querySelector(
+      'button[aria-label="Close window"]',
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      titlebar?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      await Promise.resolve();
+    });
+
+    expect(appWindowControls.startDragging).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      closeButton?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      await Promise.resolve();
+    });
+
+    expect(appWindowControls.startDragging).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the custom window controls outside the drag region", async () => {

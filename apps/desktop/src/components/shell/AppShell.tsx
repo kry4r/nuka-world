@@ -27,10 +27,30 @@ export function AppShell({
   inspector,
 }: AppShellProps) {
   const appWindow = getCurrentWindow();
+  const handleTitlebarPointerDown = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    if (target.closest(".app-titlebar__actions")) {
+      return;
+    }
+
+    void appWindow.startDragging();
+  };
 
   return (
     <div className="app-shell">
-      <header className="app-titlebar app-shell__chrome-lock" data-testid="app-titlebar">
+      <header
+        className="app-titlebar app-shell__chrome-lock"
+        data-testid="app-titlebar"
+        onPointerDown={handleTitlebarPointerDown}
+      >
         <div
           className="app-titlebar__drag app-titlebar__drag--overlay app-shell__chrome-lock"
           data-tauri-drag-region
