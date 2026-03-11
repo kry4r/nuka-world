@@ -47,6 +47,16 @@ const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
         return args?.payload ?? null;
       case "save_provider":
         return args?.provider ?? null;
+      case "import_provider_from_env":
+        return {
+          id: "provider-env-local",
+          name: "Env Local",
+          baseUrl: "http://localhost:11434/v1",
+          model: "gpt-oss",
+          apiKey: "",
+          local: true,
+          enabled: true,
+        };
       default:
         throw new Error(`unexpected command: ${command}`);
     }
@@ -238,6 +248,31 @@ describe("SettingsPage", () => {
         provider: expect.objectContaining({ name: "OpenRouter" }),
       }),
     );
+  });
+
+  it("imports a provider from env without silently overwriting existing providers", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const importButton = findButton(view.container, "Import From Env");
+    expect(importButton).toBeTruthy();
+
+    await act(async () => {
+      importButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Env Local")).toBeTruthy();
+    expect(
+      Array.from(view.container.querySelectorAll('input[aria-label="Provider name"]')),
+    ).toHaveLength(2);
   });
 
   it("enables provider save when only the fallback selection changes", async () => {

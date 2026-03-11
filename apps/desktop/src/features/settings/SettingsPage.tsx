@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import {
+  importProviderFromEnv,
+  listProviders,
+  saveProvider,
+  type ProviderRecord,
+} from "@/lib/providers";
 
 type SettingsSectionId =
   | "general"
@@ -29,16 +35,6 @@ type SettingsPayload = {
   backgroundAdapters: boolean;
   logging: string;
   notifications: boolean;
-};
-
-type ProviderRecord = {
-  id: string;
-  name: string;
-  baseUrl: string;
-  model: string;
-  apiKey: string;
-  local: boolean;
-  enabled: boolean;
 };
 
 type SettingsSectionDefinition = {
@@ -207,7 +203,7 @@ export function SettingsPage() {
     let alive = true;
 
     void Promise.all([
-      invoke<ProviderRecord[]>("list_providers"),
+      listProviders(),
       invoke<SettingsPayload>("load_settings"),
     ])
       .then(([loadedProviders, loadedSettings]) => {
@@ -348,9 +344,7 @@ export function SettingsPage() {
           continue;
         }
 
-        const savedProvider = await invoke<ProviderRecord>("save_provider", {
-          provider,
-        });
+        const savedProvider = await saveProvider(provider);
         nextProviders[index] = savedProvider;
         nextInitialProviders[index] = savedProvider;
       }
@@ -368,6 +362,42 @@ export function SettingsPage() {
         caughtError instanceof Error ? caughtError.message : String(caughtError);
       setProviders(nextProviders);
       setInitialProviders(nextInitialProviders);
+      setError(message);
+    } finally {
+      setIsSavingProviders(false);
+    }
+  };
+
+  const handleImportProviderFromEnv = async () => {
+    setIsSavingProviders(true);
+    setError(null);
+
+    try {
+      const imported = await importProviderFromEnv();
+      setProviders((current) => {
+        const existingIndex = current.findIndex((provider) => provider.id === imported.id);
+        if (existingIndex === -1) {
+          return [...current, imported];
+        }
+
+        return current.map((provider, index) =>
+          index === existingIndex ? imported : provider,
+        );
+      });
+      setInitialProviders((current) => {
+        const existingIndex = current.findIndex((provider) => provider.id === imported.id);
+        if (existingIndex === -1) {
+          return [...current, imported];
+        }
+
+        return current.map((provider, index) =>
+          index === existingIndex ? imported : provider,
+        );
+      });
+      setActiveSection("providers");
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
       setError(message);
     } finally {
       setIsSavingProviders(false);
@@ -577,13 +607,23 @@ export function SettingsPage() {
       {renderSectionHeader(
         "Providers",
         "Set default routing and keep saved runtimes compact.",
-        <button
-          className="settings-button settings-button--accent"
-          onClick={handleAddProvider}
-          type="button"
-        >
-          + Add Provider
-        </button>,
+        <div className="settings-panel__actions">
+          <button
+            className="settings-button"
+            disabled={isSavingProviders}
+            onClick={() => void handleImportProviderFromEnv()}
+            type="button"
+          >
+            Import From Env
+          </button>
+          <button
+            className="settings-button settings-button--accent"
+            onClick={handleAddProvider}
+            type="button"
+          >
+            + Add Provider
+          </button>
+        </div>,
       )}
 
       <section className="settings-directory__panel">
