@@ -236,7 +236,9 @@ async function setComposerValue(container: HTMLElement, value: string) {
 }
 
 async function setSelectValue(container: HTMLElement, value: string) {
-  const select = container.querySelector("select") as HTMLSelectElement | null;
+  const select = container.querySelector(
+    'select[aria-label="Saved workflow"]',
+  ) as HTMLSelectElement | null;
 
   await act(async () => {
     if (!select) {
@@ -288,6 +290,7 @@ describe("App shell", () => {
 
     expect(view.container.querySelector('.app-shell__page[data-active-page="chat"]')).toBeTruthy();
     expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
+    expect(findText(view.container, "Direct chat")).toBeFalsy();
     expect(findText(view.container, "Workflow Room")).toBeFalsy();
   });
 
@@ -332,6 +335,7 @@ describe("App shell", () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
+    await clickButton(view.container, "+");
     await clickButton(view.container, "Create workflow");
     await setComposerValue(view.container, "Draft a release process");
     await clickButton(view.container, "Send");
@@ -369,7 +373,8 @@ describe("App shell", () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    await clickButton(view.container, "Specific workflow");
+    await clickButton(view.container, "+");
+    await clickButton(view.container, "Choose workflow");
     await setSelectValue(view.container, "workflow-release-notes");
     await setComposerValue(view.container, "Review the release checklist");
     await clickButton(view.container, "Send");

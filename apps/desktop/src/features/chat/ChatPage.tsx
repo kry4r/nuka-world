@@ -1,22 +1,10 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { NukaLockup } from "@/components/brand/NukaLockup";
-import { Inspector } from "@/components/shell/Inspector";
-import { Card } from "@/components/ui/Card";
-import {
-  routeWorldPrompt,
-  type ChatMessage,
-  type ChatMode,
-  type ChatProviderInfo,
-  type ChatRouteResponse,
-} from "@/lib/chat";
-import {
-  WORKFLOW_DEFINITIONS,
-  type WorkflowLaunchIntent,
-} from "@/lib/workflow";
+import { routeWorldPrompt, type ChatMessage, type ChatMode, type ChatRouteResponse } from "@/lib/chat";
+import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
 import { useProviderGate } from "@/hooks/useProviderGate";
 import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
-import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
-import { ChatModeSwitcher } from "./ChatModeSwitcher";
+import { WORKFLOW_DEFINITIONS, type WorkflowLaunchIntent } from "@/lib/workflow";
 import { ConversationEventBlock } from "./ConversationEventBlock";
 import { SuggestionStrip } from "./SuggestionStrip";
 
@@ -38,15 +26,20 @@ const SPECIFIC_WORKFLOW_SUGGESTIONS = [
   "Summarize workflow progress",
 ];
 
+type ComposerEntryMode = "direct" | "choose_workflow" | "create_workflow";
+
+type WorkflowToken = {
+  workflowId: string;
+  label: string;
+};
+
 const SAVED_WORKFLOW_OPTIONS = WORKFLOW_DEFINITIONS.map(({ id, label }) => ({
   id,
   label,
 }));
 
-const META_SEPARATOR = " \u00b7 ";
-const SESSION_ELLIPSIS = "\u2026";
-
-type ChatModeKind = ChatMode["kind"];
+const META_SEPARATOR = " · ";
+const SESSION_ELLIPSIS = "…";
 
 function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
   if (!route) {
@@ -57,7 +50,7 @@ function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
     case "existing_workflow":
       return `Existing workflow${META_SEPARATOR}${route.workflowId}`;
     case "new_workflow":
-      return "New workflow";
+      return "Workflow draft";
     case "direct_reply":
     default:
       return "Direct reply";
@@ -72,35 +65,25 @@ function formatSession(sessionId: string | undefined) {
   return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? SESSION_ELLIPSIS : ""}`;
 }
 
-function formatProvider(provider: ChatProviderInfo | null) {
-  if (!provider) {
-    return "No provider selected";
-  }
-
-  return `${provider.name}${META_SEPARATOR}${provider.model}`;
+function workflowLabel(workflowId: string) {
+  return (
+    SAVED_WORKFLOW_OPTIONS.find((workflow) => workflow.id === workflowId)?.label ??
+    workflowId
+  );
 }
 
-function formatMode(mode: ChatMode) {
-  switch (mode.kind) {
-    case "create_workflow":
-      return "Create workflow";
-    case "specific_workflow":
-      return `Specific workflow${META_SEPARATOR}${mode.workflowId}`;
-    case "chat_only":
-    default:
-      return "Chat only";
-  }
-}
-
-function resolveDraftMode(kind: ChatModeKind, workflowId: string): ChatMode | null {
-  switch (kind) {
+function resolveDraftMode(
+  entryMode: ComposerEntryMode,
+  workflowId: string,
+): ChatMode | null {
+  switch (entryMode) {
     case "create_workflow":
       return { kind: "create_workflow" };
-    case "specific_workflow":
+    case "choose_workflow":
       return workflowId.trim()
         ? { kind: "specific_workflow", workflowId: workflowId.trim() }
         : null;
-    case "chat_only":
+    case "direct":
     default:
       return { kind: "chat_only" };
   }
@@ -118,10 +101,57 @@ function suggestionsForMode(mode: ChatMode) {
   }
 }
 
-function workflowLabel(workflowId: string) {
+function entrySummary(entryMode: ComposerEntryMode, selectedWorkflowId: string) {
+  switch (entryMode) {
+    case "create_workflow":
+      return "Create workflow";
+    case "choose_workflow":
+      return selectedWorkflowId ? `Workflow: ${workflowLabel(selectedWorkflowId)}` : "Choose workflow";
+    case "direct":
+    default:
+      return "Direct chat";
+  }
+}
+
+function composerPlaceholder(landing: boolean, entryMode: ComposerEntryMode) {
+  if (!landing) {
+    return "Reply to World...";
+  }
+
+  switch (entryMode) {
+    case "create_workflow":
+      return "Describe the workflow you want to generate...";
+    case "choose_workflow":
+      return "Add instructions for the selected workflow...";
+    case "direct":
+    default:
+      return "Message World to start a session...";
+  }
+}
+
+function ComposerPlusIcon() {
   return (
-    SAVED_WORKFLOW_OPTIONS.find((workflow) => workflow.id === workflowId)?.label ??
-    workflowId
+    <svg
+      aria-hidden="true"
+      className="composer__icon composer__icon--plus"
+      viewBox="0 0 16 16"
+    >
+      <path d="M8 3.5v9" />
+      <path d="M3.5 8h9" />
+    </svg>
+  );
+}
+
+function ComposerSendIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="composer__icon composer__icon--send"
+      viewBox="0 0 16 16"
+    >
+      <path d="M3 8h8.5" />
+      <path d="M8.5 3.5 13 8l-4.5 4.5" />
+    </svg>
   );
 }
 
@@ -135,11 +165,13 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
   const [prompt, setPrompt] = useState("");
   const [session, setSession] = useState<ChatRouteResponse | null>(null);
   const [sessionMode, setSessionMode] = useState<ChatMode | null>(null);
-  const [modeKind, setModeKind] = useState<ChatModeKind>("chat_only");
+  const [entryMode, setEntryMode] = useState<ComposerEntryMode>("direct");
+  const [entryMenuOpen, setEntryMenuOpen] = useState(false);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
+  const [workflowToken, setWorkflowToken] = useState<WorkflowToken | null>(null);
+  const [workflowHandoff, setWorkflowHandoff] = useState<WorkflowLaunchIntent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
-  const [workflowHandoff, setWorkflowHandoff] = useState<WorkflowLaunchIntent | null>(null);
   const memoryReviewDock = useMemoryReviewDock(
     "chat",
     session?.session.id ?? null,
@@ -147,46 +179,25 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
   );
 
   const landing = messages.length === 0;
-  const draftMode = resolveDraftMode(modeKind, selectedWorkflowId);
-  const composerMode = sessionMode ?? draftMode;
-  const modeValue = sessionMode?.kind ?? modeKind;
+  const draftMode = resolveDraftMode(entryMode, selectedWorkflowId);
+  const composerMode = sessionMode ?? draftMode ?? { kind: "chat_only" };
+  const showComposerSummary =
+    !landing &&
+    entryMode !== "direct" &&
+    !workflowToken &&
+    workflowHandoff?.kind !== "open_workflow_lobby";
 
-  const inspector = useMemo(() => {
-    if (!session) {
-      return null;
+  const handleEntryModeSelect = (nextMode: ComposerEntryMode) => {
+    if (!sessionMode || sessionMode.kind === "chat_only") {
+      setEntryMode(nextMode);
     }
 
-    return (
-      <Inspector
-        description="Real session metadata, configured provider, and attached context for the current World conversation."
-        title="Context Inspector"
-      >
-        <Card
-          description={`Session ${formatSession(session.session.id)}`}
-          title="Session"
-          tone="accent"
-        />
-        <Card description={formatRoute(session.route)} title="Route" />
-        <Card description={formatProvider(session.provider)} title="Provider" />
-        <Card
-          description={`${messages.length} message${messages.length === 1 ? "" : "s"}${META_SEPARATOR}${session.context.attachedAgents.length} agents${META_SEPARATOR}${session.context.attachedKnowledgeLibraries.length} libraries`}
-          title="History"
-        />
-      </Inspector>
-    );
-  }, [messages.length, session]);
-
-  const handleModeChange = (nextKind: ChatModeKind) => {
-    if (sessionMode) {
-      return;
-    }
-
-    setModeKind(nextKind);
-    if (nextKind !== "specific_workflow") {
+    if (nextMode !== "choose_workflow") {
       setSelectedWorkflowId("");
     }
+
+    setEntryMenuOpen(false);
     setError(null);
-    setWorkflowHandoff(null);
   };
 
   const handleSend = async (nextPrompt?: string) => {
@@ -199,36 +210,22 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
       return;
     }
 
-    const mode = sessionMode ?? resolveDraftMode(modeKind, selectedWorkflowId);
+    const mode = sessionMode ?? resolveDraftMode(entryMode, selectedWorkflowId);
     if (!mode) {
       setError("Select a workflow before sending.");
       return;
     }
 
-    setError(null);
     setPrompt("");
+    setError(null);
+    setEntryMenuOpen(false);
     setIsRouting(true);
-    setWorkflowHandoff(null);
 
     try {
       const response = await routeWorldPrompt(value, session?.session.id, mode);
+      setMessages((current) => [...current, ...response.messages]);
       setSession(response);
       setSessionMode((current) => current ?? mode);
-      setMessages((current) => [...current, ...response.messages]);
-
-      if (
-        mode.kind === "create_workflow" &&
-        response.route.kind === "new_workflow"
-      ) {
-        setWorkflowHandoff({
-          kind: "open_workflow_lobby",
-          prompt: value,
-          origin: {
-            sourceMode: "create_workflow",
-            sourceSessionId: response.session.id,
-          },
-        });
-      }
 
       if (
         mode.kind === "specific_workflow" &&
@@ -244,8 +241,28 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
           },
         };
 
+        setWorkflowToken({
+          workflowId: response.route.workflowId,
+          label: workflowLabel(response.route.workflowId),
+        });
         setWorkflowHandoff(handoff);
         onWorkflowHandoff?.(handoff);
+      } else if (
+        mode.kind === "create_workflow" &&
+        response.route.kind === "new_workflow"
+      ) {
+        setWorkflowToken(null);
+        setWorkflowHandoff({
+          kind: "open_workflow_lobby",
+          prompt: value,
+          origin: {
+            sourceMode: "create_workflow",
+            sourceSessionId: response.session.id,
+          },
+        });
+      } else {
+        setWorkflowToken(null);
+        setWorkflowHandoff(null);
       }
     } catch (caughtError) {
       const message =
@@ -256,16 +273,6 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
     }
   };
 
-  const composerContext = sessionMode
-    ? `Session mode: ${formatMode(sessionMode)}`
-    : modeKind === "specific_workflow"
-      ? selectedWorkflowId
-        ? `Starting in ${workflowLabel(selectedWorkflowId)}`
-        : "Choose a saved workflow before sending."
-      : draftMode
-        ? `Starting in ${formatMode(draftMode)}`
-        : "Choose a chat mode before sending.";
-
   return (
     <div className={`page-layout chat-page ${landing ? "is-landing" : "is-active"}`}>
       <div className="page-layout__body chat-page__body">
@@ -275,25 +282,19 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
           >
             {landing ? (
               <div aria-label="World chat landing hero" className="chat-hero">
-                <NukaLockup className="chat-hero__lockup" width={220} />
+                <NukaLockup className="chat-hero__lockup" width={240} />
               </div>
             ) : (
               <section aria-label="World conversation surface" className="chat-surface">
                 <header className="chat-surface__header">
                   <div className="chat-surface__identity">
-                    <span className="chat-surface__eyebrow">World Chat</span>
+                    <span className="chat-surface__eyebrow">{entrySummary(entryMode, selectedWorkflowId)}</span>
                     <span className="chat-surface__meta">
                       Session {formatSession(session?.session.id)}
                       {META_SEPARATOR}
                       {formatRoute(session?.route)}
                     </span>
                   </div>
-                  <span
-                    aria-label="World chat session status"
-                    className="chat-surface__status"
-                  >
-                    Session live
-                  </span>
                 </header>
 
                 <div className="chat-feed" role="log">
@@ -306,45 +307,56 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
               </section>
             )}
 
-            {error ? <Card description={error} title="Backend Error" tone="soft" /> : null}
-
-            {providerGate.blocked ? (
-              <Card description={providerGate.message} title="Provider required" tone="soft">
-                <div className="settings-panel__footer">
-                  <button
-                    className="settings-button settings-button--accent"
-                    onClick={providerGate.openSettings}
-                    type="button"
-                  >
-                    Open Settings
-                  </button>
+            <div
+              aria-label="World chat composer"
+              className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}
+            >
+              {workflowToken ? (
+                <div className="composer__workflow-token" data-testid="chat-workflow-token">
+                  <span className="composer__workflow-token-label">{workflowToken.label}</span>
+                  <div className="composer__workflow-token-actions">
+                    <button
+                      className="composer__token-action"
+                      onClick={() => {
+                        if (workflowHandoff?.kind === "open_workflow_room") {
+                          onWorkflowHandoff?.(workflowHandoff);
+                        }
+                      }}
+                      type="button"
+                    >
+                      Open Workflow
+                    </button>
+                    <button
+                      className="composer__token-action"
+                      onClick={() => {
+                        setWorkflowToken(null);
+                        setWorkflowHandoff(null);
+                        setSelectedWorkflowId("");
+                        setEntryMode("direct");
+                        setSessionMode({ kind: "chat_only" });
+                      }}
+                      type="button"
+                    >
+                      Clear Workflow
+                    </button>
+                  </div>
                 </div>
-              </Card>
-            ) : null}
+              ) : null}
 
-            {workflowHandoff?.kind === "open_workflow_lobby" ? (
-              <Card
-                description={`World clarified the task in session ${formatSession(workflowHandoff.origin.sourceSessionId)}. Move into Workflow when you want a dedicated room.`}
-                title="Workflow handoff ready"
-                tone="accent"
-              >
-                <div className="settings-panel__footer">
+              {workflowHandoff?.kind === "open_workflow_lobby" ? (
+                <div className="composer__draft-status">
+                  <span>Workflow draft ready</span>
                   <button
-                    className="settings-button settings-button--accent"
+                    className="composer__token-action"
                     onClick={() => onWorkflowHandoff?.(workflowHandoff)}
                     type="button"
                   >
                     Open Workflow
                   </button>
                 </div>
-              </Card>
-            ) : null}
+              ) : null}
 
-            <div
-              aria-label="World chat composer"
-              className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}
-            >
-              {!landing && composerMode ? (
+              {!landing ? (
                 <SuggestionStrip
                   disabled={!providerGate.ready || isRouting}
                   onSelect={(choice) => {
@@ -354,22 +366,11 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                 />
               ) : null}
 
-              <div className="composer__context">
-                <div className="composer__context-copy">
-                  <span className="composer__context-eyebrow">Composer context</span>
-                  <span className="composer__context-value">{composerContext}</span>
-                </div>
-                <ChatModeSwitcher
-                  disabled={Boolean(sessionMode)}
-                  onChange={handleModeChange}
-                  value={modeValue}
-                />
-              </div>
-
-              {!sessionMode && modeKind === "specific_workflow" ? (
+              {entryMode === "choose_workflow" && !workflowToken ? (
                 <label className="composer__workflow-picker">
                   <span>Saved workflow</span>
                   <select
+                    aria-label="Saved workflow"
                     onChange={(event) => {
                       setSelectedWorkflowId(event.target.value);
                       setError(null);
@@ -386,10 +387,73 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                 </label>
               ) : null}
 
+              {providerGate.blocked ? (
+                <div className="composer__inline-feedback" data-testid="chat-provider-inline">
+                  <span>{providerGate.message}</span>
+                  <button
+                    className="composer__token-action"
+                    onClick={providerGate.openSettings}
+                    type="button"
+                  >
+                    Open Settings
+                  </button>
+                </div>
+              ) : null}
+
+              {error ? <div className="composer__inline-feedback composer__inline-feedback--error">{error}</div> : null}
+
               <MemoryReviewDock {...memoryReviewDock} />
 
               <div className="composer__bar">
+                <div className="composer__menu">
+                  <button
+                    aria-expanded={entryMenuOpen}
+                    aria-haspopup="menu"
+                    className="composer__add"
+                    onClick={() => setEntryMenuOpen((current) => !current)}
+                    type="button"
+                  >
+                    <span className="composer__visually-hidden">+</span>
+                    <ComposerPlusIcon />
+                  </button>
+
+                  {entryMenuOpen ? (
+                    <div
+                      aria-label="Composer entry modes"
+                      className="composer__entry-menu"
+                      role="menu"
+                    >
+                      <button
+                        className="composer__entry-option"
+                        onClick={() => handleEntryModeSelect("direct")}
+                        type="button"
+                      >
+                        Direct chat
+                      </button>
+                      <button
+                        className="composer__entry-option"
+                        onClick={() => handleEntryModeSelect("choose_workflow")}
+                        type="button"
+                      >
+                        Choose workflow
+                      </button>
+                      <button
+                        className="composer__entry-option"
+                        onClick={() => handleEntryModeSelect("create_workflow")}
+                        type="button"
+                      >
+                        Create workflow
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="composer__field">
+                  {showComposerSummary ? (
+                    <span className="composer__context-summary">
+                      {entrySummary(entryMode, selectedWorkflowId)}
+                    </span>
+                  ) : null}
                   <textarea
                     className="composer__input"
                     disabled={!providerGate.ready}
@@ -400,15 +464,12 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                         void handleSend();
                       }
                     }}
-                    placeholder={
-                      landing
-                        ? "Message World to start a session..."
-                        : "Reply to World..."
-                    }
+                    placeholder={composerPlaceholder(landing, entryMode)}
                     rows={1}
                     value={prompt}
                   />
                 </div>
+
                 <button
                   aria-label={landing ? "Send to World" : "Send"}
                   className="composer__send"
@@ -418,14 +479,24 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                   }}
                   type="button"
                 >
-                  {isRouting ? "..." : "Send"}
+                  {landing ? (
+                    <>
+                      <span className="composer__visually-hidden">
+                        {isRouting ? "..." : "Send"}
+                      </span>
+                      <ComposerSendIcon />
+                    </>
+                  ) : (
+                    <>
+                      <span className="composer__send-label">{isRouting ? "..." : "Send"}</span>
+                      {isRouting ? null : <ComposerSendIcon />}
+                    </>
+                  )}
                 </button>
               </div>
             </div>
           </div>
         </div>
-
-        {inspector}
       </div>
     </div>
   );

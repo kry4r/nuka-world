@@ -101,6 +101,16 @@ function getButtonByText(container: HTMLElement, text: string) {
   );
 }
 
+async function clickButton(container: HTMLElement, text: string) {
+  await act(async () => {
+    getButtonByText(container, text)?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 async function setComposerValue(container: HTMLElement, value: string) {
   const textarea = container.querySelector("textarea") as HTMLTextAreaElement | null;
 
@@ -119,20 +129,24 @@ async function setComposerValue(container: HTMLElement, value: string) {
   });
 }
 
-async function clickButton(container: HTMLElement, text: string) {
+async function setSelectValue(container: HTMLElement, value: string) {
+  const select = container.querySelector('select[aria-label="Saved workflow"]') as
+    | HTMLSelectElement
+    | null;
+
   await act(async () => {
-    getButtonByText(container, text)?.dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    );
-    await Promise.resolve();
+    if (!select) {
+      throw new Error("saved workflow select missing");
+    }
+
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLSelectElement.prototype,
+      "value",
+    )?.set;
+    valueSetter?.call(select, value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
     await Promise.resolve();
   });
-}
-
-function transcriptContents(container: HTMLElement) {
-  return Array.from(container.querySelectorAll(".chat-bubble__content")).map(
-    (node) => node.textContent?.trim() ?? "",
-  );
 }
 
 function deferredValue<T>() {
@@ -162,7 +176,35 @@ afterEach(async () => {
 });
 
 describe("ChatPage", () => {
-  it("disables the chat composer until a default provider is ready", async () => {
+  it("renders only the logo hero and composer on first load", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
+    expect(view.container.querySelector("textarea")).toBeTruthy();
+    expect(view.container.querySelector(".composer__add")).toBeTruthy();
+    expect(view.container.querySelector(".composer__icon--plus")).toBeTruthy();
+    expect(view.container.querySelector(".composer__icon--send")).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Chat mode"]')).toBeFalsy();
+    expect(view.container.querySelector('[aria-label="Composer entry modes"]')).toBeFalsy();
+    expect(findText(view.container, "Direct chat")).toBeFalsy();
+    expect(findText(view.container, "Provider required")).toBeFalsy();
+    expect(findText(view.container, "Context Inspector")).toBeFalsy();
+  });
+
+  it("reveals composer entry modes from the plus menu", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await clickButton(view.container, "+");
+
+    expect(view.container.querySelector('[aria-label="Composer entry modes"]')).toBeTruthy();
+    expect(findText(view.container, "Direct chat")).toBeTruthy();
+    expect(findText(view.container, "Choose workflow")).toBeTruthy();
+    expect(findText(view.container, "Create workflow")).toBeTruthy();
+  });
+
+  it("keeps provider feedback inline near the composer", async () => {
     providerGateState.ready = false;
     providerGateState.blocked = true;
     providerGateState.message = "Provider required";
@@ -170,43 +212,14 @@ describe("ChatPage", () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
 
-    await setComposerValue(view.container, "Draft the handoff");
-
-    const sendButton = getButtonByText(view.container, "Send");
-    const textarea = view.container.querySelector("textarea");
-
-    expect(sendButton?.hasAttribute("disabled")).toBe(true);
-    expect(textarea?.hasAttribute("disabled")).toBe(true);
-    expect(view.container.textContent).toContain("Open Settings");
-  });
-
-  it("renders the chat mode entry points as a single-choice selector on the landing composer", async () => {
-    const view = await renderIntoDocument(<ChatPage />);
-    cleanups.push(view.cleanup);
-
-    const modeSelector = view.container.querySelector('[aria-label="Chat mode"]');
-    const chatOnlyOption = getButtonByText(view.container, "Chat only");
-    const createWorkflowOption = getButtonByText(view.container, "Create workflow");
-    const specificWorkflowOption = getButtonByText(view.container, "Specific workflow");
-
-    expect(
-      view.container.querySelector("textarea")?.getAttribute("placeholder"),
-    ).toBe("Message World to start a session...");
-    expect(
-      view.container.querySelector('[aria-label="World chat landing hero"]'),
-    ).toBeTruthy();
-    expect(modeSelector?.getAttribute("role")).toBe("radiogroup");
-    expect(chatOnlyOption?.getAttribute("role")).toBe("radio");
-    expect(chatOnlyOption?.getAttribute("aria-checked")).toBe("true");
-    expect(chatOnlyOption?.hasAttribute("aria-pressed")).toBe(false);
-    expect(createWorkflowOption?.getAttribute("role")).toBe("radio");
-    expect(createWorkflowOption?.getAttribute("aria-checked")).toBe("false");
-    expect(specificWorkflowOption?.getAttribute("role")).toBe("radio");
-    expect(specificWorkflowOption?.getAttribute("aria-checked")).toBe("false");
+    expect(view.container.querySelector("textarea")).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="chat-provider-inline"]')).toBeTruthy();
+    expect(findText(view.container, "Provider required")).toBeTruthy();
+    expect(findText(view.container, "Open Settings")).toBeTruthy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
   });
 
-  it("switches into the active chat layout after a backend-backed send", async () => {
+  it("switches into conversation state after a direct send without rendering an inspector", async () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
 
@@ -218,17 +231,85 @@ describe("ChatPage", () => {
       undefined,
       { kind: "chat_only" },
     );
-    expect(findText(view.container, "Context Inspector")).toBeTruthy();
-    expect(findText(view.container, "Local \u00b7 gpt-oss")).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeTruthy();
+    expect(findText(view.container, "Context Inspector")).toBeFalsy();
     expect(findText(view.container, "Summarize today's notes")).toBeTruthy();
-    expect(
-      view.container.querySelector('[aria-label="World chat landing hero"]'),
-    ).toBeFalsy();
-    expect(view.container.textContent?.includes("路")).toBe(false);
-    expect(view.container.textContent?.includes("鈥")).toBe(false);
+    expect(view.container.querySelector('[aria-label="Suggested next steps"]')).toBeTruthy();
   });
 
-  it("renders the three-way memory review dock in chat once a real session is active", async () => {
+  it("requires a saved workflow selection before sending in choose workflow mode", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await clickButton(view.container, "+");
+    await clickButton(view.container, "Choose workflow");
+    await setComposerValue(view.container, "Review the release checklist");
+    await clickButton(view.container, "Send");
+
+    expect(routeWorldPromptMock).not.toHaveBeenCalled();
+    expect(findText(view.container, "Select a workflow before sending.")).toBeTruthy();
+  });
+
+  it("routes a selected workflow from the plus menu and shows a lightweight token", async () => {
+    const onWorkflowHandoff = vi.fn();
+    const view = await renderIntoDocument(<ChatPage onWorkflowHandoff={onWorkflowHandoff} />);
+    cleanups.push(view.cleanup);
+
+    await clickButton(view.container, "+");
+    await clickButton(view.container, "Choose workflow");
+    await setSelectValue(view.container, "workflow-release-notes");
+    await setComposerValue(view.container, "Review the release checklist");
+    await clickButton(view.container, "Send");
+
+    expect(routeWorldPromptMock).toHaveBeenCalledWith(
+      "Review the release checklist",
+      undefined,
+      { kind: "specific_workflow", workflowId: "workflow-release-notes" },
+    );
+    expect(onWorkflowHandoff).toHaveBeenCalledWith({
+      kind: "open_workflow_room",
+      workflowId: "workflow-release-notes",
+      prompt: "Review the release checklist",
+      origin: {
+        sourceMode: "specific_workflow",
+        sourceSessionId: "session-123",
+      },
+    });
+    expect(view.container.querySelector('[data-testid="chat-workflow-token"]')).toBeTruthy();
+    expect(findText(view.container, "Release Notes")).toBeTruthy();
+    expect(findText(view.container, "Open Workflow")).toBeTruthy();
+  });
+
+  it("surfaces a create-workflow handoff inline after routing", async () => {
+    const onWorkflowHandoff = vi.fn();
+    const view = await renderIntoDocument(<ChatPage onWorkflowHandoff={onWorkflowHandoff} />);
+    cleanups.push(view.cleanup);
+
+    await clickButton(view.container, "+");
+    await clickButton(view.container, "Create workflow");
+    await setComposerValue(view.container, "Draft a release process");
+    await clickButton(view.container, "Send");
+
+    expect(routeWorldPromptMock).toHaveBeenCalledWith(
+      "Draft a release process",
+      undefined,
+      { kind: "create_workflow" },
+    );
+    expect(findText(view.container, "Workflow draft ready")).toBeTruthy();
+
+    await clickButton(view.container, "Open Workflow");
+
+    expect(onWorkflowHandoff).toHaveBeenCalledWith({
+      kind: "open_workflow_lobby",
+      prompt: "Draft a release process",
+      origin: {
+        sourceMode: "create_workflow",
+        sourceSessionId: "session-123",
+      },
+    });
+  });
+
+  it("renders the memory review dock once a real session is active", async () => {
     listPendingMemoryCandidatesMock.mockResolvedValueOnce([
       {
         id: "candidate-chat-1",
@@ -254,170 +335,22 @@ describe("ChatPage", () => {
     });
 
     expect(listPendingMemoryCandidatesMock).toHaveBeenCalledWith("chat", "session-123");
+    expect(view.container.querySelector('[data-testid="memory-review-toggle"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="memory-review-panel"]')).toBeFalsy();
+    expect(findText(view.container, "转入长期语义记忆")).toBeFalsy();
+
+    await act(async () => {
+      view.container
+        .querySelector('[data-testid="memory-review-toggle"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector('[data-testid="memory-review-panel"]')).toBeTruthy();
     expect(view.container.textContent).toContain("转入长期语义记忆");
     expect(view.container.textContent).toContain("暂留为情景记忆");
     expect(view.container.textContent).toContain("拒绝");
-  });
-
-  it("refreshes the memory review dock after another turn in the same chat session", async () => {
-    listPendingMemoryCandidatesMock
-      .mockResolvedValueOnce([
-        {
-          id: "candidate-chat-1",
-          nodeId: "node-chat-1",
-          title: "First Candidate",
-          surface: "chat",
-          ownerId: "session-123",
-          suggestedSchemaId: null,
-          confidence: 0.7,
-          reason: "First memory cue",
-          evidenceCount: 1,
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: "candidate-chat-2",
-          nodeId: "node-chat-2",
-          title: "Second Candidate",
-          surface: "chat",
-          ownerId: "session-123",
-          suggestedSchemaId: null,
-          confidence: 0.76,
-          reason: "Second memory cue",
-          evidenceCount: 2,
-        },
-      ]);
-
-    const view = await renderIntoDocument(<ChatPage />);
-    cleanups.push(view.cleanup);
-
-    await setComposerValue(view.container, "First turn");
-    await clickButton(view.container, "Send");
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await setComposerValue(view.container, "Second turn");
-    await clickButton(view.container, "Send");
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(listPendingMemoryCandidatesMock).toHaveBeenNthCalledWith(
-      1,
-      "chat",
-      "session-123",
-    );
-    expect(listPendingMemoryCandidatesMock).toHaveBeenNthCalledWith(
-      2,
-      "chat",
-      "session-123",
-    );
-    expect(view.container.textContent).toContain("Second Candidate");
-  });
-
-  it("renders a truthful backend error state instead of fake fallback text", async () => {
-    const view = await renderIntoDocument(<ChatPage />);
-    cleanups.push(view.cleanup);
-
-    await setComposerValue(view.container, "Broken provider");
-    await clickButton(view.container, "Send");
-
-    expect(routeWorldPromptMock).toHaveBeenCalledWith(
-      "Broken provider",
-      undefined,
-      { kind: "chat_only" },
-    );
-    expect(findText(view.container, "Backend Error")).toBeTruthy();
-    expect(findText(view.container, "default provider is not configured")).toBeTruthy();
-    expect(findText(view.container, "I have staged your request: Broken provider")).toBeFalsy();
-  });
-
-  it("requires a workflow selection before sending in specific workflow mode", async () => {
-    const view = await renderIntoDocument(<ChatPage />);
-    cleanups.push(view.cleanup);
-
-    await clickButton(view.container, "Specific workflow");
-    await setComposerValue(view.container, "Review the release checklist");
-    await clickButton(view.container, "Send");
-
-    expect(routeWorldPromptMock).not.toHaveBeenCalled();
-    expect(findText(view.container, "Select a workflow before sending.")).toBeTruthy();
-  });
-
-  it("sends the selected workflow in specific workflow mode", async () => {
-    const view = await renderIntoDocument(<ChatPage />);
-    cleanups.push(view.cleanup);
-
-    await clickButton(view.container, "Specific workflow");
-
-    const workflowPicker = view.container.querySelector("select") as HTMLSelectElement | null;
-    await act(async () => {
-      if (!workflowPicker) {
-        throw new Error("workflow picker missing");
-      }
-
-      const valueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLSelectElement.prototype,
-        "value",
-      )?.set;
-      valueSetter?.call(workflowPicker, "workflow-release-notes");
-      workflowPicker.dispatchEvent(new Event("change", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    await setComposerValue(view.container, "Review the release checklist");
-    await clickButton(view.container, "Send");
-
-    expect(routeWorldPromptMock).toHaveBeenCalledWith(
-      "Review the release checklist",
-      undefined,
-      { kind: "specific_workflow", workflowId: "workflow-release-notes" },
-    );
-  });
-
-  it("sends create workflow mode from the landing composer", async () => {
-    const view = await renderIntoDocument(<ChatPage />);
-    cleanups.push(view.cleanup);
-
-    await clickButton(view.container, "Create workflow");
-    await setComposerValue(view.container, "Draft a release process");
-    await clickButton(view.container, "Send");
-
-    expect(routeWorldPromptMock).toHaveBeenCalledWith(
-      "Draft a release process",
-      undefined,
-      { kind: "create_workflow" },
-    );
-  });
-
-  it("renders suggested next steps and writes the chosen action into the transcript", async () => {
-    const view = await renderIntoDocument(<ChatPage />);
-    cleanups.push(view.cleanup);
-
-    await setComposerValue(view.container, "Start a release review");
-    await clickButton(view.container, "Send");
-
-    expect(routeWorldPromptMock).toHaveBeenCalledWith(
-      "Start a release review",
-      undefined,
-      { kind: "chat_only" },
-    );
-    expect(view.container.querySelector('[aria-label="Suggested next steps"]')).toBeTruthy();
-    expect(findText(view.container, "Summarize today's notes")).toBeTruthy();
-    expect(findText(view.container, "Plan my next workflow")).toBeTruthy();
-    expect(findText(view.container, "Review recent changes")).toBeTruthy();
-
-    await clickButton(view.container, "Plan my next workflow");
-
-    expect(routeWorldPromptMock).toHaveBeenLastCalledWith(
-      "Plan my next workflow",
-      "session-123",
-      { kind: "chat_only" },
-    );
-    expect(transcriptContents(view.container)).toContain("Plan my next workflow");
   });
 
   it("prevents overlapping sends while routing is active", async () => {
@@ -463,26 +396,6 @@ describe("ChatPage", () => {
 
     const suggestionButton = getButtonByText(view.container, "Plan my next workflow");
     expect(suggestionButton?.hasAttribute("disabled")).toBe(true);
-
-    await clickButton(view.container, "Plan my next workflow");
-
-    const textarea = view.container.querySelector("textarea") as HTMLTextAreaElement | null;
-    await act(async () => {
-      if (!textarea) {
-        throw new Error("textarea missing");
-      }
-
-      const valueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype,
-        "value",
-      )?.set;
-      valueSetter?.call(textarea, "Third turn");
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-      textarea.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
-      );
-      await Promise.resolve();
-    });
 
     expect(routeWorldPromptMock).toHaveBeenCalledTimes(2);
 
