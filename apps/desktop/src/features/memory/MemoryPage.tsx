@@ -4,8 +4,10 @@ import {
   createMemoryEdge,
   deleteMemoryEdge,
   deleteMemoryNode,
+  listMemoryScopes,
   loadMemoryGraph,
   type MemoryGraph,
+  type MemoryScope,
   updateMemoryNode,
 } from "@/lib/memory";
 import { MemoryGraphCanvas, buildLayout, canvasSize, nodeSize } from "./MemoryGraphCanvas";
@@ -17,6 +19,9 @@ const defaultZoom = 1;
 
 export function MemoryPage() {
   const [graph, setGraph] = useState<MemoryGraph>({ nodes: [], edges: [] });
+  const [scopes, setScopes] = useState<MemoryScope[]>([]);
+  const [scopesLoaded, setScopesLoaded] = useState(false);
+  const [selectedScopeId, setSelectedScopeId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -26,7 +31,6 @@ export function MemoryPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filterKind, setFilterKind] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"focused" | "full">("focused");
   const [workbenchView, setWorkbenchView] = useState<
     "activation" | "consolidation" | "schema"
   >("activation");
@@ -41,7 +45,43 @@ export function MemoryPage() {
   useEffect(() => {
     let alive = true;
 
-    void loadMemoryGraph()
+    void listMemoryScopes()
+      .then((items) => {
+        if (!alive) {
+          return;
+        }
+
+        startTransition(() => {
+          setScopes(items);
+          setScopesLoaded(true);
+        });
+      })
+      .catch((reason) => {
+        if (!alive) {
+          return;
+        }
+
+        setScopesLoaded(true);
+        setLoadError(reason instanceof Error ? reason.message : "Failed to load memory scopes.");
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedScopeId) {
+      setGraph({ nodes: [], edges: [] });
+      setSelectedNodeId(null);
+      return;
+    }
+
+    let alive = true;
+
+    setLoadError(null);
+
+    void loadMemoryGraph(selectedScopeId)
       .then((nextGraph) => {
         if (!alive) {
           return;
@@ -50,12 +90,21 @@ export function MemoryPage() {
         const nextSelectedNodeId = nextGraph.nodes[0]?.id ?? null;
         const nextLayout = buildLayout(nextGraph.nodes);
         const nextPoint = nextSelectedNodeId ? nextLayout.get(nextSelectedNodeId) : null;
+        const nextViewport =
+          nextGraph.nodes.length <= 2
+            ? fitGraph(nextGraph.nodes)
+            : nextPoint
+              ? { pan: centerPan(nextPoint, defaultZoom), zoom: defaultZoom }
+              : null;
 
         startTransition(() => {
           setGraph(nextGraph);
-          setSelectedNodeId((current) => current ?? nextSelectedNodeId);
-          if (nextPoint) {
-            setPan(centerPan(nextPoint, defaultZoom));
+          setSelectedNodeId(nextSelectedNodeId);
+          if (nextViewport) {
+            setPan(nextViewport.pan);
+            setZoom(nextViewport.zoom);
+          } else {
+            setPan(defaultView);
             setZoom(defaultZoom);
           }
         });
@@ -71,11 +120,52 @@ export function MemoryPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [selectedScopeId]);
+
+  const scopeOptions = useMemo(
+    () =>
+      scopes
+        .filter((scope) => scope.kind === "world" || scope.kind === "workflow")
+        .sort((left, right) => {
+          if (left.kind === right.kind) {
+            return left.title.localeCompare(right.title);
+          }
+
+          if (left.kind === "workflow") {
+            return -1;
+          }
+
+          if (right.kind === "workflow") {
+            return 1;
+          }
+
+          return left.title.localeCompare(right.title);
+        })
+        .map((scope) => ({
+          id: scope.id,
+          label: scope.title,
+        })),
+    [scopes],
+  );
+
+  useEffect(() => {
+    const preferredScopeId = scopeOptions[0]?.id ?? null;
+
+    if (!preferredScopeId) {
+      if (selectedScopeId !== null) {
+        setSelectedScopeId(null);
+      }
+      return;
+    }
+
+    if (!selectedScopeId || !scopeOptions.some((scope) => scope.id === selectedScopeId)) {
+      setSelectedScopeId(preferredScopeId);
+    }
+  }, [scopeOptions, selectedScopeId]);
 
   const visibleState = useMemo(
-    () => buildVisibleGraph(graph, selectedNodeId, searchQuery, filterKind, viewMode),
-    [filterKind, graph, searchQuery, selectedNodeId, viewMode],
+    () => buildVisibleGraph(graph, selectedNodeId, searchQuery, filterKind),
+    [filterKind, graph, searchQuery, selectedNodeId],
   );
   const layout = useMemo(() => buildLayout(visibleState.graph.nodes), [visibleState.graph.nodes]);
   const selectedNode =
@@ -90,6 +180,10 @@ export function MemoryPage() {
     const point = layout.get(selectedNode.id);
     return point ? `${point.x}:${point.y}` : "";
   }, [layout, selectedNode]);
+  const visibleNodeIdsKey = useMemo(
+    () => visibleState.graph.nodes.map((node) => node.id).join("|"),
+    [visibleState.graph.nodes],
+  );
 
   useEffect(() => {
     setSelectedNodeId((current) => {
@@ -141,6 +235,16 @@ export function MemoryPage() {
       setPan(centerPan(point, zoom));
     }
   }, [selectedNode?.id, selectedNodePositionKey]);
+
+  useEffect(() => {
+    if (visibleState.graph.nodes.length === 0 || visibleState.graph.nodes.length > 2) {
+      return;
+    }
+
+    const { pan: fitPan, zoom: fitZoom } = fitGraph(visibleState.graph.nodes);
+    setPan(fitPan);
+    setZoom(fitZoom);
+  }, [filterKind, searchQuery, visibleNodeIdsKey, visibleState.graph.nodes]);
 
   useEffect(() => {
     setTitleDraft(selectedNode?.title ?? "");
@@ -302,6 +406,12 @@ export function MemoryPage() {
               <h1>Memory graph unavailable</h1>
               <p>{loadError}</p>
             </section>
+          ) : scopesLoaded && scopeOptions.length === 0 ? (
+            <section className="memory-empty-state">
+              <span className="memory-page__eyebrow">Memory</span>
+              <h1>No memory scopes yet</h1>
+              <p>The graph will appear here once world chat or a workflow writes local memory.</p>
+            </section>
           ) : graph.nodes.length === 0 ? (
             <section className="memory-empty-state">
               <span className="memory-page__eyebrow">Memory</span>
@@ -311,31 +421,26 @@ export function MemoryPage() {
           ) : (
             <>
               <section className="memory-stage">
-                <div className="memory-stage__header">
-                  <span className="memory-page__eyebrow">Memory</span>
-                  <h1>Graph</h1>
-                  <p>Search, filter, and inspect the graph without keeping a permanent side inspector open.</p>
-                </div>
-
                 <div className="memory-stage__controls">
                   <MemoryGraphControls
                     filterKind={filterKind}
                     onFilterKindChange={setFilterKind}
-                    onFitView={handleFitView}
-                    onFocusSelected={handleFocusSelected}
                     onSearchQueryChange={setSearchQuery}
-                    onViewModeChange={setViewMode}
-                    onWorkbenchViewChange={setWorkbenchView}
-                    onZoomIn={() => setZoom((current) => Math.min(1.8, current + 0.12))}
-                    onZoomOut={() => setZoom((current) => Math.max(0.55, current - 0.12))}
+                    onScopeIdChange={(nextScopeId) => {
+                      setSelectedScopeId(nextScopeId);
+                      setDetailOpen(false);
+                      setDeleteReview(null);
+                      setError(null);
+                      setFilterKind("all");
+                      setSearchQuery("");
+                    }}
                     searchQuery={searchQuery}
-                    selectedNodeTitle={selectedNode?.title ?? null}
-                    viewMode={viewMode}
-                    workbenchView={workbenchView}
+                    scopeOptions={scopeOptions}
+                    selectedScopeId={selectedScopeId ?? ""}
                   />
                 </div>
 
-                <div className="memory-stage__canvas">
+                <div className="memory-stage__canvas memory-stage__canvas--fill">
                   {visibleState.graph.nodes.length === 0 ? (
                     <Card
                       description="Adjust the current search or filter to bring matching memory nodes back into view."
@@ -343,16 +448,22 @@ export function MemoryPage() {
                       tone="soft"
                     />
                   ) : (
-                    <div className="memory-stage__canvas-frame">
+                    <div className="memory-stage__canvas-frame memory-stage__canvas-frame--fill">
                       <MemoryGraphCanvas
                         depthByNodeId={visibleState.depthByNodeId}
                         focusTargetId={selectedNode?.id ?? null}
                         graph={visibleState.graph}
+                        onFitView={handleFitView}
                         onPanChange={setPan}
+                        onFocusSelected={handleFocusSelected}
                         onSelectNode={handleSelectNode}
+                        onWorkbenchViewChange={setWorkbenchView}
                         onZoomChange={setZoom}
+                        onZoomIn={() => setZoom((current) => Math.min(1.8, current + 0.12))}
+                        onZoomOut={() => setZoom((current) => Math.max(0.55, current - 0.12))}
                         pan={pan}
                         selectedNodeId={selectedNode?.id ?? null}
+                        selectedNodeTitle={selectedNode?.title ?? null}
                         workbenchView={workbenchView}
                         zoom={zoom}
                       />
@@ -437,7 +548,6 @@ function buildVisibleGraph(
   selectedNodeId: string | null,
   searchQuery: string,
   filterKind: string,
-  viewMode: "focused" | "full",
 ) {
   const selectedId = selectedNodeId;
   const depthByNodeId = buildDepthMap(graph, selectedId);
@@ -450,10 +560,8 @@ function buildVisibleGraph(
           normalizedQuery.length === 0 ||
           node.title.toLowerCase().includes(normalizedQuery) ||
           (node.body ?? "").toLowerCase().includes(normalizedQuery);
-        const insideFocusedView =
-          viewMode === "full" || (depthByNodeId[node.id] ?? 3) <= 2;
 
-        return matchesKind && matchesQuery && insideFocusedView;
+        return matchesKind && matchesQuery;
       })
       .map((node) => node.id),
   );
@@ -539,11 +647,12 @@ function fitGraph(nodes: MemoryGraph["nodes"]) {
   const maxY = Math.max(...points.map((point) => point.y + nodeSize.height));
   const width = Math.max(maxX - minX, nodeSize.width);
   const height = Math.max(maxY - minY, nodeSize.height);
+  const maxFitZoom = points.length === 1 ? 1.8 : points.length === 2 ? 1.45 : 1.15;
   const nextZoom = clamp(
     Math.min(
       (canvasSize.width - 160) / width,
       (canvasSize.height - 160) / height,
-      1.15,
+      maxFitZoom,
     ),
     0.55,
     1.8,

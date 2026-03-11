@@ -89,6 +89,30 @@ function resolveDraftMode(
   }
 }
 
+function resolveActiveMode(sessionMode: ChatMode | null, draftMode: ChatMode | null): ChatMode {
+  if (!sessionMode) {
+    return draftMode ?? { kind: "chat_only" };
+  }
+
+  if (
+    sessionMode.kind === "chat_only" &&
+    draftMode &&
+    draftMode.kind !== "chat_only"
+  ) {
+    return draftMode;
+  }
+
+  return sessionMode;
+}
+
+function mergeSessionMode(current: ChatMode | null, nextMode: ChatMode): ChatMode {
+  if (!current || current.kind === "chat_only") {
+    return nextMode;
+  }
+
+  return current;
+}
+
 function suggestionsForMode(mode: ChatMode) {
   switch (mode.kind) {
     case "create_workflow":
@@ -122,7 +146,7 @@ function composerPlaceholder(landing: boolean, entryMode: ComposerEntryMode) {
     case "create_workflow":
       return "Describe the workflow you want to generate...";
     case "choose_workflow":
-      return "Add instructions for the selected workflow...";
+      return "";
     case "direct":
     default:
       return "Message World to start a session...";
@@ -155,6 +179,30 @@ function ComposerSendIcon() {
   );
 }
 
+function ComposerChevronIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="composer__icon composer__icon--chevron"
+      viewBox="0 0 16 16"
+    >
+      <path d="M4.5 6.5 8 10l3.5-3.5" />
+    </svg>
+  );
+}
+
+function ComposerCloseIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="composer__icon composer__icon--close"
+      viewBox="0 0 16 16"
+    >
+      <path d="M4 4l8 8M12 4 4 12" />
+    </svg>
+  );
+}
+
 type ChatPageProps = {
   onWorkflowHandoff?: (handoff: WorkflowLaunchIntent) => void;
 };
@@ -167,6 +215,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
   const [sessionMode, setSessionMode] = useState<ChatMode | null>(null);
   const [entryMode, setEntryMode] = useState<ComposerEntryMode>("direct");
   const [entryMenuOpen, setEntryMenuOpen] = useState(false);
+  const [workflowPickerOpen, setWorkflowPickerOpen] = useState(false);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState("");
   const [workflowToken, setWorkflowToken] = useState<WorkflowToken | null>(null);
   const [workflowHandoff, setWorkflowHandoff] = useState<WorkflowLaunchIntent | null>(null);
@@ -180,10 +229,10 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
 
   const landing = messages.length === 0;
   const draftMode = resolveDraftMode(entryMode, selectedWorkflowId);
-  const composerMode = sessionMode ?? draftMode ?? { kind: "chat_only" };
-  const showComposerSummary =
-    !landing &&
-    entryMode !== "direct" &&
+  const composerMode = resolveActiveMode(sessionMode, draftMode);
+  const showWorkflowChooser = entryMode === "choose_workflow" && !workflowToken;
+  const showCreateWorkflowPill =
+    entryMode === "create_workflow" &&
     !workflowToken &&
     workflowHandoff?.kind !== "open_workflow_lobby";
 
@@ -192,8 +241,12 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
       setEntryMode(nextMode);
     }
 
-    if (nextMode !== "choose_workflow") {
+    if (nextMode === "choose_workflow") {
       setSelectedWorkflowId("");
+      setWorkflowPickerOpen(true);
+    } else {
+      setSelectedWorkflowId("");
+      setWorkflowPickerOpen(false);
     }
 
     setEntryMenuOpen(false);
@@ -210,22 +263,25 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
       return;
     }
 
-    const mode = sessionMode ?? resolveDraftMode(entryMode, selectedWorkflowId);
-    if (!mode) {
+    const nextDraftMode = resolveDraftMode(entryMode, selectedWorkflowId);
+    if (!nextDraftMode) {
       setError("Select a workflow before sending.");
       return;
     }
 
+    const mode = resolveActiveMode(sessionMode, nextDraftMode);
+
     setPrompt("");
     setError(null);
     setEntryMenuOpen(false);
+    setWorkflowPickerOpen(false);
     setIsRouting(true);
 
     try {
       const response = await routeWorldPrompt(value, session?.session.id, mode);
       setMessages((current) => [...current, ...response.messages]);
       setSession(response);
-      setSessionMode((current) => current ?? mode);
+      setSessionMode((current) => mergeSessionMode(current, mode));
 
       if (
         mode.kind === "specific_workflow" &&
@@ -304,6 +360,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                 setWorkflowToken(null);
                 setWorkflowHandoff(null);
                 setSelectedWorkflowId("");
+                setWorkflowPickerOpen(false);
                 setEntryMode("direct");
                 setSessionMode({ kind: "chat_only" });
               }}
@@ -338,27 +395,6 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
         />
       ) : null}
 
-      {entryMode === "choose_workflow" && !workflowToken ? (
-        <label className="composer__workflow-picker">
-          <span>Saved workflow</span>
-          <select
-            aria-label="Saved workflow"
-            onChange={(event) => {
-              setSelectedWorkflowId(event.target.value);
-              setError(null);
-            }}
-            value={selectedWorkflowId}
-          >
-            <option value="">Select a workflow</option>
-            {SAVED_WORKFLOW_OPTIONS.map((workflow) => (
-              <option key={workflow.id} value={workflow.id}>
-                {workflow.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-
       {providerGate.blocked ? (
         <div className="composer__inline-feedback" data-testid="chat-provider-inline">
           <span>{providerGate.message}</span>
@@ -376,7 +412,11 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
         <div className="composer__inline-feedback composer__inline-feedback--error">{error}</div>
       ) : null}
 
-      <div className="composer__bar">
+      <div
+        className={`composer__bar ${
+          showWorkflowChooser || showCreateWorkflowPill ? "composer__bar--pill" : ""
+        }`}
+      >
         <div className="composer__menu">
           <button
             aria-expanded={entryMenuOpen}
@@ -420,12 +460,79 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
           ) : null}
         </div>
 
+        {showWorkflowChooser ? (
+          <div className="composer__workflow-pill" data-testid="chat-workflow-chooser">
+            <button
+              aria-expanded={workflowPickerOpen}
+              aria-haspopup="listbox"
+              className="composer__workflow-trigger"
+              onClick={() => setWorkflowPickerOpen((current) => !current)}
+              type="button"
+            >
+              <span className="composer__workflow-trigger-label">
+                {selectedWorkflowId ? workflowLabel(selectedWorkflowId) : "Select workflow"}
+              </span>
+              <ComposerChevronIcon />
+            </button>
+            <button
+              aria-label="Clear workflow chooser"
+              className="composer__workflow-clear"
+              onClick={() => {
+                setSelectedWorkflowId("");
+                setWorkflowPickerOpen(false);
+                setEntryMode("direct");
+                setError(null);
+              }}
+              type="button"
+            >
+              <ComposerCloseIcon />
+            </button>
+
+            {workflowPickerOpen ? (
+              <div
+                className="composer__workflow-options"
+                data-testid="chat-workflow-options"
+                role="listbox"
+              >
+                {SAVED_WORKFLOW_OPTIONS.map((workflow) => (
+                  <button
+                    className="composer__workflow-option"
+                    data-workflow-id={workflow.id}
+                    key={workflow.id}
+                    onClick={() => {
+                      setSelectedWorkflowId(workflow.id);
+                      setWorkflowPickerOpen(false);
+                      setError(null);
+                    }}
+                    type="button"
+                  >
+                    {workflow.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {showCreateWorkflowPill ? (
+          <div className="composer__workflow-pill composer__workflow-pill--static" data-testid="chat-create-pill">
+            <span className="composer__workflow-trigger-label">Create workflow</span>
+            <button
+              aria-label="Clear create workflow"
+              className="composer__workflow-clear"
+              onClick={() => {
+                setWorkflowPickerOpen(false);
+                setEntryMode("direct");
+                setError(null);
+              }}
+              type="button"
+            >
+              <ComposerCloseIcon />
+            </button>
+          </div>
+        ) : null}
+
         <div className="composer__field">
-          {showComposerSummary ? (
-            <span className="composer__context-summary">
-              {entrySummary(entryMode, selectedWorkflowId)}
-            </span>
-          ) : null}
           <textarea
             className="composer__input"
             disabled={!providerGate.ready}
@@ -495,9 +602,6 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                       {formatRoute(session?.route)}
                     </span>
                   </div>
-                  <div className="chat-surface__actions">
-                    <MemoryReviewDock {...memoryReviewDock} />
-                  </div>
                 </header>
 
                 <div className="chat-feed" role="log">
@@ -505,6 +609,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                     {messages.map((message) => (
                       <ConversationEventBlock key={message.id} message={message} />
                     ))}
+                    <MemoryReviewDock {...memoryReviewDock} />
                   </div>
                 </div>
               </section>

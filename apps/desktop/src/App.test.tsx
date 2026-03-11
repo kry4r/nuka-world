@@ -296,8 +296,24 @@ const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>)
   }
 });
 
+const { appWindowControls } = vi.hoisted(() => ({
+  appWindowControls: {
+    close: vi.fn(async () => undefined),
+    minimize: vi.fn(async () => undefined),
+    toggleMaximize: vi.fn(async () => undefined),
+  },
+}));
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (command: string, args?: Record<string, unknown>) => invokeMock(command, args),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    close: appWindowControls.close,
+    minimize: appWindowControls.minimize,
+    toggleMaximize: appWindowControls.toggleMaximize,
+  }),
 }));
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -336,28 +352,26 @@ async function setComposerValue(container: HTMLElement, value: string) {
   });
 }
 
-async function setSelectValue(container: HTMLElement, value: string) {
-  const select = container.querySelector(
-    'select[aria-label="Saved workflow"]',
-  ) as HTMLSelectElement | null;
+async function clickWorkflowOption(container: HTMLElement, workflowId: string) {
+  const option = container.querySelector(
+    `[data-workflow-id="${workflowId}"]`,
+  ) as HTMLButtonElement | null;
 
   await act(async () => {
-    if (!select) {
-      throw new Error("select missing");
+    if (!option) {
+      throw new Error("workflow option missing");
     }
 
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLSelectElement.prototype,
-      "value",
-    )?.set;
-    setter?.call(select, value);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    option.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await Promise.resolve();
   });
 }
 
 afterEach(async () => {
   invokeMock.mockClear();
+  appWindowControls.close.mockClear();
+  appWindowControls.minimize.mockClear();
+  appWindowControls.toggleMaximize.mockClear();
   runtimeStatusState.provider.kind = "ready";
   runtimeStatusState.provider.message = "Provider ready";
 
@@ -370,6 +384,57 @@ afterEach(async () => {
 });
 
 describe("App shell", () => {
+  it("renders a custom title bar and wires window controls", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    const titlebar = view.container.querySelector('[data-testid="app-titlebar"]');
+    const minimizeButton = view.container.querySelector(
+      'button[aria-label="Minimize window"]',
+    ) as HTMLButtonElement | null;
+    const maximizeButton = view.container.querySelector(
+      'button[aria-label="Maximize window"]',
+    ) as HTMLButtonElement | null;
+    const closeButton = view.container.querySelector(
+      'button[aria-label="Close window"]',
+    ) as HTMLButtonElement | null;
+
+    expect(titlebar).toBeTruthy();
+    expect(minimizeButton).toBeTruthy();
+    expect(maximizeButton).toBeTruthy();
+    expect(closeButton).toBeTruthy();
+
+    await act(async () => {
+      minimizeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      maximizeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      closeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(appWindowControls.minimize).toHaveBeenCalledTimes(1);
+    expect(appWindowControls.toggleMaximize).toHaveBeenCalledTimes(1);
+    expect(appWindowControls.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the custom window controls outside the drag region", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    const minimizeButton = view.container.querySelector(
+      'button[aria-label="Minimize window"]',
+    ) as HTMLButtonElement | null;
+    const maximizeButton = view.container.querySelector(
+      'button[aria-label="Maximize window"]',
+    ) as HTMLButtonElement | null;
+    const closeButton = view.container.querySelector(
+      'button[aria-label="Close window"]',
+    ) as HTMLButtonElement | null;
+
+    expect(minimizeButton?.closest('[data-tauri-drag-region]')).toBeFalsy();
+    expect(maximizeButton?.closest('[data-tauri-drag-region]')).toBeFalsy();
+    expect(closeButton?.closest('[data-tauri-drag-region]')).toBeFalsy();
+  });
+
   it("shows provider-required state for AI pages before a default provider exists", async () => {
     runtimeStatusState.provider.kind = "missing";
     runtimeStatusState.provider.message = "Provider required";
@@ -479,7 +544,7 @@ describe("App shell", () => {
 
     await clickButton(view.container, "+");
     await clickButton(view.container, "Choose workflow");
-    await setSelectValue(view.container, "workflow-release-notes");
+    await clickWorkflowOption(view.container, "workflow-release-notes");
     await setComposerValue(view.container, "Review the release checklist");
     await clickButton(view.container, "Send");
     await act(async () => {

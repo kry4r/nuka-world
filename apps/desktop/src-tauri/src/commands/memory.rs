@@ -117,9 +117,10 @@ pub async fn get_memory_node_detail(
 
 #[tauri::command]
 pub async fn load_memory_graph(
+    scope_id: Option<String>,
     state: tauri::State<'_, crate::app_state::AppState>,
 ) -> Result<MemoryGraphResponse, String> {
-    load_memory_graph_inner(&state)
+    load_memory_graph_inner(scope_id, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -244,9 +245,14 @@ async fn get_memory_node_detail_inner(
 }
 
 async fn load_memory_graph_inner(
+    scope_id: Option<String>,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<MemoryGraphResponse> {
-    Ok(state.memory_service().load_graph().await?.into())
+    Ok(state
+        .memory_service()
+        .load_graph_for_scope(scope_id.as_deref())
+        .await?
+        .into())
 }
 
 async fn update_memory_node_inner(
@@ -379,7 +385,9 @@ impl From<ReviewDecisionInput> for nuka_domain::memory::ReviewDecision {
 }
 
 fn memory_scope_kind(scope: &nuka_domain::memory::MemoryScope) -> &'static str {
-    if scope.session_id.is_some() {
+    if scope.id == "world" {
+        "world"
+    } else if scope.session_id.is_some() {
         "session"
     } else if scope.agent_id.is_some() {
         "agent"
@@ -430,7 +438,7 @@ mod tests {
             .await
             .unwrap();
 
-        let graph = super::load_memory_graph_inner(&state)
+        let graph = super::load_memory_graph_inner(None, &state)
             .await
             .unwrap();
 
@@ -455,7 +463,7 @@ mod tests {
             .await
             .unwrap();
 
-        let graph = super::load_memory_graph_inner(&state).await.unwrap();
+        let graph = super::load_memory_graph_inner(None, &state).await.unwrap();
         let json = serde_json::to_value(&graph).unwrap();
         let node = json["nodes"]
             .as_array()
@@ -466,6 +474,78 @@ mod tests {
 
         assert_eq!(node["traceType"], "working");
         assert_eq!(node["consolidationState"], "candidate");
+    }
+
+    #[tokio::test]
+    async fn memory_load_graph_filters_nodes_by_scope() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        state
+            .memory_service()
+            .save_scope(nuka_domain::memory::MemoryScope {
+                id: "world".to_string(),
+                name: "World".to_string(),
+                workflow_id: None,
+                session_id: None,
+                agent_id: None,
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .save_scope(nuka_domain::memory::MemoryScope {
+                id: "workflow:workflow-review".to_string(),
+                name: "Release Workflow".to_string(),
+                workflow_id: Some("workflow-review".to_string()),
+                session_id: None,
+                agent_id: None,
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "memory-world".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: "World Memory".to_string(),
+                body: Some("Tracks a project-wide reminder.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .bind_node_to_scope("memory-world", "world")
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "memory-workflow".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: "Workflow Memory".to_string(),
+                body: Some("Tracks the release workflow note.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .bind_node_to_scope("memory-workflow", "workflow:workflow-review")
+            .await
+            .unwrap();
+
+        let graph = super::load_memory_graph_inner(
+            Some("workflow:workflow-review".to_string()),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(graph.nodes.len(), 1);
+        assert_eq!(graph.nodes[0].id, "memory-workflow");
+        assert!(graph.edges.is_empty());
     }
 
     #[tokio::test]
@@ -738,7 +818,7 @@ mod tests {
         .await
         .unwrap();
 
-        let graph = super::load_memory_graph_inner(&state).await.unwrap();
+        let graph = super::load_memory_graph_inner(None, &state).await.unwrap();
 
         assert_eq!(first.id, "edge-review-a");
         assert_eq!(second.id, "edge-review-a");

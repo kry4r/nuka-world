@@ -129,22 +129,17 @@ async function setComposerValue(container: HTMLElement, value: string) {
   });
 }
 
-async function setSelectValue(container: HTMLElement, value: string) {
-  const select = container.querySelector('select[aria-label="Saved workflow"]') as
-    | HTMLSelectElement
+async function clickWorkflowOption(container: HTMLElement, workflowId: string) {
+  const option = container.querySelector(`[data-workflow-id="${workflowId}"]`) as
+    | HTMLButtonElement
     | null;
 
   await act(async () => {
-    if (!select) {
-      throw new Error("saved workflow select missing");
+    if (!option) {
+      throw new Error("workflow option missing");
     }
 
-    const valueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLSelectElement.prototype,
-      "value",
-    )?.set;
-    valueSetter?.call(select, value);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    option.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await Promise.resolve();
   });
 }
@@ -205,6 +200,47 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Create workflow")).toBeTruthy();
   });
 
+  it("shows a compact workflow pill beside the plus button with a clear action and picker menu", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    expect(view.container.querySelector('[data-testid="chat-workflow-chooser"]')).toBeFalsy();
+    expect(findText(view.container, "Saved workflow")).toBeFalsy();
+
+    await clickButton(view.container, "+");
+    await clickButton(view.container, "Choose workflow");
+
+    const chooser = view.container.querySelector('[data-testid="chat-workflow-chooser"]');
+    const composerMenu = view.container.querySelector(".composer__menu");
+    const composerInput = view.container.querySelector("textarea");
+
+    expect(chooser).toBeTruthy();
+    expect(composerMenu?.nextElementSibling).toBe(chooser);
+    expect(view.container.querySelector('[aria-label="Composer entry modes"]')).toBeFalsy();
+    expect(view.container.querySelector('[data-testid="chat-workflow-options"]')).toBeTruthy();
+    expect(view.container.querySelector('button[aria-label="Clear workflow chooser"]')).toBeTruthy();
+    expect(composerInput?.getAttribute("placeholder")).toBe("");
+    expect(findText(view.container, "Saved workflow")).toBeFalsy();
+  });
+
+  it("shows a compact create-workflow pill beside the plus button without opening workflow options", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await clickButton(view.container, "+");
+    await clickButton(view.container, "Create workflow");
+
+    const createPill = view.container.querySelector('[data-testid="chat-create-pill"]');
+    const composerMenu = view.container.querySelector(".composer__menu");
+    const composerInput = view.container.querySelector("textarea");
+
+    expect(createPill).toBeTruthy();
+    expect(composerMenu?.nextElementSibling).toBe(createPill);
+    expect(view.container.querySelector('[data-testid="chat-workflow-options"]')).toBeFalsy();
+    expect(view.container.querySelector('button[aria-label="Clear create workflow"]')).toBeTruthy();
+    expect(composerInput?.getAttribute("placeholder")).toContain("Describe the workflow");
+  });
+
   it("keeps provider feedback inline near the composer", async () => {
     providerGateState.ready = false;
     providerGateState.blocked = true;
@@ -258,7 +294,7 @@ describe("ChatPage", () => {
 
     await clickButton(view.container, "+");
     await clickButton(view.container, "Choose workflow");
-    await setSelectValue(view.container, "workflow-release-notes");
+    await clickWorkflowOption(view.container, "workflow-release-notes");
     await setComposerValue(view.container, "Review the release checklist");
     await clickButton(view.container, "Send");
 
@@ -279,6 +315,37 @@ describe("ChatPage", () => {
     expect(view.container.querySelector('[data-testid="chat-workflow-token"]')).toBeTruthy();
     expect(findText(view.container, "Release Notes")).toBeTruthy();
     expect(findText(view.container, "Open Workflow")).toBeTruthy();
+  });
+
+  it("can switch an active direct chat session into a selected workflow route", async () => {
+    const onWorkflowHandoff = vi.fn();
+    const view = await renderIntoDocument(<ChatPage onWorkflowHandoff={onWorkflowHandoff} />);
+    cleanups.push(view.cleanup);
+
+    await setComposerValue(view.container, "Start with a direct chat");
+    await clickButton(view.container, "Send");
+
+    await clickButton(view.container, "+");
+    await clickButton(view.container, "Choose workflow");
+    await clickWorkflowOption(view.container, "workflow-release-notes");
+    await setComposerValue(view.container, "Continue in the release workflow");
+    await clickButton(view.container, "Send");
+
+    expect(routeWorldPromptMock).toHaveBeenLastCalledWith(
+      "Continue in the release workflow",
+      "session-123",
+      { kind: "specific_workflow", workflowId: "workflow-release-notes" },
+    );
+    expect(onWorkflowHandoff).toHaveBeenLastCalledWith({
+      kind: "open_workflow_room",
+      workflowId: "workflow-release-notes",
+      prompt: "Continue in the release workflow",
+      origin: {
+        sourceMode: "specific_workflow",
+        sourceSessionId: "session-123",
+      },
+    });
+    expect(view.container.querySelector('[data-testid="chat-workflow-token"]')).toBeTruthy();
   });
 
   it("surfaces a create-workflow handoff inline after routing", async () => {
@@ -310,7 +377,7 @@ describe("ChatPage", () => {
     });
   });
 
-  it("renders the memory review dock once a real session is active", async () => {
+  it("renders the memory review as an inline chat card once a real session is active", async () => {
     listPendingMemoryCandidatesMock.mockResolvedValueOnce([
       {
         id: "candidate-chat-1",
@@ -336,19 +403,14 @@ describe("ChatPage", () => {
     });
 
     expect(listPendingMemoryCandidatesMock).toHaveBeenCalledWith("chat", "session-123");
-    expect(view.container.querySelector('[data-testid="memory-review-toggle"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="memory-review-toggle"]')).toBeFalsy();
     expect(view.container.querySelector('[data-testid="memory-review-panel"]')).toBeFalsy();
-    expect(findText(view.container, "转入长期语义记忆")).toBeFalsy();
-
-    await act(async () => {
-      view.container
-        .querySelector('[data-testid="memory-review-toggle"]')
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(view.container.querySelector('[data-testid="memory-review-panel"]')).toBeTruthy();
+    expect(view.container.querySelector('[data-testid="memory-review-inline"]')).toBeTruthy();
+    expect(
+      view.container.querySelector(".chat-feed__stack")?.contains(
+        view.container.querySelector('[data-testid="memory-review-inline"]') ?? null,
+      ),
+    ).toBe(true);
     expect(view.container.textContent).toContain("转入长期语义记忆");
     expect(view.container.textContent).toContain("暂留为情景记忆");
     expect(view.container.textContent).toContain("拒绝");

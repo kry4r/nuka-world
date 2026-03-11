@@ -74,17 +74,28 @@ export function MemoryNodeInspector({
           <h2>{node.title}</h2>
           <p>Update local memory, review consolidation state, and manage connected edges inline.</p>
         </div>
-        <div className="memory-node-detail__actions">
-          <button className="memory-node-detail__action" onClick={onClose} type="button">
-            Close detail
-          </button>
-          <button className="memory-node-detail__action is-primary" disabled={busy} onClick={() => void onSave()} type="button">
-            Save node
-          </button>
-          <button className="memory-node-detail__action is-danger" disabled={busy} onClick={onRequestDelete} type="button">
-            Delete node
-          </button>
-        </div>
+        <button
+          aria-label="Close node detail"
+          className="memory-node-detail__dismiss"
+          onClick={onClose}
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            className="memory-node-detail__dismiss-icon"
+            viewBox="0 0 16 16"
+          >
+            <path d="M4 4l8 8M12 4 4 12" />
+          </svg>
+        </button>
+      </div>
+      <div className="memory-node-detail__actions">
+        <button className="memory-node-detail__action is-primary" disabled={busy} onClick={() => void onSave()} type="button">
+          Save node
+        </button>
+        <button className="memory-node-detail__action is-danger" disabled={busy} onClick={onRequestDelete} type="button">
+          Delete node
+        </button>
       </div>
 
       <div className="memory-node-detail__grid">

@@ -15,18 +15,53 @@ impl MemoryGraphRepository {
     }
 
     pub async fn load_graph(&self) -> anyhow::Result<MemoryGraph> {
+        self.load_graph_for_scope(None).await
+    }
+
+    pub async fn load_graph_for_scope(&self, scope_id: Option<&str>) -> anyhow::Result<MemoryGraph> {
         self.ensure_graph_schema().await?;
 
-        let node_rows = sqlx::query(
-            "select id, kind, title, body, trace_type, consolidation_state from memory_nodes order by created_at asc, id asc",
-        )
-        .fetch_all(&self.pool)
-        .await?;
-        let edge_rows = sqlx::query(
-            "select id, source_id, target_id, relation from memory_edges order by created_at asc, id asc",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let node_rows = if let Some(scope_id) = scope_id {
+            sqlx::query(
+                r#"
+                select n.id, n.kind, n.title, n.body, n.trace_type, n.consolidation_state
+                from memory_nodes n
+                inner join memory_node_scopes s on s.node_id = n.id
+                where s.scope_id = ?1
+                order by n.created_at asc, n.id asc
+                "#,
+            )
+            .bind(scope_id)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query(
+                "select id, kind, title, body, trace_type, consolidation_state from memory_nodes order by created_at asc, id asc",
+            )
+            .fetch_all(&self.pool)
+            .await?
+        };
+        let edge_rows = if let Some(scope_id) = scope_id {
+            sqlx::query(
+                r#"
+                select e.id, e.source_id, e.target_id, e.relation
+                from memory_edges e
+                inner join memory_node_scopes source_scope on source_scope.node_id = e.source_id
+                inner join memory_node_scopes target_scope on target_scope.node_id = e.target_id
+                where source_scope.scope_id = ?1 and target_scope.scope_id = ?1
+                order by e.created_at asc, e.id asc
+                "#,
+            )
+            .bind(scope_id)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query(
+                "select id, source_id, target_id, relation from memory_edges order by created_at asc, id asc",
+            )
+            .fetch_all(&self.pool)
+            .await?
+        };
         let nodes = node_rows
             .into_iter()
             .map(read_node)
@@ -60,6 +95,25 @@ impl MemoryGraphRepository {
         .bind(node.body)
         .bind(node.trace_type.as_str())
         .bind(node.consolidation_state.as_str())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn bind_node_to_scope(&self, node_id: &str, scope_id: &str) -> anyhow::Result<()> {
+        self.ensure_graph_schema().await?;
+
+        sqlx::query(
+            r#"
+            insert into memory_node_scopes (node_id, scope_id, created_at)
+            values (?1, ?2, datetime('now'))
+            on conflict(node_id) do update set
+              scope_id = excluded.scope_id
+            "#,
+        )
+        .bind(node_id)
+        .bind(scope_id)
         .execute(&self.pool)
         .await?;
 

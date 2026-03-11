@@ -20,9 +20,16 @@ impl MemoryService {
     }
 
     pub async fn load_graph(&self) -> anyhow::Result<nuka_domain::memory::MemoryGraph> {
+        self.load_graph_for_scope(None).await
+    }
+
+    pub async fn load_graph_for_scope(
+        &self,
+        scope_id: Option<&str>,
+    ) -> anyhow::Result<nuka_domain::memory::MemoryGraph> {
         nuka_storage::migrations::run(&self.pool).await?;
         nuka_storage::memory::MemoryGraphRepository::new(self.pool.clone())
-            .load_graph()
+            .load_graph_for_scope(scope_id)
             .await
     }
 
@@ -31,9 +38,11 @@ impl MemoryService {
         node: nuka_domain::memory::MemoryGraphNode,
     ) -> anyhow::Result<()> {
         nuka_storage::migrations::run(&self.pool).await?;
+        let node_id = node.id.clone();
         nuka_storage::memory::MemoryGraphRepository::new(self.pool.clone())
             .upsert_node(node)
-            .await
+            .await?;
+        self.bind_node_to_scope(&node_id, "world").await
     }
 
     pub async fn update_node(
@@ -72,6 +81,13 @@ impl MemoryService {
             .await
     }
 
+    pub async fn bind_node_to_scope(&self, node_id: &str, scope_id: &str) -> anyhow::Result<()> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        nuka_storage::memory::MemoryGraphRepository::new(self.pool.clone())
+            .bind_node_to_scope(node_id, scope_id)
+            .await
+    }
+
     pub async fn list_pending_candidates(
         &self,
     ) -> anyhow::Result<Vec<nuka_domain::memory::MemoryCandidate>> {
@@ -97,6 +113,7 @@ impl MemoryService {
             "workflow-test",
             title,
             "Seeded memory candidate for tests",
+            workflow_scope("workflow-test"),
         )
         .await
     }
@@ -233,14 +250,19 @@ impl MemoryService {
         owner_id: &str,
         prompt: &str,
         reason: &str,
+        scope: nuka_domain::memory::MemoryScope,
     ) -> anyhow::Result<nuka_domain::memory::MemoryCandidate> {
         nuka_storage::migrations::run(&self.pool).await?;
 
         let node_id = uuid::Uuid::new_v4().to_string();
         let candidate_id = uuid::Uuid::new_v4().to_string();
         let title = prompt.chars().take(48).collect::<String>();
+        let graph_repository = nuka_storage::memory::MemoryGraphRepository::new(self.pool.clone());
+        let scope_repository = nuka_storage::memory::MemoryScopeRepository::new(self.pool.clone());
 
-        nuka_storage::memory::MemoryGraphRepository::new(self.pool.clone())
+        scope_repository.upsert(scope.clone()).await?;
+
+        graph_repository
             .upsert_node(nuka_domain::memory::MemoryGraphNode {
                 id: node_id.clone(),
                 kind: nuka_domain::memory::MemoryNodeKind::Fact,
@@ -249,6 +271,9 @@ impl MemoryService {
                 trace_type: nuka_domain::memory::MemoryTraceType::Working,
                 consolidation_state: nuka_domain::memory::MemoryConsolidationState::Candidate,
             })
+            .await?;
+        graph_repository
+            .bind_node_to_scope(&node_id, &scope.id)
             .await?;
 
         let repository = nuka_storage::memory::MemoryCandidateRepository::new(self.pool.clone());
@@ -272,6 +297,33 @@ impl MemoryService {
             .await?
             .ok_or_else(|| anyhow::anyhow!("memory candidate was not persisted"))
     }
+}
+
+fn workflow_scope(workflow_id: &str) -> nuka_domain::memory::MemoryScope {
+    nuka_domain::memory::MemoryScope {
+        id: format!("workflow:{workflow_id}"),
+        name: format_workflow_scope_name(workflow_id),
+        workflow_id: Some(workflow_id.to_string()),
+        session_id: None,
+        agent_id: None,
+    }
+}
+
+fn format_workflow_scope_name(workflow_id: &str) -> String {
+    workflow_id
+        .strip_prefix("workflow-")
+        .unwrap_or(workflow_id)
+        .split('-')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| {
+            let mut chars = segment.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[cfg(test)]
@@ -404,5 +456,39 @@ mod tests {
             .nodes
             .iter()
             .all(|node| node.trace_type != MemoryTraceType::Semantic));
+    }
+
+    #[tokio::test]
+    async fn runtime_events_create_world_and_workflow_memory_scopes() {
+        let service = MemoryService::new_for_test();
+        service
+            .handle_runtime_event(crate::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                session_id: "session-world".to_string(),
+                prompt: "Remember the world note".to_string(),
+            })
+            .await
+            .unwrap();
+        service
+            .handle_runtime_event(crate::runtime_events::RuntimeEvent::WorkflowTurnCompleted {
+                session_id: "session-release".to_string(),
+                workflow_id: "workflow-release-notes".to_string(),
+                prompt: "Remember the workflow note".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let scopes = service.list_scopes().await.unwrap();
+
+        assert!(scopes.iter().any(|scope| {
+            scope.id == "world"
+                && scope.name == "World"
+                && scope.workflow_id.is_none()
+                && scope.session_id.is_none()
+                && scope.agent_id.is_none()
+        }));
+        assert!(scopes.iter().any(|scope| {
+            scope.id == "workflow:workflow-release-notes"
+                && scope.workflow_id.as_deref() == Some("workflow-release-notes")
+        }));
     }
 }

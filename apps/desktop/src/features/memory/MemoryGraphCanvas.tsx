@@ -18,11 +18,17 @@ type MemoryGraphCanvasProps = {
   graph: MemoryGraph;
   pan: Point;
   selectedNodeId: string | null;
+  selectedNodeTitle: string | null;
   zoom: number;
   workbenchView: "activation" | "consolidation" | "schema";
+  onFitView: () => void;
   onPanChange: (pan: Point) => void;
+  onFocusSelected: () => void;
   onSelectNode: (nodeId: string) => void;
+  onWorkbenchViewChange: (view: "activation" | "consolidation" | "schema") => void;
   onZoomChange: (zoom: number) => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
 };
 
 const kinds = ["workflow", "session", "agent", "message", "fact"];
@@ -35,11 +41,17 @@ export function MemoryGraphCanvas({
   graph,
   pan,
   selectedNodeId,
+  selectedNodeTitle,
   zoom,
   workbenchView,
+  onFitView,
   onPanChange,
+  onFocusSelected,
   onSelectNode,
+  onWorkbenchViewChange,
   onZoomChange,
+  onZoomIn,
+  onZoomOut,
 }: MemoryGraphCanvasProps) {
   const dragRef = useRef<{
     originPan: Point;
@@ -96,6 +108,7 @@ export function MemoryGraphCanvas({
       data-pan-x={String(pan.x)}
       data-pan-y={String(pan.y)}
       data-testid="memory-graph-canvas"
+      data-zoom={String(zoom)}
       data-workbench-view={workbenchView}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -103,14 +116,60 @@ export function MemoryGraphCanvas({
       onWheel={handleWheel}
     >
       <div className="memory-graph__toolbar">
-        <div className="memory-graph__help">
-          <span>Drag to pan</span>
-          <span>Scroll to zoom</span>
+        <div className="memory-graph__focus-card">
+          <span className="memory-graph__focus-label">Focus</span>
+          <strong className="memory-graph__focus-value">
+            {selectedNodeTitle ?? "Select a node"}
+          </strong>
         </div>
         <div className="memory-graph__stats">
           <span>{graph.nodes.length} nodes</span>
           <span>{graph.edges.length} edges</span>
           <span>{Math.round(zoom * 100)}% zoom</span>
+        </div>
+      </div>
+
+      <div className="memory-graph__dock memory-graph__dock--lens">
+        <span className="memory-graph__dock-label">Lens</span>
+        <div className="memory-graph__dock-actions">
+          {[
+            { label: "Activation", value: "activation" as const },
+            { label: "Consolidation", value: "consolidation" as const },
+            { label: "Schema", value: "schema" as const },
+          ].map((option) => (
+            <button
+              aria-pressed={workbenchView === option.value}
+              className={`memory-graph__chip${workbenchView === option.value ? " is-active" : ""}`}
+              key={option.value}
+              onClick={() => onWorkbenchViewChange(option.value)}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="memory-graph__dock memory-graph__dock--viewport">
+        <span className="memory-graph__dock-label">Viewport</span>
+        <div className="memory-graph__dock-actions">
+          <button className="memory-graph__chip" onClick={onZoomOut} type="button">
+            Zoom out
+          </button>
+          <button className="memory-graph__chip" onClick={onZoomIn} type="button">
+            Zoom in
+          </button>
+          <button className="memory-graph__chip" onClick={onFitView} type="button">
+            Fit graph
+          </button>
+          <button
+            className="memory-graph__chip is-accent"
+            disabled={!selectedNodeTitle}
+            onClick={onFocusSelected}
+            type="button"
+          >
+            Focus selection
+          </button>
         </div>
       </div>
 
@@ -289,7 +348,6 @@ function nodePresentation(
   selected: boolean,
   depth: number,
 ) {
-  const trace = tracePalette(node.traceType);
   const consolidation = consolidationPalette(node.consolidationState);
   const muted = depth >= 3;
 
@@ -318,50 +376,72 @@ function nodePresentation(
     };
   }
 
+  const kind = kindPalette(node.kind);
+
   return {
     background: selected
-      ? trace.selectedBackground
+      ? kind.selectedBackground
       : muted
-        ? trace.mutedBackground
-        : trace.background,
-    borderColor: selected ? trace.selectedBorder : trace.border,
-    eyebrowColor: trace.eyebrowColor,
-    badgeColor: trace.badgeColor,
+        ? kind.mutedBackground
+        : kind.background,
+    borderColor: selected ? kind.selectedBorder : kind.border,
+    eyebrowColor: kind.eyebrowColor,
+    badgeColor: kind.badgeColor,
   };
 }
 
-function tracePalette(traceType: MemoryTraceType) {
-  switch (traceType) {
-    case "working":
+function kindPalette(kind: MemoryGraphNode["kind"]) {
+  switch (kind) {
+    case "workflow":
       return {
-        background: "rgba(244, 233, 211, 0.98)",
-        border: "rgba(194, 167, 127, 0.66)",
-        selectedBackground: "rgba(234, 218, 199, 0.98)",
-        selectedBorder: "rgba(171, 143, 106, 0.82)",
-        mutedBackground: "rgba(244, 233, 211, 0.74)",
-        eyebrowColor: "#776550",
-        badgeColor: "#776550",
+        background: "rgba(227, 236, 244, 0.98)",
+        border: "rgba(137, 161, 184, 0.64)",
+        selectedBackground: "rgba(216, 228, 239, 0.98)",
+        selectedBorder: "rgba(118, 145, 169, 0.82)",
+        mutedBackground: "rgba(227, 236, 244, 0.74)",
+        eyebrowColor: "#556978",
+        badgeColor: "#556978",
       };
-    case "episodic":
+    case "session":
       return {
-        background: "rgba(244, 226, 217, 0.98)",
-        border: "rgba(196, 149, 129, 0.62)",
-        selectedBackground: "rgba(237, 214, 203, 0.98)",
-        selectedBorder: "rgba(176, 126, 105, 0.8)",
-        mutedBackground: "rgba(244, 226, 217, 0.72)",
-        eyebrowColor: "#7d5f53",
-        badgeColor: "#7d5f53",
+        background: "rgba(244, 232, 214, 0.98)",
+        border: "rgba(191, 162, 123, 0.64)",
+        selectedBackground: "rgba(235, 221, 201, 0.98)",
+        selectedBorder: "rgba(170, 140, 102, 0.82)",
+        mutedBackground: "rgba(244, 232, 214, 0.74)",
+        eyebrowColor: "#78624f",
+        badgeColor: "#78624f",
       };
-    case "semantic":
+    case "agent":
+      return {
+        background: "rgba(230, 238, 228, 0.98)",
+        border: "rgba(136, 165, 128, 0.64)",
+        selectedBackground: "rgba(220, 230, 217, 0.98)",
+        selectedBorder: "rgba(115, 145, 108, 0.82)",
+        mutedBackground: "rgba(230, 238, 228, 0.74)",
+        eyebrowColor: "#576c54",
+        badgeColor: "#576c54",
+      };
+    case "message":
+      return {
+        background: "rgba(243, 225, 220, 0.98)",
+        border: "rgba(186, 142, 132, 0.64)",
+        selectedBackground: "rgba(235, 214, 208, 0.98)",
+        selectedBorder: "rgba(165, 121, 111, 0.82)",
+        mutedBackground: "rgba(243, 225, 220, 0.74)",
+        eyebrowColor: "#7a5d55",
+        badgeColor: "#7a5d55",
+      };
+    case "fact":
     default:
       return {
-        background: "rgba(225, 234, 242, 0.98)",
-        border: "rgba(147, 171, 192, 0.62)",
-        selectedBackground: "rgba(214, 226, 237, 0.98)",
-        selectedBorder: "rgba(126, 152, 174, 0.82)",
-        mutedBackground: "rgba(225, 234, 242, 0.74)",
-        eyebrowColor: "#566a7b",
-        badgeColor: "#566a7b",
+        background: "rgba(241, 231, 220, 0.98)",
+        border: "rgba(183, 151, 125, 0.62)",
+        selectedBackground: "rgba(233, 220, 206, 0.98)",
+        selectedBorder: "rgba(163, 131, 105, 0.82)",
+        mutedBackground: "rgba(241, 231, 220, 0.74)",
+        eyebrowColor: "#735f4d",
+        badgeColor: "#735f4d",
       };
   }
 }

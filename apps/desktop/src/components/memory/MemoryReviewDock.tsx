@@ -1,4 +1,3 @@
-import { useId, useState } from "react";
 import type { MemoryReviewDecision } from "@/lib/memory";
 import type { MemoryReviewDockState } from "@/hooks/useMemoryReviewDock";
 
@@ -15,18 +14,6 @@ function surfaceLabel(surface: "chat" | "workflow") {
   return surface === "chat" ? "Chat" : "Workflow";
 }
 
-function MemoryReviewChevron({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className="memory-review-dock__chevron"
-      viewBox="0 0 16 16"
-    >
-      {expanded ? <path d="M4 10.5 8 6.5l4 4" /> : <path d="M4 6 8 10l4-4" />}
-    </svg>
-  );
-}
-
 export function MemoryReviewDock({
   applyDecision,
   candidate,
@@ -38,9 +25,6 @@ export function MemoryReviewDock({
   selectedDecision,
   setSelectedDecision,
 }: MemoryReviewDockState) {
-  const [expanded, setExpanded] = useState(false);
-  const panelId = useId();
-
   if (!candidate && !error && !isLoading) {
     return null;
   }
@@ -55,82 +39,69 @@ export function MemoryReviewDock({
       : "Loading memory review…";
 
   return (
-    <div className={`memory-review-dock ${expanded ? "is-open" : "is-closed"}`}>
-      <button
-        aria-controls={panelId}
-        aria-expanded={expanded}
-        className="memory-review-dock__toggle"
-        data-testid="memory-review-toggle"
-        onClick={() => setExpanded((current) => !current)}
-        type="button"
-      >
-        <MemoryReviewChevron expanded={expanded} />
-        <span className="memory-review-dock__toggle-copy">
-          <span className="memory-review-dock__toggle-title">Memory Review</span>
-          <span className="memory-review-dock__toggle-meta">{queueLabel}</span>
-        </span>
-        <span className="memory-review-dock__toggle-summary">{summary}</span>
-      </button>
+    <article
+      aria-label="Memory review message"
+      className="memory-review-inline chat-bubble chat-bubble--world"
+      data-testid="memory-review-inline"
+    >
+      <div className="memory-review-inline__header">
+        <span className="chat-bubble__label">Agent memory review</span>
+        <span className="memory-review-inline__meta">{queueLabel}</span>
+      </div>
 
-      {expanded ? (
-        <section
-          aria-label="Memory review panel"
-          className="memory-review-dock__panel"
-          data-testid="memory-review-panel"
-          id={panelId}
-        >
-        {candidate ? (
-          <>
-            <div className="memory-review-dock__panel-header">
-              <div className="memory-review-dock__panel-copy">
-                <span className="memory-review-dock__panel-kicker">{queueLabel}</span>
-                <strong>{candidate.title}</strong>
-                <span>{candidate.reason}</span>
-              </div>
-              <div className="memory-review-dock__panel-stats">
-                <span>Schema {candidate.suggestedSchemaId ?? "未建议"}</span>
-                <span>证据 {candidate.evidenceCount}</span>
-                <span>置信度 {Math.round(candidate.confidence * 100)}%</span>
-              </div>
-            </div>
+      {candidate ? (
+        <>
+          <div className="memory-review-inline__copy">
+            <strong className="memory-review-inline__title">{candidate.title}</strong>
+            <p className="memory-review-inline__reason">{candidate.reason}</p>
+          </div>
 
-            <div className="memory-review-dock__decision-row">
-              {DECISION_OPTIONS.map((option) => (
-                <button
-                  aria-pressed={selectedDecision === option.value}
-                  className={
-                    selectedDecision === option.value
-                      ? "settings-button settings-button--accent"
-                      : "settings-button"
-                  }
-                  key={option.value}
-                  onClick={() => setSelectedDecision(option.value)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+          <div className="memory-review-inline__stats">
+            <span>Schema {candidate.suggestedSchemaId ?? "未建议"}</span>
+            <span>证据 {candidate.evidenceCount}</span>
+            <span>置信度 {Math.round(candidate.confidence * 100)}%</span>
+          </div>
 
-            <div className="memory-review-dock__footer">
+          <div className="memory-review-inline__decision-row">
+            {DECISION_OPTIONS.map((option) => (
               <button
-                className="settings-button settings-button--accent"
-                disabled={isApplying}
-                onClick={() => {
-                  void applyDecision();
-                }}
+                aria-pressed={selectedDecision === option.value}
+                className={
+                  selectedDecision === option.value
+                    ? "settings-button settings-button--accent"
+                    : "settings-button"
+                }
+                key={option.value}
+                onClick={() => setSelectedDecision(option.value)}
                 type="button"
               >
-                {isApplying ? "应用中..." : "应用审核"}
+                {option.label}
               </button>
-            </div>
-          </>
-        ) : null}
+            ))}
+          </div>
 
-          {isLoading ? <span>Loading memory review…</span> : null}
-          {error ? <span>{error}</span> : null}
-        </section>
+          <div className="memory-review-inline__footer">
+            <button
+              className="settings-button settings-button--accent"
+              disabled={isApplying}
+              onClick={() => {
+                void applyDecision();
+              }}
+              type="button"
+            >
+              {isApplying ? "应用中..." : "应用审核"}
+            </button>
+          </div>
+        </>
       ) : null}
-    </div>
+
+      {isLoading ? (
+        <p className="memory-review-inline__reason">Loading memory review…</p>
+      ) : null}
+      {error ? <p className="memory-review-inline__reason">{error}</p> : null}
+      {!candidate && !error && !isLoading ? (
+        <p className="memory-review-inline__reason">{summary}</p>
+      ) : null}
+    </article>
   );
 }

@@ -1,5 +1,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "@/styles/tokens.css";
+import "@/styles/theme.css";
 import { MemoryPage } from "./MemoryPage";
 import { findText, renderIntoDocument } from "@/test/render";
 
@@ -9,12 +11,14 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
     consolidationState: string;
     id: string;
     kind: string;
+    scopeId: string;
     traceType: string;
     title: string;
   }> = [
       {
         id: "workflow-review",
         kind: "workflow",
+        scopeId: "workflow:workflow-review",
         title: "Release Workflow",
         body: "Coordinates release validation.",
         traceType: "semantic",
@@ -23,6 +27,7 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
       {
         id: "fact-archive",
         kind: "fact",
+        scopeId: "world",
         title: "Archive Fact",
         body: "Older note kept for comparison.",
         traceType: "semantic",
@@ -31,6 +36,7 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
       {
         id: "memory-review",
         kind: "fact",
+        scopeId: "workflow:workflow-review",
         title: "Review Memory",
         body: "Tracks the latest review conclusions.",
         traceType: "episodic",
@@ -39,6 +45,7 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
       {
         id: "session-sync",
         kind: "session",
+        scopeId: "workflow:workflow-review",
         title: "Review Session",
         body: "Tracks the active review conversation.",
         traceType: "working",
@@ -47,12 +54,32 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
       {
         id: "agent-scout",
         kind: "agent",
+        scopeId: "workflow:workflow-review",
         title: "Scout Agent",
         body: "Flags follow-up work.",
         traceType: "semantic",
         consolidationState: "rejected",
       },
     ];
+
+  const initialScopes = [
+    {
+      id: "world",
+      title: "World",
+      kind: "world",
+      workflowId: null,
+      sessionId: null,
+      agentId: null,
+    },
+    {
+      id: "workflow:workflow-review",
+      title: "Release Workflow",
+      kind: "workflow",
+      workflowId: "workflow-review",
+      sessionId: null,
+      agentId: null,
+    },
+  ];
 
   const initialEdges = [
       {
@@ -82,32 +109,33 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
     nodes: structuredClone(initialNodes),
     edges: structuredClone(initialEdges),
   };
+  let scopeState = structuredClone(initialScopes);
+
+  const serializeGraph = (scopeId?: string) => {
+    const visibleNodes = scopeId
+      ? graphState.nodes.filter((node) => node.scopeId === scopeId)
+      : graphState.nodes;
+    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+
+    return {
+      nodes: visibleNodes.map(({ scopeId: _scopeId, ...node }) => ({ ...node })),
+      edges: graphState.edges.filter(
+        (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId),
+      ),
+    };
+  };
 
   const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
     switch (command) {
       case "load_memory_graph":
-        return structuredClone(graphState);
+        return serializeGraph(
+          typeof args?.scopeId === "string" ? args.scopeId : undefined,
+        );
       case "list_memory_scopes":
-        return graphState.nodes.map((node) => ({
-          id: node.id,
-          title: node.title,
-          kind: node.kind,
-          workflowId: node.kind === "workflow" ? node.id : null,
-          sessionId: null,
-          agentId: null,
-        }));
+        return structuredClone(scopeState);
       case "list_memory_by_workflow": {
         const workflowId = String(args?.workflowId ?? "");
-        return graphState.nodes
-          .filter((node) => node.id === workflowId || node.kind !== "workflow")
-          .map((node) => ({
-            id: node.id,
-            title: node.title,
-            kind: node.kind,
-            workflowId: workflowId || null,
-            sessionId: null,
-            agentId: null,
-          }));
+        return scopeState.filter((scope) => scope.workflowId === workflowId);
       }
       case "get_memory_node_detail": {
         const nodeId = String(args?.nodeId ?? "");
@@ -179,6 +207,7 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
   const resetMocks = () => {
     graphState.nodes = structuredClone(initialNodes);
     graphState.edges = structuredClone(initialEdges);
+    scopeState = structuredClone(initialScopes);
     invokeMock.mockClear();
   };
 
@@ -302,6 +331,130 @@ describe("MemoryPage", () => {
     expect(view.container.querySelector('input[aria-label="Node title"]')).toBeFalsy();
   });
 
+  it("auto-fits sparse graphs so a single node does not sit tiny in the canvas", async () => {
+    graphState.nodes = [graphState.nodes[2]!];
+    graphState.edges = [];
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+
+    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
+  });
+
+  it("auto-fits the selected workflow scope when search narrows the graph to one node", async () => {
+    graphState.edges = [];
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const searchInput = view.container.querySelector(
+      'input[aria-label="Search graph"]',
+    ) as HTMLInputElement | null;
+
+    await act(async () => {
+      if (!searchInput) {
+        throw new Error("search input missing");
+      }
+
+      setFormValue(searchInput, "Review Memory");
+      await Promise.resolve();
+    });
+
+    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+
+    expect(canvas?.textContent).toContain("1");
+    expect(canvas?.textContent).toContain("nodes");
+    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
+  });
+
+  it("keeps only scope, search, and kind controls above the graph and moves lens and viewport actions into graph chrome", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const topControls = view.container.querySelector(".memory-stage__controls");
+    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+
+    expect(topControls?.querySelector('input[aria-label="Search graph"]')).toBeTruthy();
+    expect(topControls?.querySelector('select[aria-label="Filter kind"]')).toBeTruthy();
+    expect(topControls?.querySelector('select[aria-label="Memory scope"]')).toBeTruthy();
+    expect(topControls?.querySelector('select[aria-label="View mode"]')).toBeFalsy();
+    expect(topControls?.textContent).not.toContain("Focused graph");
+    expect(topControls?.textContent).not.toContain("Full map");
+    expect(topControls?.textContent).not.toContain("Activation");
+    expect(topControls?.textContent).not.toContain("Consolidation");
+    expect(topControls?.textContent).not.toContain("Schema");
+    expect(topControls?.textContent).not.toContain("Zoom out");
+    expect(topControls?.textContent).not.toContain("Zoom in");
+    expect(topControls?.textContent).not.toContain("Fit graph");
+    expect(topControls?.textContent).not.toContain("Focus selection");
+
+    expect(canvas?.textContent).toContain("Activation");
+    expect(canvas?.textContent).toContain("Consolidation");
+    expect(canvas?.textContent).toContain("Schema");
+    expect(canvas?.textContent).toContain("Zoom out");
+    expect(canvas?.textContent).toContain("Zoom in");
+    expect(canvas?.textContent).toContain("Fit graph");
+    expect(canvas?.textContent).toContain("Focus selection");
+  });
+
+  it("loads a concrete memory scope by default and switches between workflow and world graphs", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const scopeSelect = view.container.querySelector(
+      'select[aria-label="Memory scope"]',
+    ) as HTMLSelectElement | null;
+
+    expect(scopeSelect).toBeTruthy();
+    expect(scopeSelect?.textContent).not.toContain("All memory");
+    expect(scopeSelect?.textContent).toContain("World");
+    expect(scopeSelect?.textContent).toContain("Release Workflow");
+    expect(scopeSelect?.value).toBe("workflow:workflow-review");
+    expect(invokeMock).toHaveBeenCalledWith("load_memory_graph", {
+      scopeId: "workflow:workflow-review",
+    });
+    expect(findButton(view.container, "Review Memory")).toBeTruthy();
+    expect(findButton(view.container, "Archive Fact")).toBeFalsy();
+
+    await act(async () => {
+      if (!scopeSelect) {
+        throw new Error("scope select missing");
+      }
+
+      setFormValue(scopeSelect, "world");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("load_memory_graph", {
+      scopeId: "world",
+    });
+    expect(findButton(view.container, "Review Memory")).toBeFalsy();
+    expect(findButton(view.container, "Archive Fact")).toBeTruthy();
+  });
+
   it("uses a light graph surface and overlays graph stats inside the canvas", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
@@ -336,11 +489,15 @@ describe("MemoryPage", () => {
     const nodeButton = findButton(view.container, "Review Memory");
 
     expect(canvas).toBeTruthy();
+    expect(view.container.querySelector(".memory-stage__header")).toBeFalsy();
     expect(view.container.textContent).not.toContain("Node Inspector");
+    expect(view.container.textContent).not.toContain(
+      "Search, filter, and inspect the graph without keeping a permanent side inspector open.",
+    );
     expect(view.container.querySelector('[data-testid="memory-node-detail"]')).toBeFalsy();
     expect(view.container.querySelector('input[aria-label="Search graph"]')).toBeTruthy();
     expect(view.container.querySelector('select[aria-label="Filter kind"]')).toBeTruthy();
-    expect(view.container.querySelector('select[aria-label="View mode"]')).toBeTruthy();
+    expect(view.container.querySelector('select[aria-label="View mode"]')).toBeFalsy();
 
     await act(async () => {
       nodeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -351,6 +508,24 @@ describe("MemoryPage", () => {
 
     expect(detail?.className).toContain("memory-node-overlay");
     expect(canvasFrame?.contains(detail ?? null)).toBe(true);
+  });
+
+  it("lets the canvas region stretch so the graph can fill the available page height", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const canvasRegion = view.container.querySelector(".memory-stage__canvas") as HTMLElement | null;
+    const canvasFrame = view.container.querySelector(".memory-stage__canvas-frame") as HTMLElement | null;
+
+    expect(canvasRegion).toBeTruthy();
+    expect(canvasFrame).toBeTruthy();
+    expect(canvasRegion?.className).toContain("memory-stage__canvas--fill");
+    expect(canvasFrame?.className).toContain("memory-stage__canvas-frame--fill");
   });
 
   it("opens editable node detail fields in the overlay when selecting a node", async () => {
@@ -376,6 +551,36 @@ describe("MemoryPage", () => {
     expect(bodyInput?.value).toBe("Tracks the latest review conclusions.");
     expect(view.container.querySelector('[data-testid="memory-node-detail"]')).toBeTruthy();
     expect(view.container.textContent).not.toContain("Node Inspector");
+  });
+
+  it("renders a dedicated close button in the node detail header and dismisses the overlay", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      findButton(view.container, "Review Memory")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    const closeButton = view.container.querySelector(
+      'button[aria-label="Close node detail"]',
+    ) as HTMLButtonElement | null;
+
+    expect(closeButton).toBeTruthy();
+
+    await act(async () => {
+      closeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector('[data-testid="memory-node-detail"]')).toBeFalsy();
   });
 
   it("shows trace and consolidation metadata in the overlay", async () => {
@@ -511,29 +716,16 @@ describe("MemoryPage", () => {
     const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
 
     expect(canvas?.getAttribute("data-focus-target-id")).toBe("session-sync");
-    expect(canvas?.getAttribute("data-pan-x")).toBe("130");
-    expect(canvas?.getAttribute("data-pan-y")).toBe("168");
+    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
   });
 
-  it("recenters when the selected node keeps the same id but moves to a new layout row", async () => {
+  it("keeps the selected workflow node centered when search narrows the chosen scope", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
-    });
-
-    const viewModeSelect = view.container.querySelector(
-      'select[aria-label="View mode"]',
-    ) as HTMLSelectElement | null;
-
-    await act(async () => {
-      if (!viewModeSelect) {
-        throw new Error("view mode select missing");
-      }
-
-      setFormValue(viewModeSelect, "full");
     });
 
     const memoryNode = findButton(view.container, "Review Memory");
@@ -546,7 +738,7 @@ describe("MemoryPage", () => {
     let canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
     expect(canvas?.getAttribute("data-focus-target-id")).toBe("memory-review");
     expect(canvas?.getAttribute("data-pan-x")).toBe("-434");
-    expect(canvas?.getAttribute("data-pan-y")).toBe("20");
+    expect(canvas?.getAttribute("data-pan-y")).toBe("168");
 
     const searchInput = view.container.querySelector(
       'input[aria-label="Search graph"]',
@@ -563,8 +755,7 @@ describe("MemoryPage", () => {
 
     canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
     expect(canvas?.getAttribute("data-focus-target-id")).toBe("memory-review");
-    expect(canvas?.getAttribute("data-pan-x")).toBe("-434");
-    expect(canvas?.getAttribute("data-pan-y")).toBe("168");
+    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
   });
 
   it("uses distinct fallback edge ids for different relations when random uuid is unavailable", async () => {

@@ -79,9 +79,15 @@ async fn route_world_prompt_inner(
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<ChatRouteResponse> {
     let prompt_for_memory = prompt.clone();
+    let world_mode: nuka_runtime::world::WorldChatMode = mode.into();
     let turn = match session_id.as_deref() {
-        Some(session_id) => state.world_runtime().continue_session(session_id, &prompt).await,
-        None => state.world_runtime().start_session(&prompt, mode.into()).await,
+        Some(session_id) => {
+            state
+                .world_runtime()
+                .continue_session(session_id, &prompt, Some(world_mode))
+                .await
+        }
+        None => state.world_runtime().start_session(&prompt, world_mode).await,
     }?;
 
     let route = match turn.route {
@@ -353,5 +359,52 @@ mod tests {
             if workflow_id == "workflow-release"
         ));
         assert_eq!(response.session.workflow_id.as_deref(), Some("workflow-release"));
+    }
+
+    #[tokio::test]
+    async fn route_world_prompt_updates_the_route_when_a_chat_session_switches_to_workflow_mode() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        );
+        let provider_id = provider.id.clone();
+
+        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+
+        let first = super::route_world_prompt_inner(
+            "summarize today's notes".to_string(),
+            None,
+            super::ChatModeInput::ChatOnly,
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let next = super::route_world_prompt_inner(
+            "continue in the release workflow".to_string(),
+            Some(first.session.id.clone()),
+            super::ChatModeInput::SpecificWorkflow {
+                workflow_id: "workflow-release".to_string(),
+            },
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(next.session.id, first.session.id);
+        assert!(matches!(
+            next.route,
+            super::ChatRoute::ExistingWorkflow { workflow_id }
+            if workflow_id == "workflow-release"
+        ));
+        assert_eq!(next.session.workflow_id.as_deref(), Some("workflow-release"));
     }
 }

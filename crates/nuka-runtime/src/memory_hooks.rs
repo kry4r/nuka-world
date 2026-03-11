@@ -10,6 +10,13 @@ pub async fn handle_runtime_event(
                     &session_id,
                     &prompt,
                     "Chat turn proposed for review",
+                    nuka_domain::memory::MemoryScope {
+                        id: "world".to_string(),
+                        name: "World".to_string(),
+                        workflow_id: None,
+                        session_id: None,
+                        agent_id: None,
+                    },
                 )
                 .await?;
         }
@@ -26,6 +33,13 @@ pub async fn handle_runtime_event(
                     &format!(
                         "Workflow session {session_id} in {workflow_id} opened for review"
                     ),
+                    nuka_domain::memory::MemoryScope {
+                        id: format!("workflow:{workflow_id}"),
+                        name: workflow_scope_name(&workflow_id),
+                        workflow_id: Some(workflow_id.clone()),
+                        session_id: None,
+                        agent_id: None,
+                    },
                 )
                 .await?;
         }
@@ -42,10 +56,34 @@ pub async fn handle_runtime_event(
                     &format!(
                         "Workflow turn from session {session_id} in {workflow_id} proposed for review"
                     ),
+                    nuka_domain::memory::MemoryScope {
+                        id: format!("workflow:{workflow_id}"),
+                        name: workflow_scope_name(&workflow_id),
+                        workflow_id: Some(workflow_id.clone()),
+                        session_id: None,
+                        agent_id: None,
+                    },
                 )
                 .await?;
         }
     }
 
     Ok(())
+}
+
+fn workflow_scope_name(workflow_id: &str) -> String {
+    workflow_id
+        .strip_prefix("workflow-")
+        .unwrap_or(workflow_id)
+        .split('-')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| {
+            let mut chars = segment.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }

@@ -30,6 +30,15 @@ export type MemoryGraph = {
   edges: MemoryGraphEdge[];
 };
 
+export type MemoryScope = {
+  id: string;
+  title: string;
+  kind: string;
+  workflowId: string | null;
+  sessionId: string | null;
+  agentId: string | null;
+};
+
 export type MemoryReviewSurface = "chat" | "workflow";
 
 export type MemoryReviewDecision =
@@ -49,8 +58,15 @@ export type MemoryCandidate = {
   evidenceCount: number;
 };
 
-export async function loadMemoryGraph(): Promise<MemoryGraph> {
-  return invoke<MemoryGraph>("load_memory_graph");
+export async function loadMemoryGraph(scopeId?: string | null): Promise<MemoryGraph> {
+  return invoke<MemoryGraph>(
+    "load_memory_graph",
+    scopeId ? { scopeId } : {},
+  );
+}
+
+export async function listMemoryScopes(): Promise<MemoryScope[]> {
+  return invoke<MemoryScope[]>("list_memory_scopes");
 }
 
 export async function updateMemoryNode(
