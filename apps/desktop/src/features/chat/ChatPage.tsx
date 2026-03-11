@@ -4,8 +4,10 @@ import { routeWorldPrompt, type ChatMessage, type ChatMode, type ChatRouteRespon
 import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
 import { useProviderGate } from "@/hooks/useProviderGate";
 import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
+import { useWorkspaceSessions } from "@/hooks/useWorkspaceSessions";
 import { WORKFLOW_DEFINITIONS, type WorkflowLaunchIntent } from "@/lib/workflow";
 import { ConversationEventBlock } from "./ConversationEventBlock";
+import { SessionTabs } from "./SessionTabs";
 import { SuggestionStrip } from "./SuggestionStrip";
 
 const CHAT_ONLY_SUGGESTIONS = [
@@ -209,6 +211,7 @@ type ChatPageProps = {
 
 export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
   const providerGate = useProviderGate();
+  const workspaceSessions = useWorkspaceSessions();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [session, setSession] = useState<ChatRouteResponse | null>(null);
@@ -221,13 +224,27 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
   const [workflowHandoff, setWorkflowHandoff] = useState<WorkflowLaunchIntent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
+  const activeDirectSession =
+    workspaceSessions.activeSession?.kind === "direct_chat"
+      ? workspaceSessions.activeSession
+      : null;
+  const activeTeamRun =
+    workspaceSessions.activeSession?.kind === "team_run"
+      ? workspaceSessions.activeSession.run
+      : null;
+  const activeSessionRecord = activeDirectSession?.session ?? session?.session ?? null;
+  const activeMessages = activeDirectSession?.messages ?? messages;
+  const activeRoute =
+    activeSessionRecord?.id && activeSessionRecord.id === session?.session.id
+      ? session?.route
+      : null;
   const memoryReviewDock = useMemoryReviewDock(
     "chat",
-    session?.session.id ?? null,
-    session?.session.messageCount ?? null,
+    activeDirectSession?.session.id ?? session?.session.id ?? null,
+    activeDirectSession?.session.messageCount ?? session?.session.messageCount ?? null,
   );
 
-  const landing = messages.length === 0;
+  const landing = activeMessages.length === 0 && workspaceSessions.sessions.length === 0 && !activeTeamRun;
   const draftMode = resolveDraftMode(entryMode, selectedWorkflowId);
   const composerMode = resolveActiveMode(sessionMode, draftMode);
   const showWorkflowChooser = entryMode === "choose_workflow" && !workflowToken;
@@ -250,6 +267,18 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
     }
 
     setEntryMenuOpen(false);
+    setError(null);
+  };
+
+  const handleSessionSelect = (sessionId: string) => {
+    workspaceSessions.setActiveSessionId(sessionId);
+    setEntryMenuOpen(false);
+    setWorkflowPickerOpen(false);
+    setSelectedWorkflowId("");
+    setWorkflowToken(null);
+    setWorkflowHandoff(null);
+    setEntryMode("direct");
+    setSessionMode({ kind: "chat_only" });
     setError(null);
   };
 
@@ -278,10 +307,14 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
     setIsRouting(true);
 
     try {
-      const response = await routeWorldPrompt(value, session?.session.id, mode);
+      const response = await routeWorldPrompt(value, activeSessionRecord?.id, mode);
       setMessages((current) => [...current, ...response.messages]);
       setSession(response);
       setSessionMode((current) => mergeSessionMode(current, mode));
+      void workspaceSessions.refresh({
+        id: response.session.id,
+        kind: "direct_chat",
+      });
 
       if (
         mode.kind === "specific_workflow" &&
@@ -567,10 +600,22 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
     <div className={`page-layout chat-page ${landing ? "is-landing" : "is-active"}`}>
       <div className="page-layout__body chat-page__body">
         <div className="chat-stage">
+          <SessionTabs
+            activeSessionId={workspaceSessions.activeSessionId}
+            onSelect={handleSessionSelect}
+            sessions={workspaceSessions.sessions}
+          />
+
           <div
             className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}
           >
-            {landing ? (
+            {activeTeamRun ? (
+              <section aria-label="Team run session" className="chat-team-run-card ui-card">
+                <span className="chat-team-run-card__eyebrow">Team run session</span>
+                <h2>{activeTeamRun.title}</h2>
+                <p>{activeTeamRun.goal}</p>
+              </section>
+            ) : landing ? (
               <div className="chat-landing-stack" data-testid="chat-landing-stack">
                 <div aria-label="World chat landing hero" className="chat-hero">
                   <NukaLockup className="chat-hero__lockup" width={240} />
@@ -584,16 +629,16 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                   <div className="chat-surface__identity">
                     <span className="chat-surface__eyebrow">{entrySummary(entryMode, selectedWorkflowId)}</span>
                     <span className="chat-surface__meta">
-                      Session {formatSession(session?.session.id)}
+                      Session {formatSession(activeSessionRecord?.id)}
                       {META_SEPARATOR}
-                      {formatRoute(session?.route)}
+                      {formatRoute(activeRoute)}
                     </span>
                   </div>
                 </header>
 
                 <div className="chat-feed" role="log">
                   <div className="chat-feed__stack">
-                    {messages.map((message) => (
+                    {activeMessages.map((message) => (
                       <ConversationEventBlock key={message.id} message={message} />
                     ))}
                     <MemoryReviewDock {...memoryReviewDock} />
@@ -602,7 +647,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
               </section>
             )}
 
-            {landing ? null : composer}
+            {landing || activeTeamRun ? null : composer}
           </div>
         </div>
       </div>

@@ -1073,8 +1073,61 @@ button {
 }
 
 .chat-page .chat-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 28px;
   background: linear-gradient(180deg, #fdfaf6 0%, #fcf8f2 58%, #fbf7f1 100%);
+}
+
+.session-tabs {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+}
+
+.session-tab {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(210, 199, 184, 0.78);
+  border-radius: 16px;
+  background: rgba(255, 252, 247, 0.9);
+  color: var(--color-text);
+  text-align: left;
+}
+
+.session-tab.is-active {
+  border-color: rgba(182, 157, 122, 0.88);
+  background: rgba(250, 244, 236, 0.96);
+}
+
+.session-tab__kind {
+  color: #766d63;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.session-tab__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.chat-team-run-card {
+  max-width: 520px;
+}
+
+.chat-team-run-card__eyebrow {
+  color: #766d63;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .chat-page .chat-stage__body {

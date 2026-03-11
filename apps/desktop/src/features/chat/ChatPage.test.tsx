@@ -75,6 +75,11 @@ const { listPendingMemoryCandidatesMock, reviewMemoryCandidateMock } = vi.hoiste
   reviewMemoryCandidateMock: vi.fn(async () => undefined),
 }));
 
+const { listWorkspaceSessionsMock, loadWorkspaceSessionMock } = vi.hoisted(() => ({
+  listWorkspaceSessionsMock: vi.fn(async () => []),
+  loadWorkspaceSessionMock: vi.fn(async () => null),
+}));
+
 vi.mock("@/lib/chat", () => ({
   routeWorldPrompt: (...args: Parameters<typeof routeWorldPromptMock>) =>
     routeWorldPromptMock(...args),
@@ -93,11 +98,21 @@ vi.mock("@/lib/memory", () => ({
   ) => reviewMemoryCandidateMock(...args),
 }));
 
+vi.mock("@/lib/workspace", () => ({
+  listWorkspaceSessions: (
+    ...args: Parameters<typeof listWorkspaceSessionsMock>
+  ) => listWorkspaceSessionsMock(...args),
+  loadWorkspaceSession: (
+    ...args: Parameters<typeof loadWorkspaceSessionMock>
+  ) => loadWorkspaceSessionMock(...args),
+}));
+
 const cleanups: Array<() => Promise<void>> = [];
 
 function getButtonByText(container: HTMLElement, text: string) {
   return Array.from(container.querySelectorAll("button")).find(
-    (button) => button.textContent?.trim() === text,
+    (button) =>
+      button.textContent?.trim() === text || button.textContent?.includes(text),
   );
 }
 
@@ -157,6 +172,10 @@ afterEach(async () => {
   routeWorldPromptMock.mockReset();
   listPendingMemoryCandidatesMock.mockReset();
   reviewMemoryCandidateMock.mockReset();
+  listWorkspaceSessionsMock.mockReset();
+  loadWorkspaceSessionMock.mockReset();
+  listWorkspaceSessionsMock.mockImplementation(async () => []);
+  loadWorkspaceSessionMock.mockImplementation(async () => null);
   providerGateState.ready = true;
   providerGateState.blocked = false;
   providerGateState.message = "Provider ready";
@@ -254,6 +273,100 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Provider required")).toBeFalsy();
     expect(findText(view.container, "Open Settings")).toBeFalsy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
+  });
+
+  it("renders top tabs for direct chats and team runs and switches the active session", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "chat-design-review",
+        kind: "direct_chat",
+        title: "Design Review Chat",
+        status: "active",
+        updatedAt: "2026-03-11T12:05:00Z",
+      },
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "active",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockImplementation(async (sessionId: string, kind: string) => {
+      if (sessionId === "chat-design-review" && kind === "direct_chat") {
+        return {
+          kind: "direct_chat",
+          session: {
+            id: "chat-design-review",
+            title: "Design Review Chat",
+            providerId: "provider-local",
+            workflowId: null,
+            messageCount: 2,
+          },
+          messages: [
+            {
+              id: "message-design-1",
+              role: "user",
+              content: "Check the design handoff",
+            },
+          ],
+        };
+      }
+
+      if (sessionId === "run-release" && kind === "team_run") {
+        return {
+          kind: "team_run",
+          run: {
+            id: "run-release",
+            teamId: "team-release",
+            title: "Release Team Run",
+            goal: "Ship the release",
+            status: "active",
+            currentPhase: "review",
+            leadAgentId: "agent-moderator",
+            charter: {
+              goal: "Ship the release",
+              successCriteria: "Release notes and checklist are complete.",
+              outputFormat: "Checkpoint summary",
+              currentPhase: "review",
+              maxRounds: 6,
+              maxActiveAgentsPerRound: 2,
+              maxMessagesPerAgentPerRound: 2,
+              budgetPolicy: "Summaries only",
+              stopConditions: ["Checklist complete"],
+            },
+            createdAt: "2026-03-11T12:10:00Z",
+            updatedAt: "2026-03-11T12:15:00Z",
+            agents: [],
+            events: [],
+          },
+        };
+      }
+
+      return null;
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Release Team Run")).toBeTruthy();
+    expect(findText(view.container, "Design Review Chat")).toBeTruthy();
+    expect(findText(view.container, "Check the design handoff")).toBeTruthy();
+
+    await clickButton(view.container, "Release Team Run");
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Team run session")).toBeTruthy();
+    expect(findText(view.container, "Ship the release")).toBeTruthy();
   });
 
   it("switches into conversation state after a direct send without rendering an inspector", async () => {
