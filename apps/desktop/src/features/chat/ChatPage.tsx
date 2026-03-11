@@ -323,6 +323,11 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                       onClick={() => {
                         if (workflowHandoff?.kind === "open_workflow_room") {
                           onWorkflowHandoff?.(workflowHandoff);
+                          window.dispatchEvent(
+                            new CustomEvent("nuka:navigate", {
+                              detail: { page: "workflow" },
+                            }),
+                          );
                         }
                       }}
                       type="button"

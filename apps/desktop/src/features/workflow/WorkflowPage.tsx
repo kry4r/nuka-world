@@ -1,303 +1,194 @@
-import { useEffect, useState } from "react";
-import { Inspector } from "@/components/shell/Inspector";
-import { Card } from "@/components/ui/Card";
-import { SectionHeader } from "@/components/ui/SectionHeader";
-import { useProviderGate } from "@/hooks/useProviderGate";
-import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
-import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   WORKFLOW_DEFINITIONS,
-  continueWorkflowSession,
-  formatWorkflowSourceSession,
-  seedWorkflowInputs,
-  startWorkflowSession,
-  type WorkflowEvent,
+  explainWorkflow,
+  reviseWorkflow,
+  type WorkflowExplanation,
   type WorkflowLaunchIntent,
-  type WorkflowSessionResponse,
+  type WorkflowRevisionPreview,
+  type WorkflowSummary,
 } from "@/lib/workflow";
-import { AgentColumn } from "./AgentColumn";
-import { WorkflowLobby } from "./WorkflowLobby";
-import { WorkflowRoom } from "./WorkflowRoom";
+import { WorkflowCatalog } from "./WorkflowCatalog";
+import { WorkflowExplanationView } from "./WorkflowExplanationView";
+import { WorkflowRevisionPanel } from "./WorkflowRevisionPanel";
+
+const REVISION_SUGGESTIONS = [
+  "Search the knowledge base before drafting",
+  "Split the summary into review and publish stages",
+  "Reduce manual confirmations",
+  "Make the output more suitable for a product brief",
+];
 
 type WorkflowPageProps = {
   intent?: WorkflowLaunchIntent | null;
   onIntentHandled?: () => void;
 };
 
-export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}) {
-  const providerGate = useProviderGate();
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState(WORKFLOW_DEFINITIONS[0]?.id ?? "");
-  const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  const [session, setSession] = useState<WorkflowSessionResponse | null>(null);
-  const [roomPrompt, setRoomPrompt] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isContinuing, setIsContinuing] = useState(false);
-  const [sourceIntent, setSourceIntent] = useState<WorkflowLaunchIntent | null>(null);
-  const memoryReviewDock = useMemoryReviewDock(
-    "workflow",
-    session?.sessionId ?? null,
-    session?.events.length ?? null,
-  );
+function workflowSummaries(): WorkflowSummary[] {
+  return WORKFLOW_DEFINITIONS.map((workflow) => ({
+    id: workflow.id,
+    title: workflow.title,
+    summary: workflow.purpose,
+  }));
+}
 
-  const selectedWorkflow =
-    WORKFLOW_DEFINITIONS.find((workflow) => workflow.id === selectedWorkflowId) ??
-    WORKFLOW_DEFINITIONS[0];
-  const activeWorkflow = session
-    ? WORKFLOW_DEFINITIONS.find((workflow) => workflow.id === session.workflowId)
-    : selectedWorkflow;
-  const transcriptEvents = session ? session.events.filter(isTranscriptEvent) : [];
-  const timelineEvents = session ? session.events.filter((event) => event.kind === "node_event") : [];
-  const sourceOrigin = session?.origin ?? sourceIntent?.origin ?? null;
+export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}) {
+  const catalog = useMemo(() => workflowSummaries(), []);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState(catalog[0]?.id ?? "");
+  const [explanation, setExplanation] = useState<WorkflowExplanation | null>(null);
+  const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
+  const [explanationError, setExplanationError] = useState<string | null>(null);
+  const [revisionPrompt, setRevisionPrompt] = useState("");
+  const [revisionPreview, setRevisionPreview] = useState<WorkflowRevisionPreview | null>(null);
+  const [isGeneratingRevision, setIsGeneratingRevision] = useState(false);
+  const [revisionNotice, setRevisionNotice] = useState<string | null>(null);
+  const [sourceLabel, setSourceLabel] = useState<string | null>(null);
+  const [sourcePrompt, setSourcePrompt] = useState<string | null>(null);
+  const revisionPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!intent) {
       return;
     }
 
-    if (intent.kind === "open_workflow_lobby") {
-      const defaultWorkflow = WORKFLOW_DEFINITIONS[0];
-      const firstInputId = defaultWorkflow?.inputs[0]?.id ?? "goal";
+    if (intent.kind === "open_workflow_room") {
+      setSelectedWorkflowId(intent.workflowId);
+      setSourceLabel("Generated from chat");
+      setSourcePrompt(intent.prompt);
+    } else {
+      setSelectedWorkflowId(catalog[0]?.id ?? "");
+      setSourceLabel("Drafted from chat");
+      setSourcePrompt(intent.prompt);
+      setRevisionPrompt(intent.prompt);
+    }
 
-      setSelectedWorkflowId(defaultWorkflow?.id ?? "");
-      setInputValues(intent.prompt.trim() ? { [firstInputId]: intent.prompt.trim() } : {});
-      setSession(null);
-      setRoomPrompt("");
-      setError(null);
-      setSourceIntent(intent);
-      onIntentHandled?.();
+    setRevisionPreview(null);
+    setRevisionNotice(null);
+    onIntentHandled?.();
+  }, [catalog, intent, onIntentHandled]);
+
+  useEffect(() => {
+    if (!selectedWorkflowId) {
+      setExplanation(null);
       return;
     }
 
     let cancelled = false;
 
-    const openWorkflowRoom = async () => {
-      setSelectedWorkflowId(intent.workflowId);
-      setInputValues(seedWorkflowInputs(intent.workflowId, intent.prompt));
-      setRoomPrompt("");
-      setError(null);
-      setSourceIntent(intent);
+    setIsLoadingExplanation(true);
+    setExplanationError(null);
+    setRevisionPreview(null);
+    setRevisionNotice(null);
 
-      if (providerGate.checking) {
-        return;
-      }
-
-      if (!providerGate.ready) {
-        onIntentHandled?.();
-        return;
-      }
-
-      setIsStarting(true);
-
-      try {
-        const nextSession = await startWorkflowSession(
-          intent.workflowId,
-          seedWorkflowInputs(intent.workflowId, intent.prompt),
-          intent.origin,
-        );
-
+    void explainWorkflow(selectedWorkflowId)
+      .then((nextExplanation) => {
         if (!cancelled) {
-          setSession(nextSession);
+          setExplanation(nextExplanation);
         }
-      } catch (caughtError) {
+      })
+      .catch((caughtError) => {
         if (!cancelled) {
           const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-          setError(message);
+          setExplanationError(message);
+          setExplanation(null);
         }
-      } finally {
+      })
+      .finally(() => {
         if (!cancelled) {
-          setIsStarting(false);
-          onIntentHandled?.();
+          setIsLoadingExplanation(false);
         }
-      }
-    };
-
-    void openWorkflowRoom();
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [intent, onIntentHandled, providerGate.checking, providerGate.ready]);
+  }, [selectedWorkflowId]);
 
-  const handleStart = async () => {
-    if (!selectedWorkflow || !providerGate.ready) {
+  const handleGenerateRevision = async () => {
+    if (!selectedWorkflowId || revisionPrompt.trim().length === 0) {
       return;
     }
 
-    setError(null);
-    setIsStarting(true);
+    setIsGeneratingRevision(true);
+    setExplanationError(null);
+    setRevisionNotice(null);
 
     try {
-      const inputs = Object.fromEntries(
-        selectedWorkflow.inputs
-          .map((input) => [input.id, inputValues[input.id]?.trim() ?? ""])
-          .filter(([, value]) => value.length > 0),
-      );
-      const nextSession = await startWorkflowSession(
-        selectedWorkflow.id,
-        inputs,
-        sourceIntent?.origin,
-      );
-      setSession(nextSession);
-      setRoomPrompt("");
+      const preview = await reviseWorkflow(selectedWorkflowId, revisionPrompt.trim());
+      setRevisionPreview(preview);
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
+      setExplanationError(message);
     } finally {
-      setIsStarting(false);
+      setIsGeneratingRevision(false);
     }
   };
 
-  const handleContinue = async () => {
-    if (!session || roomPrompt.trim().length === 0 || !providerGate.ready) {
+  const handleEnterChat = () => {
+    window.dispatchEvent(
+      new CustomEvent("nuka:navigate", {
+        detail: { page: "chat" },
+      }),
+    );
+  };
+
+  const handleImprove = () => {
+    revisionPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
+  const handleApplyRevision = () => {
+    if (!revisionPreview) {
       return;
     }
 
-    setError(null);
-    setIsContinuing(true);
-
-    try {
-      const nextSession = await continueWorkflowSession(session.sessionId, roomPrompt.trim());
-      setSession(nextSession);
-      setRoomPrompt("");
-    } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
-    } finally {
-      setIsContinuing(false);
-    }
+    setRevisionNotice(revisionPreview.changeSummary);
+    setRevisionPreview(null);
   };
 
   return (
-    <div className="page-layout">
-      <SectionHeader
-        meta="Saved types, sessions, and shared memory"
-        status="Shared Memory"
-        tag="Workflow"
-        title="Saved Workflows"
-      />
+    <div className="page-layout workflow-page">
+      <div className="page-layout__body workflow-page__body">
+        <WorkflowCatalog
+          selectedWorkflowId={selectedWorkflowId}
+          workflows={catalog}
+          onSelectWorkflow={(workflowId) => {
+            setSelectedWorkflowId(workflowId);
+            setSourceLabel(null);
+            setSourcePrompt(null);
+          }}
+        />
 
-      <div className="page-layout__body">
-        <div className="page-layout__main">
-          {providerGate.blocked ? (
-            <Card description={providerGate.message} title="Provider required" tone="soft">
-              <div className="settings-panel__footer">
-                <button
-                  className="settings-button settings-button--accent"
-                  onClick={providerGate.openSettings}
-                  type="button"
-                >
-                  Open Settings
-                </button>
-              </div>
-            </Card>
+        <div className="page-layout__main workflow-page__detail">
+          <WorkflowExplanationView
+            explanation={explanation}
+            isLoading={isLoadingExplanation}
+            onEnterChat={handleEnterChat}
+            onImprove={handleImprove}
+            revisionNotice={revisionNotice}
+            sourceLabel={sourceLabel}
+            sourcePrompt={sourcePrompt}
+          />
+
+          <WorkflowRevisionPanel
+            explanation={explanation}
+            isGenerating={isGeneratingRevision}
+            preview={revisionPreview}
+            prompt={revisionPrompt}
+            ref={revisionPanelRef}
+            suggestions={REVISION_SUGGESTIONS}
+            onApply={handleApplyRevision}
+            onGenerate={() => {
+              void handleGenerateRevision();
+            }}
+            onKeepEditing={() => setRevisionPreview(null)}
+            onPromptChange={setRevisionPrompt}
+          />
+
+          {explanationError ? (
+            <div className="workflow-inline-error">{explanationError}</div>
           ) : null}
-
-          {session ? (
-            <WorkflowRoom
-              composerDisabled={!providerGate.ready || isContinuing}
-              continueDisabled={!providerGate.ready || isContinuing || roomPrompt.trim().length === 0}
-              isContinuing={isContinuing}
-              onContinue={() => void handleContinue()}
-              onPromptChange={setRoomPrompt}
-              prompt={roomPrompt}
-              reviewDock={<MemoryReviewDock {...memoryReviewDock} />}
-              session={session}
-              workflowTitle={activeWorkflow?.title ?? session.workflowId}
-            />
-          ) : (
-            <WorkflowLobby
-              inputValues={inputValues}
-              isStarting={isStarting}
-              onInputChange={(inputId, value) =>
-                setInputValues((current) => ({
-                  ...current,
-                  [inputId]: value,
-                }))
-              }
-              onSelectWorkflow={(workflowId) => {
-                setSelectedWorkflowId(workflowId);
-                setSession(null);
-                setError(null);
-              }}
-              onStart={() => void handleStart()}
-              selectedWorkflow={selectedWorkflow}
-              selectedWorkflowId={selectedWorkflowId}
-              startDisabled={!providerGate.ready || isStarting}
-              workflows={WORKFLOW_DEFINITIONS}
-            />
-          )}
-
-          {error ? <Card description={error} title="Workflow Error" tone="soft" /> : null}
         </div>
-
-        <Inspector
-          description={
-            session
-              ? "Shows the active room, workflow lanes, event counts, and incoming chat context."
-              : "Shows the selected workflow, required inputs, room readiness, and any incoming chat context."
-          }
-          title={session ? "Workflow Room Context" : "Workflow Context"}
-        >
-          <Card
-            description={
-              session
-                ? activeWorkflow?.title ?? session.workflowId
-                : activeWorkflow?.title ?? "No workflow selected"
-            }
-            title={session ? "Room Workflow" : "Selected Workflow"}
-          />
-          <Card
-            description={
-              session
-                ? `${transcriptEvents.length} transcript events | ${timelineEvents.length} timeline events`
-                : activeWorkflow?.inputs.map((input) => input.label).join(" | ") || "No inputs"
-            }
-            title={session ? "Room Activity" : "Required Inputs"}
-          />
-          <Card
-            description={
-              session
-                ? `${Object.keys(session.inputs).length} captured inputs | ${session.status}`
-                : "No session started yet"
-            }
-            title="Execution"
-          />
-          {sourceOrigin ? (
-            <Card
-              description={formatWorkflowSourceSession(sourceOrigin.sourceSessionId)}
-              title="Source Session"
-              tone="soft"
-            />
-          ) : null}
-          {session ? (
-            <div style={{ display: "grid", gap: "0.75rem" }}>
-              <AgentColumn
-                description="Maintains the session prompt, transcript, and routing context."
-                detail={`Session ${session.sessionId.slice(0, 8)}...`}
-                status="coordinating"
-                title="Room Coordinator"
-              />
-              <AgentColumn
-                description="Tracks workflow state transitions and timeline milestones."
-                detail={`${timelineEvents.length} timeline events recorded`}
-                status="tracking"
-                title="Timeline Lane"
-              />
-              <AgentColumn
-                description="Shapes the next assistant reply from the room conversation."
-                detail={`${transcriptEvents.length} transcript events available`}
-                status="drafting"
-                title="Draft Lane"
-              />
-            </div>
-          ) : null}
-        </Inspector>
       </div>
     </div>
   );
-}
-
-function isTranscriptEvent(event: WorkflowEvent) {
-  return event.kind === "user_message" || event.kind === "assistant_message";
 }

@@ -144,6 +144,17 @@ export function getWorkflowSummary(workflowId: string): WorkflowSummary | null {
   };
 }
 
+export async function explainWorkflow(workflowId: string): Promise<WorkflowExplanation> {
+  return invoke<WorkflowExplanation>("explain_workflow", { workflowId });
+}
+
+export async function reviseWorkflow(
+  workflowId: string,
+  prompt: string,
+): Promise<WorkflowRevisionPreview> {
+  return invoke<WorkflowRevisionPreview>("revise_workflow", { workflowId, prompt });
+}
+
 export async function startWorkflowSession(
   workflowId: string,
   inputs?: Record<string, string>,

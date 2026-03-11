@@ -18,6 +18,90 @@ const runtimeStatusState = {
   },
 };
 
+const workflowExplanations = {
+  "workflow-research-brief": {
+    workflowId: "workflow-research-brief",
+    title: "Research Brief",
+    summary: "Turn a rough goal into a clear brief with staged drafting and review.",
+    steps: [
+      {
+        id: "scope",
+        title: "Scope intake",
+        purpose: "Capture the product goal and framing constraints.",
+        executor: "Room coordinator",
+        inputSource: "Chat goal",
+        output: "Structured workflow brief",
+        completion: "Goal and audience are clear",
+      },
+      {
+        id: "draft",
+        title: "Draft brief",
+        purpose: "Draft the first research brief from the captured scope.",
+        executor: "Draft lane",
+        inputSource: "Structured workflow brief",
+        output: "Research brief draft",
+        completion: "Draft is ready for review",
+      },
+    ],
+    dependencies: {
+      agents: ["Room coordinator", "Draft lane"],
+      toolsAndKnowledge: ["Project notes", "Knowledge search"],
+      requiredInputs: ["Goal"],
+    },
+  },
+  "workflow-release-notes": {
+    workflowId: "workflow-release-notes",
+    title: "Release Notes",
+    summary: "Draft, review, and publish release notes with a cleaner publish handoff.",
+    steps: [
+      {
+        id: "collect",
+        title: "Collect changes",
+        purpose: "Gather changes that belong in the release.",
+        executor: "Release reviewer",
+        inputSource: "Release scope",
+        output: "Confirmed release change list",
+        completion: "Candidate changes are validated",
+      },
+      {
+        id: "publish",
+        title: "Prepare publish draft",
+        purpose: "Turn validated changes into a publish-ready note set.",
+        executor: "Publishing lane",
+        inputSource: "Confirmed release change list",
+        output: "Release notes draft",
+        completion: "Draft is ready for approval",
+      },
+    ],
+    dependencies: {
+      agents: ["Release reviewer", "Publishing lane"],
+      toolsAndKnowledge: ["Knowledge search", "Release changelog"],
+      requiredInputs: ["Release scope"],
+    },
+  },
+  "workflow-customer-triage": {
+    workflowId: "workflow-customer-triage",
+    title: "Customer Triage",
+    summary: "Classify and route customer issues with a compact triage loop.",
+    steps: [
+      {
+        id: "triage",
+        title: "Classify issue",
+        purpose: "Determine severity and routing path.",
+        executor: "Triage lane",
+        inputSource: "Issue summary",
+        output: "Severity and owner suggestion",
+        completion: "Issue is categorized",
+      },
+    ],
+    dependencies: {
+      agents: ["Triage lane"],
+      toolsAndKnowledge: ["Issue history"],
+      requiredInputs: ["Issue summary"],
+    },
+  },
+} as const;
+
 const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
   switch (command) {
     case "app_runtime_status":
@@ -115,6 +199,23 @@ const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>)
         },
       };
     }
+    case "explain_workflow":
+      return (
+        workflowExplanations[String(args?.workflowId ?? "workflow-research-brief") as keyof typeof workflowExplanations] ??
+        workflowExplanations["workflow-research-brief"]
+      );
+    case "revise_workflow":
+      return {
+        workflowId: String(args?.workflowId ?? "workflow-research-brief"),
+        prompt: String(args?.prompt ?? ""),
+        changeSummary: "Split drafting and publishing into clearer review stages.",
+        stepChanges: [
+          "Add a dedicated review step before publish.",
+          "Search the knowledge base before drafting.",
+        ],
+        dependencyChanges: ["Add Knowledge search before draft generation."],
+        outcomeChanges: ["Draft output is now optimized for a publish-ready changelog."],
+      };
     case "start_workflow_session":
       return {
         sessionId: "workflow-session-1",
@@ -344,32 +445,35 @@ describe("App shell", () => {
     expect(findText(view.container, "Draft a release process")).toBeTruthy();
 
     await clickButton(view.container, "Open Workflow");
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(view.container.querySelector('.app-shell__page[data-active-page="workflow"]')).toBeTruthy();
-    expect(findText(view.container, "Workflow Lobby")).toBeTruthy();
-    expect(view.container.textContent).toContain("Came from World chat session");
+    expect(findText(view.container, "Workflow Lobby")).toBeFalsy();
+    expect(findText(view.container, "Workflow Room")).toBeFalsy();
+    expect(findText(view.container, "Overview")).toBeTruthy();
+    expect(findText(view.container, "Drafted from chat")).toBeTruthy();
+    expect(findText(view.container, "Draft a release process")).toBeTruthy();
+    expect(invokeMock).toHaveBeenCalledWith("explain_workflow", {
+      workflowId: "workflow-research-brief",
+    });
 
-    const goalInput = view.container.querySelector(
-      'input[placeholder="What should this workflow produce?"]',
-    ) as HTMLInputElement | null;
-    expect(goalInput?.value).toBe("Draft a release process");
+    const revisionInput = view.container.querySelector(
+      'textarea[placeholder="Describe how to improve this workflow..."]',
+    ) as HTMLTextAreaElement | null;
+    expect(revisionInput?.value).toBe("Draft a release process");
 
-    await clickButton(view.container, "Start Workflow");
-
-    expect(invokeMock).toHaveBeenCalledWith(
-      "start_workflow_session",
-      expect.objectContaining({
-        workflowId: "workflow-research-brief",
-        inputs: { goal: "Draft a release process" },
-        origin: {
-          sourceSessionId: "chat-session-create",
-          sourceMode: "create_workflow",
-        },
-      }),
-    );
+    expect(
+      invokeMock.mock.calls.filter(([command]) => command === "start_workflow_session"),
+    ).toHaveLength(0);
+    expect(
+      invokeMock.mock.calls.filter(([command]) => command === "revise_workflow"),
+    ).toHaveLength(0);
   });
 
-  it("keeps a selected workflow handoff in chat until workflow is explicitly opened", async () => {
+  it("keeps a selected workflow handoff in chat until the workflow token explicitly opens details", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
@@ -389,27 +493,29 @@ describe("App shell", () => {
     expect(view.container.querySelector('.app-shell__page[data-active-page="chat"]')).toBeTruthy();
     expect(findText(view.container, "Workflow Room")).toBeFalsy();
 
-    const workflowButton = view.container.querySelector('button[aria-label="Workflow"]');
+    const workflowToken = view.container.querySelector(
+      '[data-testid="chat-workflow-token"]',
+    ) as HTMLElement | null;
+    expect(workflowToken?.textContent).toContain("Release Notes");
+    expect(workflowToken?.textContent).toContain("Open Workflow");
 
+    await clickButton(view.container, "Open Workflow");
     await act(async () => {
-      workflowButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(invokeMock).toHaveBeenCalledWith(
-      "start_workflow_session",
-      expect.objectContaining({
-        workflowId: "workflow-release-notes",
-        inputs: { releaseScope: "Review the release checklist" },
-        origin: {
-          sourceSessionId: "chat-session-specific",
-          sourceMode: "specific_workflow",
-        },
-      }),
-    );
     expect(view.container.querySelector('.app-shell__page[data-active-page="workflow"]')).toBeTruthy();
-    expect(findText(view.container, "Workflow Room")).toBeTruthy();
+    expect(findText(view.container, "Workflow Room")).toBeFalsy();
+    expect(findText(view.container, "Workflow Lobby")).toBeFalsy();
+    expect(findText(view.container, "Generated from chat")).toBeTruthy();
     expect(findText(view.container, "Review the release checklist")).toBeTruthy();
+    expect(findText(view.container, "Prepare publish draft")).toBeTruthy();
+    expect(invokeMock).toHaveBeenCalledWith("explain_workflow", {
+      workflowId: "workflow-release-notes",
+    });
+    expect(
+      invokeMock.mock.calls.filter(([command]) => command === "start_workflow_session"),
+    ).toHaveLength(0);
   });
 });
