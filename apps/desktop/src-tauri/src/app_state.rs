@@ -51,9 +51,11 @@ pub struct AppState {
     provider_service: nuka_runtime::providers::ProvidersService,
     settings_service: nuka_runtime::settings_service::SettingsService,
     team_service: nuka_runtime::team_service::TeamService,
+    team_run_service: nuka_runtime::team_run_service::TeamRunService,
     agents_service: nuka_runtime::agents::AgentsService,
     knowledge_service: nuka_runtime::knowledge_service::KnowledgeService,
     memory_service: nuka_runtime::memory_service::MemoryService,
+    workspace_sessions_service: nuka_runtime::workspace_sessions::WorkspaceSessionsService,
     world_runtime: nuka_runtime::world::WorldRuntime,
     workflow_world_runtime: nuka_runtime::workflow_world::WorkflowWorldRuntime,
 }
@@ -66,9 +68,11 @@ impl AppState {
         provider_service: nuka_runtime::providers::ProvidersService,
         settings_service: nuka_runtime::settings_service::SettingsService,
         team_service: nuka_runtime::team_service::TeamService,
+        team_run_service: nuka_runtime::team_run_service::TeamRunService,
         agents_service: nuka_runtime::agents::AgentsService,
         knowledge_service: nuka_runtime::knowledge_service::KnowledgeService,
         memory_service: nuka_runtime::memory_service::MemoryService,
+        workspace_sessions_service: nuka_runtime::workspace_sessions::WorkspaceSessionsService,
         world_runtime: nuka_runtime::world::WorldRuntime,
         workflow_world_runtime: nuka_runtime::workflow_world::WorkflowWorldRuntime,
     ) -> Self {
@@ -78,9 +82,11 @@ impl AppState {
             provider_service,
             settings_service,
             team_service,
+            team_run_service,
             agents_service,
             knowledge_service,
             memory_service,
+            workspace_sessions_service,
             world_runtime,
             workflow_world_runtime,
         }
@@ -114,12 +120,22 @@ impl AppState {
         &self.team_service
     }
 
+    pub fn team_run_service(&self) -> &nuka_runtime::team_run_service::TeamRunService {
+        &self.team_run_service
+    }
+
     pub fn knowledge_service(&self) -> &nuka_runtime::knowledge_service::KnowledgeService {
         &self.knowledge_service
     }
 
     pub fn memory_service(&self) -> &nuka_runtime::memory_service::MemoryService {
         &self.memory_service
+    }
+
+    pub fn workspace_sessions_service(
+        &self,
+    ) -> &nuka_runtime::workspace_sessions::WorkspaceSessionsService {
+        &self.workspace_sessions_service
     }
 
     pub fn world_runtime(&self) -> &nuka_runtime::world::WorldRuntime {

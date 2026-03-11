@@ -44,15 +44,22 @@ impl TeamService {
     }
 
     pub fn new_for_test_with_provider() -> Self {
+        let mut service =
+            Self::new_for_test_with_seeded_completion(crate::settings_service::test_pool());
+        service.seed_provider = Some(nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        ));
+        service
+    }
+
+    pub fn new_for_test_with_seeded_completion(pool: sqlx::SqlitePool) -> Self {
         Self {
-            pool: crate::settings_service::test_pool(),
+            pool,
             provider_client: OpenAiCompatibleProvider::default(),
-            seed_provider: Some(nuka_domain::provider::ProviderConfig::openai_compatible(
-                "Local",
-                "http://localhost:11434/v1",
-                "",
-                "gpt-oss",
-            )),
+            seed_provider: None,
             seed_completion: Some(
                 r#"{
                   "name": "Release Team",
