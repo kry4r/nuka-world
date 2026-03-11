@@ -282,16 +282,13 @@ describe("App shell", () => {
     expect(view.container.textContent).toContain("Provider required");
   });
 
-  it("renders a persistent left rail with the docs logo mark", async () => {
+  it("keeps chat as the default page before any workflow handoff", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const sidebar = view.container.querySelector('.app-sidebar[aria-label="Primary"]');
-    const brandMark = view.container.querySelector(".app-sidebar__brand .nuka-logo");
-
-    expect(sidebar).toBeTruthy();
-    expect(brandMark?.getAttribute("data-brand-source")).toBe("docs-logo");
-    expect(findText(view.container, "Settings")).toBeTruthy();
+    expect(view.container.querySelector('.app-shell__page[data-active-page="chat"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
+    expect(findText(view.container, "Workflow Room")).toBeFalsy();
   });
 
   it("does not render the removed top status strip and still tracks active navigation", async () => {
@@ -368,7 +365,7 @@ describe("App shell", () => {
     );
   });
 
-  it("moves specific workflow mode into a workflow room after the first send and keeps context synchronized", async () => {
+  it("keeps a selected workflow handoff in chat until workflow is explicitly opened", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
@@ -377,6 +374,20 @@ describe("App shell", () => {
     await setComposerValue(view.container, "Review the release checklist");
     await clickButton(view.container, "Send");
     await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      invokeMock.mock.calls.filter(([command]) => command === "start_workflow_session"),
+    ).toHaveLength(0);
+    expect(view.container.querySelector('.app-shell__page[data-active-page="chat"]')).toBeTruthy();
+    expect(findText(view.container, "Workflow Room")).toBeFalsy();
+
+    const workflowButton = view.container.querySelector('button[aria-label="Workflow"]');
+
+    await act(async () => {
+      workflowButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -395,7 +406,5 @@ describe("App shell", () => {
     expect(view.container.querySelector('.app-shell__page[data-active-page="workflow"]')).toBeTruthy();
     expect(findText(view.container, "Workflow Room")).toBeTruthy();
     expect(findText(view.container, "Review the release checklist")).toBeTruthy();
-    expect(view.container.textContent).toContain("Came from World chat session");
-    expect(findText(view.container, "Status: active")).toBeTruthy();
   });
 });

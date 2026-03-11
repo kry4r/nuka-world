@@ -23,6 +23,46 @@ export type WorkflowDefinition = {
   }>;
 };
 
+export type WorkflowSummary = {
+  id: string;
+  title: string;
+  summary: string;
+};
+
+export type WorkflowExplanation = {
+  workflowId: string;
+  title: string;
+  summary: string;
+  steps: Array<{
+    id: string;
+    title: string;
+    purpose: string;
+    executor: string;
+    inputSource: string;
+    output: string;
+    completion: string;
+  }>;
+  dependencies: {
+    agents: string[];
+    toolsAndKnowledge: string[];
+    requiredInputs: string[];
+  };
+};
+
+export type WorkflowRevisionPreview = {
+  workflowId: string;
+  prompt: string;
+  changeSummary: string;
+  stepChanges: string[];
+  dependencyChanges: string[];
+  outcomeChanges: string[];
+};
+
+export type WorkflowContextToken = {
+  workflowId: string;
+  label: string;
+};
+
 export const WORKFLOW_DEFINITIONS: WorkflowDefinition[] = [
   {
     id: "workflow-research-brief",
@@ -89,6 +129,20 @@ export type WorkflowLaunchIntent =
       prompt: string;
       origin: WorkflowStartOrigin;
     };
+
+export function getWorkflowSummary(workflowId: string): WorkflowSummary | null {
+  const workflow = WORKFLOW_DEFINITIONS.find((item) => item.id === workflowId);
+
+  if (!workflow) {
+    return null;
+  }
+
+  return {
+    id: workflow.id,
+    title: workflow.title,
+    summary: workflow.purpose,
+  };
+}
 
 export async function startWorkflowSession(
   workflowId: string,

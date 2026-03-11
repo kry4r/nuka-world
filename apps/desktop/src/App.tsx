@@ -7,7 +7,12 @@ import { KnowledgePage } from "./features/knowledge/KnowledgePage";
 import { MemoryPage } from "./features/memory/MemoryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { WorkflowPage } from "./features/workflow/WorkflowPage";
-import type { WorkflowLaunchIntent } from "./lib/workflow";
+import {
+  getWorkflowSummary,
+  type WorkflowContextToken,
+  type WorkflowLaunchIntent,
+  type WorkflowSummary,
+} from "./lib/workflow";
 
 type AppPage = ShellPageId;
 
@@ -19,6 +24,11 @@ type AppPageDefinition = {
 export default function App() {
   const [activePage, setActivePage] = useState<AppPage>("chat");
   const [workflowIntent, setWorkflowIntent] = useState<WorkflowLaunchIntent | null>(null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  const [selectedWorkflowSummary, setSelectedWorkflowSummary] =
+    useState<WorkflowSummary | null>(null);
+  const [chatWorkflowToken, setChatWorkflowToken] =
+    useState<WorkflowContextToken | null>(null);
 
   useEffect(() => {
     const handleNavigation = (event: Event) => {
@@ -39,6 +49,29 @@ export default function App() {
 
   const handleWorkflowHandoff = (handoff: WorkflowLaunchIntent) => {
     setWorkflowIntent(handoff);
+
+    if (handoff.kind === "open_workflow_room") {
+      const workflowSummary = getWorkflowSummary(handoff.workflowId);
+      setSelectedWorkflowId(handoff.workflowId);
+      setSelectedWorkflowSummary(workflowSummary);
+      setChatWorkflowToken(
+        workflowSummary
+          ? {
+              workflowId: workflowSummary.id,
+              label: workflowSummary.title,
+            }
+          : {
+              workflowId: handoff.workflowId,
+              label: handoff.workflowId,
+            },
+      );
+      setActivePage("chat");
+      return;
+    }
+
+    setSelectedWorkflowId(null);
+    setSelectedWorkflowSummary(null);
+    setChatWorkflowToken(null);
     setActivePage("workflow");
   };
 
