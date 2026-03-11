@@ -709,6 +709,15 @@ button {
   min-width: 0;
 }
 
+.chat-page .chat-surface__actions {
+  position: relative;
+  margin-left: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
 .chat-page .chat-surface__meta {
   min-width: 0;
   color: var(--color-text-soft);
@@ -1352,7 +1361,7 @@ button {
 }
 
 .chat-page .chat-surface {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .chat-page .chat-feed {
@@ -1709,15 +1718,12 @@ button {
 }
 
 .chat-page .memory-review-dock {
-  position: absolute;
-  right: 0;
-  bottom: 56px;
-  left: 0;
+  position: relative;
   z-index: 5;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-end;
+  gap: 8px;
   pointer-events: none;
 }
 
@@ -1728,25 +1734,23 @@ button {
 
 .chat-page .memory-review-dock__toggle {
   display: grid;
-  width: min(100%, 420px);
+  width: min(42vw, 300px);
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px 9px;
+  gap: 8px;
+  padding: 9px 14px;
   border: 1px solid rgba(217, 205, 190, 0.84);
-  border-radius: 18px 18px 12px 12px;
-  background: rgba(250, 244, 236, 0.96);
-  box-shadow: 0 18px 32px rgba(88, 69, 47, 0.14);
+  border-radius: 16px;
+  background: rgba(252, 248, 242, 0.98);
+  box-shadow: 0 12px 24px rgba(88, 69, 47, 0.12);
   color: var(--color-text);
-  clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%);
 }
 
 .chat-page .memory-review-dock__toggle-copy {
   display: flex;
   min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
 }
 
 .chat-page .memory-review-dock__toggle-title,
@@ -1766,16 +1770,26 @@ button {
   line-height: 1.45;
 }
 
-.chat-page .memory-review-dock__toggle-summary {
-  max-width: 148px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.chat-page .memory-review-dock__toggle-meta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(244, 236, 226, 0.88);
   white-space: nowrap;
 }
 
+.chat-page .memory-review-dock__toggle-summary {
+  display: none;
+}
+
 .chat-page .memory-review-dock__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
   display: flex;
-  width: min(100%, 620px);
+  width: min(620px, 70vw);
   max-height: min(54vh, 420px);
   flex-direction: column;
   gap: 14px;
@@ -1786,6 +1800,7 @@ button {
   background: rgba(255, 250, 244, 0.98);
   box-shadow: 0 28px 56px rgba(88, 69, 47, 0.18);
   backdrop-filter: blur(18px);
+  transform-origin: top right;
 }
 
 .chat-page .memory-review-dock__panel-header,
@@ -1868,19 +1883,11 @@ button {
   }
 
   .chat-page .memory-review-dock {
-    bottom: 54px;
+    width: 100%;
   }
 
   .chat-page .memory-review-dock__toggle,
   .chat-page .memory-review-dock__panel {
     width: 100%;
-  }
-
-  .chat-page .memory-review-dock__toggle {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .chat-page .memory-review-dock__toggle-summary {
-    display: none;
   }
 }

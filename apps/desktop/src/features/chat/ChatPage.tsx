@@ -295,6 +295,9 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
                       {formatRoute(session?.route)}
                     </span>
                   </div>
+                  <div className="chat-surface__actions">
+                    <MemoryReviewDock {...memoryReviewDock} />
+                  </div>
                 </header>
 
                 <div className="chat-feed" role="log">
@@ -401,8 +404,6 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
               ) : null}
 
               {error ? <div className="composer__inline-feedback composer__inline-feedback--error">{error}</div> : null}
-
-              <MemoryReviewDock {...memoryReviewDock} />
 
               <div className="composer__bar">
                 <div className="composer__menu">
