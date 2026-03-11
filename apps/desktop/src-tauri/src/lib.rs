@@ -7,7 +7,14 @@ mod tray;
 use tauri::Manager;
 
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(tauri_plugin_mcp_bridge::init());
+    }
+
+    builder
         .invoke_handler(tauri::generate_handler![
             commands::agents::default_agent_tool_bindings,
             commands::agents::delete_agent,
@@ -113,5 +120,49 @@ mod tests {
                 "missing invoke handler registration for {command}"
             );
         }
+    }
+
+    #[test]
+    fn tauri_lib_registers_mcp_bridge_in_debug_builds() {
+        let lib_rs = std::fs::read_to_string("src/lib.rs").unwrap();
+        let non_test_region = lib_rs
+            .split("#[cfg(test)]")
+            .next()
+            .expect("lib.rs should contain a non-test region");
+
+        assert!(
+            non_test_region.contains("tauri_plugin_mcp_bridge::init()"),
+            "expected MCP bridge plugin registration in debug builds"
+        );
+    }
+
+    #[test]
+    fn desktop_tauri_manifest_declares_mcp_bridge_dependency() {
+        let manifest = std::fs::read_to_string("Cargo.toml").unwrap();
+
+        assert!(
+            manifest.contains("tauri-plugin-mcp-bridge"),
+            "expected tauri-plugin-mcp-bridge dependency in Cargo.toml"
+        );
+    }
+
+    #[test]
+    fn tauri_config_enables_global_tauri_for_mcp_bridge() {
+        let config = std::fs::read_to_string("tauri.conf.json").unwrap();
+
+        assert!(
+            config.contains("\"withGlobalTauri\": true"),
+            "expected withGlobalTauri enabled in tauri.conf.json"
+        );
+    }
+
+    #[test]
+    fn default_capability_allows_mcp_bridge() {
+        let capability = std::fs::read_to_string("capabilities/default.json").unwrap();
+
+        assert!(
+            capability.contains("\"mcp-bridge:default\""),
+            "expected mcp-bridge:default permission in default capability"
+        );
     }
 }

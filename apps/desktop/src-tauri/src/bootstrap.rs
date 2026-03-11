@@ -24,10 +24,7 @@ pub async fn build_app_state<R: tauri::Runtime>(
 
     std::fs::create_dir_all(&data_dir)?;
     let db_path = data_dir.join("nuka-world.sqlite3");
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&sqlite_url(&db_path))
-        .await?;
+    let pool = connect_persistent_pool(&db_path).await?;
 
     let pageindex_runtime = resolve_bundled_pageindex_runtime(app)?;
 
@@ -106,7 +103,43 @@ fn knowledge_status(
     }
 }
 
-fn sqlite_url(path: &PathBuf) -> String {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    format!("sqlite://{normalized}")
+async fn connect_persistent_pool(path: &PathBuf) -> anyhow::Result<sqlx::SqlitePool> {
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true);
+
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await?;
+
+    Ok(pool)
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn connect_persistent_pool_creates_missing_sqlite_file() {
+        let unique = format!(
+            "nuka-world-bootstrap-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        let db_path = dir.join("nuka-world.sqlite3");
+
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let pool = super::connect_persistent_pool(&db_path).await.unwrap();
+        sqlx::query("select 1").execute(&pool).await.unwrap();
+
+        assert!(db_path.exists());
+
+        pool.close().await;
+        std::fs::remove_file(&db_path).ok();
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
