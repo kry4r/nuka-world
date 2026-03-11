@@ -14,7 +14,7 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
   return (
     <aside aria-label="Primary" className="app-sidebar">
       <button aria-label="Open Chat" className="app-sidebar__brand" onClick={() => onNavigate("chat")} type="button">
-        <NukaLogo className="app-sidebar__logo" size={56} />
+        <NukaLogo className="app-sidebar__logo" size={124} />
       </button>
 
       <nav aria-label="Primary pages" className="app-sidebar__nav">

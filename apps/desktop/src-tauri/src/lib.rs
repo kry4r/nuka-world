@@ -165,4 +165,14 @@ mod tests {
             "expected mcp-bridge:default permission in default capability"
         );
     }
+
+    #[test]
+    fn desktop_tauri_icons_include_generated_png_assets() {
+        for icon in ["icons/icon.ico", "icons/icon.png", "icons/128x128.png"] {
+            assert!(
+                std::path::Path::new(icon).exists(),
+                "expected generated desktop icon asset at {icon}"
+            );
+        }
+    }
 }
