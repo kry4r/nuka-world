@@ -1130,6 +1130,183 @@ button {
   text-transform: uppercase;
 }
 
+.team-run-panel,
+.run-charter-card,
+.run-event-feed,
+.run-event-feed__item,
+.team-run-panel__composer,
+.team-run-panel__field {
+  display: flex;
+  flex-direction: column;
+}
+
+.team-run-panel {
+  flex: 1;
+  min-height: 0;
+  gap: 14px;
+}
+
+.agent-team-strip {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.agent-team-strip__card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(217, 205, 190, 0.76);
+  border-radius: 18px;
+  background: rgba(255, 252, 247, 0.92);
+}
+
+.agent-team-strip__card.is-lead {
+  border-color: rgba(182, 157, 122, 0.88);
+  background: rgba(250, 244, 236, 0.96);
+}
+
+.agent-team-strip__card-top,
+.agent-team-strip__identity,
+.run-charter-card__header,
+.run-charter-card__badges,
+.run-event-feed__meta,
+.run-event-feed__tool,
+.team-run-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-team-strip__card-top,
+.run-charter-card__header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.agent-team-strip__identity {
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-team-strip__identity strong,
+.run-event-feed__item h3 {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.agent-team-strip__identity span,
+.agent-team-strip__status,
+.run-charter-card__eyebrow,
+.run-charter-card__metric dt,
+.run-event-feed__kind,
+.run-event-feed__agent,
+.team-run-panel__field span {
+  color: #766d63;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.agent-team-strip__card p,
+.run-charter-card__goal,
+.run-charter-card__metric dd,
+.run-event-feed__item p {
+  margin: 0;
+  color: var(--color-text-soft);
+  line-height: 1.5;
+}
+
+.run-charter-card__header h2,
+.run-event-feed__item h3 {
+  margin: 0;
+}
+
+.run-charter-card__grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.run-charter-card__metric {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 252, 247, 0.92);
+}
+
+.run-charter-card__metric dt,
+.run-charter-card__metric dd {
+  margin: 0;
+}
+
+.run-charter-card__metric dd {
+  margin-top: 6px;
+}
+
+.run-event-feed {
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+  overflow: auto;
+}
+
+.run-event-feed__item {
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(217, 205, 190, 0.76);
+  border-radius: 18px;
+  background: rgba(255, 252, 247, 0.92);
+}
+
+.run-event-feed__tool span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(233, 221, 206, 0.78);
+  color: #5f584f;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.team-run-panel__composer {
+  gap: 12px;
+}
+
+.team-run-panel__agent-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-run-panel__agent-form .team-run-panel__field:last-child {
+  grid-column: 1 / -1;
+}
+
+.team-run-panel__error {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(247, 236, 233, 0.92);
+  color: #7b5044;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.team-run-panel__field {
+  gap: 8px;
+}
+
+.team-run-panel__input {
+  min-height: 64px;
+}
+
+.team-run-panel__actions {
+  justify-content: flex-end;
+}
+
 .chat-page .chat-stage__body {
   display: flex;
   flex: 1;

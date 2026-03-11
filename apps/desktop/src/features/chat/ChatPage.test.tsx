@@ -80,6 +80,15 @@ const { listWorkspaceSessionsMock, loadWorkspaceSessionMock } = vi.hoisted(() =>
   loadWorkspaceSessionMock: vi.fn(async () => null),
 }));
 
+const { continueTeamRunMock, addTeamRunAgentMock } = vi.hoisted(() => ({
+  continueTeamRunMock: vi.fn(async () => {
+    throw new Error("unexpected continueTeamRun call");
+  }),
+  addTeamRunAgentMock: vi.fn(async () => {
+    throw new Error("unexpected addTeamRunAgent call");
+  }),
+}));
+
 vi.mock("@/lib/chat", () => ({
   routeWorldPrompt: (...args: Parameters<typeof routeWorldPromptMock>) =>
     routeWorldPromptMock(...args),
@@ -105,6 +114,13 @@ vi.mock("@/lib/workspace", () => ({
   loadWorkspaceSession: (
     ...args: Parameters<typeof loadWorkspaceSessionMock>
   ) => loadWorkspaceSessionMock(...args),
+}));
+
+vi.mock("@/lib/team", () => ({
+  continueTeamRun: (...args: Parameters<typeof continueTeamRunMock>) =>
+    continueTeamRunMock(...args),
+  addTeamRunAgent: (...args: Parameters<typeof addTeamRunAgentMock>) =>
+    addTeamRunAgentMock(...args),
 }));
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -144,6 +160,29 @@ async function setComposerValue(container: HTMLElement, value: string) {
   });
 }
 
+async function setFieldValue(container: HTMLElement, label: string, value: string) {
+  const field = Array.from(container.querySelectorAll("input, textarea")).find(
+    (node) => node.getAttribute("aria-label") === label,
+  ) as HTMLInputElement | HTMLTextAreaElement | undefined;
+
+  await act(async () => {
+    if (!field) {
+      throw new Error(`field missing: ${label}`);
+    }
+
+    const prototype =
+      field instanceof HTMLTextAreaElement
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+
+    setter?.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await Promise.resolve();
+  });
+}
+
 async function clickWorkflowOption(container: HTMLElement, workflowId: string) {
   const option = container.querySelector(`[data-workflow-id="${workflowId}"]`) as
     | HTMLButtonElement
@@ -174,6 +213,8 @@ afterEach(async () => {
   reviewMemoryCandidateMock.mockReset();
   listWorkspaceSessionsMock.mockReset();
   loadWorkspaceSessionMock.mockReset();
+  continueTeamRunMock.mockReset();
+  addTeamRunAgentMock.mockReset();
   listWorkspaceSessionsMock.mockImplementation(async () => []);
   loadWorkspaceSessionMock.mockImplementation(async () => null);
   providerGateState.ready = true;
@@ -365,8 +406,289 @@ describe("ChatPage", () => {
       await Promise.resolve();
     });
 
-    expect(findText(view.container, "Team run session")).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Team run session"]')).toBeTruthy();
     expect(findText(view.container, "Ship the release")).toBeTruthy();
+    expect(findText(view.container, "Continue Run")).toBeTruthy();
+  });
+
+  it("shows the lead agent, current work, and tool activity for an active team run", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "waiting_for_user",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockImplementation(async (sessionId: string, kind: string) => {
+      if (sessionId === "run-release" && kind === "team_run") {
+        return {
+          kind: "team_run",
+          run: {
+            id: "run-release",
+            teamId: "team-release",
+            title: "Release Team Run",
+            goal: "Ship the release",
+            status: "waiting_for_user",
+            currentPhase: "review",
+            leadAgentId: "agent-coordinator",
+            charter: {
+              goal: "Ship the release",
+              successCriteria: "Release notes and checklist are complete.",
+              outputFormat: "Checkpoint summary",
+              currentPhase: "review",
+              maxRounds: 6,
+              maxActiveAgentsPerRound: 2,
+              maxMessagesPerAgentPerRound: 2,
+              budgetPolicy: "Summaries only",
+              stopConditions: ["Checklist complete"],
+            },
+            createdAt: "2026-03-11T12:10:00Z",
+            updatedAt: "2026-03-11T12:15:00Z",
+            agents: [
+              {
+                id: "agent-coordinator",
+                runId: "run-release",
+                sourceTeamAgentId: "team-agent-coordinator",
+                name: "Coordinator",
+                role: "Coordinator",
+                responsibility: "Guide the review round.",
+                systemPrompt: "Lead the team.",
+                toolBindings: [],
+                toolUsePolicy: {
+                  maxCallsPerRound: 1,
+                  summarizeOutput: true,
+                },
+                status: "reviewing",
+                currentWork: "Reviewing evidence conflicts",
+                lastToolActivity: null,
+                joinedAt: "2026-03-11T12:10:00Z",
+              },
+              {
+                id: "agent-research",
+                runId: "run-release",
+                sourceTeamAgentId: "team-agent-research",
+                name: "Research",
+                role: "Research",
+                responsibility: "Check evidence gaps.",
+                systemPrompt: "Investigate missing evidence.",
+                toolBindings: [],
+                toolUsePolicy: {
+                  maxCallsPerRound: 1,
+                  summarizeOutput: true,
+                },
+                status: "thinking",
+                currentWork: "Breaking down the goal",
+                lastToolActivity: "Using search_knowledge",
+                joinedAt: "2026-03-11T12:10:00Z",
+              },
+            ],
+            events: [
+              {
+                id: "event-agenda",
+                runId: "run-release",
+                kind: "round_agenda",
+                agentId: "agent-coordinator",
+                title: "Coordinator agenda",
+                content: "Focus the team on the remaining release blockers.",
+                status: "completed",
+                toolName: null,
+                toolCallId: null,
+                toolTarget: null,
+                sequence: 1,
+                createdAt: "2026-03-11T12:11:00Z",
+              },
+              {
+                id: "event-checkpoint",
+                runId: "run-release",
+                kind: "checkpoint_summary",
+                agentId: "agent-coordinator",
+                title: "Checkpoint summary",
+                content: "Notes are ready; one blocker remains in release validation.",
+                status: "completed",
+                toolName: null,
+                toolCallId: null,
+                toolTarget: null,
+                sequence: 2,
+                createdAt: "2026-03-11T12:12:00Z",
+              },
+            ],
+          },
+        };
+      }
+
+      return null;
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Coordinator")).toBeTruthy();
+    expect(findText(view.container, "Using search_knowledge")).toBeTruthy();
+    expect(findText(view.container, "checkpoint_summary")).toBeTruthy();
+    expect(findText(view.container, "Add Agent")).toBeTruthy();
+  });
+
+  it("continues a run and adds a runtime agent from the team run surface", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "waiting_for_user",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+    ]);
+
+    const baseRun = {
+      id: "run-release",
+      teamId: "team-release",
+      title: "Release Team Run",
+      goal: "Ship the release",
+      status: "waiting_for_user",
+      currentPhase: "review",
+      leadAgentId: "agent-coordinator",
+      charter: {
+        goal: "Ship the release",
+        successCriteria: "Release notes and checklist are complete.",
+        outputFormat: "Checkpoint summary",
+        currentPhase: "review",
+        maxRounds: 6,
+        maxActiveAgentsPerRound: 2,
+        maxMessagesPerAgentPerRound: 2,
+        budgetPolicy: "Summaries only",
+        stopConditions: ["Checklist complete"],
+      },
+      createdAt: "2026-03-11T12:10:00Z",
+      updatedAt: "2026-03-11T12:15:00Z",
+      agents: [
+        {
+          id: "agent-coordinator",
+          runId: "run-release",
+          sourceTeamAgentId: "team-agent-coordinator",
+          name: "Coordinator",
+          role: "Coordinator",
+          responsibility: "Guide the review round.",
+          systemPrompt: "Lead the team.",
+          toolBindings: [],
+          toolUsePolicy: {
+            maxCallsPerRound: 1,
+            summarizeOutput: true,
+          },
+          status: "reviewing",
+          currentWork: "Reviewing evidence conflicts",
+          lastToolActivity: null,
+          joinedAt: "2026-03-11T12:10:00Z",
+        },
+      ],
+      events: [
+        {
+          id: "event-checkpoint",
+          runId: "run-release",
+          kind: "checkpoint_summary",
+          agentId: "agent-coordinator",
+          title: "Checkpoint summary",
+          content: "Notes are ready; one blocker remains in release validation.",
+          status: "completed",
+          toolName: null,
+          toolCallId: null,
+          toolTarget: null,
+          sequence: 1,
+          createdAt: "2026-03-11T12:12:00Z",
+        },
+      ],
+    };
+
+    loadWorkspaceSessionMock.mockResolvedValue({
+      kind: "team_run",
+      run: baseRun,
+    });
+    continueTeamRunMock.mockResolvedValueOnce({
+      ...baseRun,
+      status: "active",
+      currentPhase: "analysis",
+      events: [
+        ...baseRun.events,
+        {
+          id: "event-follow-up",
+          runId: "run-release",
+          kind: "round_agenda",
+          agentId: "agent-coordinator",
+          title: "Coordinator agenda",
+          content: "Re-check the remaining validation blocker.",
+          status: "completed",
+          toolName: null,
+          toolCallId: null,
+          toolTarget: null,
+          sequence: 2,
+          createdAt: "2026-03-11T12:16:00Z",
+        },
+      ],
+    });
+    addTeamRunAgentMock.mockResolvedValueOnce({
+      ...baseRun,
+      agents: [
+        ...baseRun.agents,
+        {
+          id: "agent-scribe",
+          runId: "run-release",
+          sourceTeamAgentId: null,
+          name: "Scribe",
+          role: "Writer",
+          responsibility: "Capture the final handoff.",
+          systemPrompt: "Write the handoff.",
+          toolBindings: [],
+          toolUsePolicy: {
+            maxCallsPerRound: 1,
+            summarizeOutput: true,
+          },
+          status: "waiting",
+          currentWork: "Waiting for coordinator",
+          lastToolActivity: null,
+          joinedAt: "2026-03-11T12:17:00Z",
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await setFieldValue(view.container, "Team run follow-up", "Re-check the remaining validation blocker.");
+    await clickButton(view.container, "Continue Run");
+
+    expect(continueTeamRunMock).toHaveBeenCalledWith(
+      "run-release",
+      "Re-check the remaining validation blocker.",
+    );
+    expect(findText(view.container, "Coordinator agenda")).toBeTruthy();
+
+    await clickButton(view.container, "Add Agent");
+    await setFieldValue(view.container, "Agent name", "Scribe");
+    await setFieldValue(view.container, "Agent role", "Writer");
+    await setFieldValue(view.container, "Agent responsibility", "Capture the final handoff.");
+    await clickButton(view.container, "Invite Agent");
+
+    expect(addTeamRunAgentMock).toHaveBeenCalledWith(
+      "run-release",
+      expect.objectContaining({
+        name: "Scribe",
+        role: "Writer",
+        responsibility: "Capture the final handoff.",
+      }),
+    );
+    expect(findText(view.container, "Scribe")).toBeTruthy();
   });
 
   it("switches into conversation state after a direct send without rendering an inspector", async () => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NukaLockup } from "@/components/brand/NukaLockup";
 import { routeWorldPrompt, type ChatMessage, type ChatMode, type ChatRouteResponse } from "@/lib/chat";
 import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
@@ -6,9 +6,11 @@ import { useProviderGate } from "@/hooks/useProviderGate";
 import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
 import { useWorkspaceSessions } from "@/hooks/useWorkspaceSessions";
 import { WORKFLOW_DEFINITIONS, type WorkflowLaunchIntent } from "@/lib/workflow";
+import { addTeamRunAgent, continueTeamRun, type TeamRunRecord } from "@/lib/team";
 import { ConversationEventBlock } from "./ConversationEventBlock";
 import { SessionTabs } from "./SessionTabs";
 import { SuggestionStrip } from "./SuggestionStrip";
+import { TeamRunPanel, type TeamRunPanelAgentDraft } from "./TeamRunPanel";
 
 const CHAT_ONLY_SUGGESTIONS = [
   "Summarize today's notes",
@@ -224,14 +226,18 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
   const [workflowHandoff, setWorkflowHandoff] = useState<WorkflowLaunchIntent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
+  const [teamRunState, setTeamRunState] = useState<TeamRunRecord | null>(null);
+  const [teamRunError, setTeamRunError] = useState<string | null>(null);
+  const [isTeamRunBusy, setIsTeamRunBusy] = useState(false);
   const activeDirectSession =
     workspaceSessions.activeSession?.kind === "direct_chat"
       ? workspaceSessions.activeSession
       : null;
-  const activeTeamRun =
+  const workspaceTeamRun =
     workspaceSessions.activeSession?.kind === "team_run"
       ? workspaceSessions.activeSession.run
       : null;
+  const activeTeamRun = teamRunState ?? workspaceTeamRun;
   const activeSessionRecord = activeDirectSession?.session ?? session?.session ?? null;
   const activeMessages = activeDirectSession?.messages ?? messages;
   const activeRoute =
@@ -252,6 +258,11 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
     entryMode === "create_workflow" &&
     !workflowToken &&
     workflowHandoff?.kind !== "open_workflow_lobby";
+
+  useEffect(() => {
+    setTeamRunState(workspaceTeamRun);
+    setTeamRunError(null);
+  }, [workspaceTeamRun]);
 
   const handleEntryModeSelect = (nextMode: ComposerEntryMode) => {
     if (!sessionMode || sessionMode.kind === "chat_only") {
@@ -359,6 +370,65 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
       setError(message);
     } finally {
       setIsRouting(false);
+    }
+  };
+
+  const handleContinueTeamRun = async (nextPrompt: string) => {
+    if (!activeTeamRun || isTeamRunBusy) {
+      return;
+    }
+
+    setIsTeamRunBusy(true);
+    setTeamRunError(null);
+
+    try {
+      const updated = await continueTeamRun(activeTeamRun.id, nextPrompt);
+      setTeamRunState(updated);
+      void workspaceSessions.refresh({
+        id: updated.id,
+        kind: "team_run",
+      });
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setTeamRunError(message);
+    } finally {
+      setIsTeamRunBusy(false);
+    }
+  };
+
+  const handleAddTeamRunAgent = async (agent: TeamRunPanelAgentDraft) => {
+    if (!activeTeamRun || isTeamRunBusy) {
+      return;
+    }
+
+    setIsTeamRunBusy(true);
+    setTeamRunError(null);
+
+    try {
+      const updated = await addTeamRunAgent(activeTeamRun.id, {
+        name: agent.name,
+        role: agent.role,
+        responsibility: agent.responsibility,
+        systemPrompt: `Join as ${agent.role} and focus on ${agent.responsibility}.`,
+        toolBindings: [],
+        toolUsePolicy: {
+          maxCallsPerRound: 1,
+          summarizeOutput: true,
+        },
+        joinReason: agent.responsibility,
+      });
+      setTeamRunState(updated);
+      void workspaceSessions.refresh({
+        id: updated.id,
+        kind: "team_run",
+      });
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setTeamRunError(message);
+    } finally {
+      setIsTeamRunBusy(false);
     }
   };
 
@@ -610,11 +680,13 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
             className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}
           >
             {activeTeamRun ? (
-              <section aria-label="Team run session" className="chat-team-run-card ui-card">
-                <span className="chat-team-run-card__eyebrow">Team run session</span>
-                <h2>{activeTeamRun.title}</h2>
-                <p>{activeTeamRun.goal}</p>
-              </section>
+              <TeamRunPanel
+                error={teamRunError}
+                isBusy={isTeamRunBusy}
+                onAddAgent={handleAddTeamRunAgent}
+                onContinue={handleContinueTeamRun}
+                run={activeTeamRun}
+              />
             ) : landing ? (
               <div className="chat-landing-stack" data-testid="chat-landing-stack">
                 <div aria-label="World chat landing hero" className="chat-hero">
