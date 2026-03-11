@@ -204,6 +204,18 @@ describe("WorkflowPage", () => {
     expect(findText(view.container, "Release changelog")).toBeTruthy();
   });
 
+  it("renders the workflow detail area inside a dedicated scroll container", async () => {
+    const view = await renderIntoDocument(<WorkflowPage />);
+    cleanups.push(view.cleanup);
+
+    await flushEffects();
+
+    const detailScroll = view.container.querySelector('[data-testid="workflow-detail-scroll"]');
+
+    expect(detailScroll).toBeTruthy();
+    expect(detailScroll?.textContent).toContain("Improve workflow");
+  });
+
   it("shows a revision preview before applying workflow changes", async () => {
     const view = await renderIntoDocument(<WorkflowPage />);
     cleanups.push(view.cleanup);

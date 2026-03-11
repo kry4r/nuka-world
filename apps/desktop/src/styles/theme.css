@@ -1130,7 +1130,9 @@ button {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: var(--space-5);
+  height: 100%;
   min-height: 100%;
+  overflow: hidden;
   padding: var(--space-5);
 }
 
@@ -1894,6 +1896,7 @@ button {
 
 .workflow-page__body {
   gap: 20px;
+  min-height: 0;
 }
 
 .workflow-catalog {
@@ -1906,6 +1909,8 @@ button {
   border-radius: var(--radius-panel);
   background: rgba(252, 248, 242, 0.96);
   box-shadow: var(--shadow-panel);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .workflow-catalog__header,
@@ -1987,6 +1992,24 @@ button {
 
 .workflow-page__detail {
   background: linear-gradient(180deg, #fdfaf6 0%, #fcf8f2 100%);
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.workflow-page__detail-scroll,
+.workflow-catalog__list {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.workflow-page__detail-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
 }
 
 .workflow-overview__header,

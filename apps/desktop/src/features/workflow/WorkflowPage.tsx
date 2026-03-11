@@ -159,34 +159,39 @@ export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}
         />
 
         <div className="page-layout__main workflow-page__detail">
-          <WorkflowExplanationView
-            explanation={explanation}
-            isLoading={isLoadingExplanation}
-            onEnterChat={handleEnterChat}
-            onImprove={handleImprove}
-            revisionNotice={revisionNotice}
-            sourceLabel={sourceLabel}
-            sourcePrompt={sourcePrompt}
-          />
+          <div
+            className="workflow-page__detail-scroll"
+            data-testid="workflow-detail-scroll"
+          >
+            <WorkflowExplanationView
+              explanation={explanation}
+              isLoading={isLoadingExplanation}
+              onEnterChat={handleEnterChat}
+              onImprove={handleImprove}
+              revisionNotice={revisionNotice}
+              sourceLabel={sourceLabel}
+              sourcePrompt={sourcePrompt}
+            />
 
-          <WorkflowRevisionPanel
-            explanation={explanation}
-            isGenerating={isGeneratingRevision}
-            preview={revisionPreview}
-            prompt={revisionPrompt}
-            ref={revisionPanelRef}
-            suggestions={REVISION_SUGGESTIONS}
-            onApply={handleApplyRevision}
-            onGenerate={() => {
-              void handleGenerateRevision();
-            }}
-            onKeepEditing={() => setRevisionPreview(null)}
-            onPromptChange={setRevisionPrompt}
-          />
+            <WorkflowRevisionPanel
+              explanation={explanation}
+              isGenerating={isGeneratingRevision}
+              preview={revisionPreview}
+              prompt={revisionPrompt}
+              ref={revisionPanelRef}
+              suggestions={REVISION_SUGGESTIONS}
+              onApply={handleApplyRevision}
+              onGenerate={() => {
+                void handleGenerateRevision();
+              }}
+              onKeepEditing={() => setRevisionPreview(null)}
+              onPromptChange={setRevisionPrompt}
+            />
 
-          {explanationError ? (
-            <div className="workflow-inline-error">{explanationError}</div>
-          ) : null}
+            {explanationError ? (
+              <div className="workflow-inline-error">{explanationError}</div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
