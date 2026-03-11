@@ -1,4 +1,3 @@
-import { Card } from "@/components/ui/Card";
 import type { KnowledgeLibraryRecord } from "@/lib/knowledge";
 
 type LibraryExplorerProps = {
@@ -14,46 +13,57 @@ export function LibraryExplorer({
   onSelect,
   selectedLibraryId,
 }: LibraryExplorerProps) {
+  const selectedLibrary =
+    libraries.find((library) => library.id === selectedLibraryId) ?? null;
+
   return (
-    <Card
-      description="Persistent library selection with source and engine coverage."
-      title="Library Explorer"
-    >
+    <aside aria-label="Knowledge sources" className="knowledge-sidebar">
+      <div className="knowledge-sidebar__header">
+        <span className="knowledge-sidebar__eyebrow">Knowledge</span>
+        <h2>Sources</h2>
+      </div>
+
       {loadError ? (
-        <Card description={loadError} title="Knowledge Error" tone="soft" />
-      ) : libraries.length === 0 ? (
-        <p>Add a folder path in the workbench to initialize the first library connector.</p>
-      ) : (
-        <div style={{ display: "grid", gap: "0.75rem" }}>
+        <div className="knowledge-inline-error">{loadError}</div>
+      ) : null}
+
+      {libraries.length > 1 ? (
+        <div className="knowledge-library-list">
           {libraries.map((library) => {
             const isSelected = library.id === selectedLibraryId;
 
             return (
               <button
                 aria-pressed={isSelected}
+                className={`knowledge-library-list__item${isSelected ? " is-active" : ""}`}
                 key={library.id}
                 onClick={() => onSelect(library.id)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                  textAlign: "left",
-                }}
                 type="button"
               >
-                <Card
-                  description={`${library.connectors.length} source${library.connectors.length === 1 ? "" : "s"} | ${library.engine.label}`}
-                  title={library.name}
-                  tone={isSelected ? "accent" : "soft"}
-                >
-                  <p style={{ margin: "0.5rem 0 0", opacity: 0.8 }}>{library.description || "No summary yet."}</p>
-                </Card>
+                <span className="knowledge-library-list__title">{library.name}</span>
+                <span className="knowledge-library-list__meta">
+                  {library.connectors.length} source{library.connectors.length === 1 ? "" : "s"}
+                </span>
               </button>
             );
           })}
         </div>
+      ) : null}
+
+      {selectedLibrary?.connectors.length ? (
+        <div className="knowledge-source-list">
+          {selectedLibrary.connectors.map((connector) => (
+            <div className="knowledge-source-row" key={connector.id}>
+              <strong>{connector.label}</strong>
+              <span>{connector.path}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="knowledge-source-empty">
+          Add a local folder to start indexing snippets from your project files.
+        </div>
       )}
-    </Card>
+    </aside>
   );
 }

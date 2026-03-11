@@ -1,7 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Inspector } from "@/components/shell/Inspector";
-import { Card } from "@/components/ui/Card";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import {
   addFolderConnector,
   listIndexJobs,
@@ -12,13 +9,12 @@ import {
   type KnowledgeLibraryRecord,
   type KnowledgeSearchResult,
 } from "@/lib/knowledge";
-import { KnowledgeWorkbench, type KnowledgeWorkbenchMode } from "./KnowledgeWorkbench";
+import { KnowledgeWorkbench } from "./KnowledgeWorkbench";
 import { LibraryExplorer } from "./LibraryExplorer";
 
 export function KnowledgePage() {
   const [libraries, setLibraries] = useState<KnowledgeLibraryRecord[]>([]);
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
-  const [activeMode, setActiveMode] = useState<KnowledgeWorkbenchMode>("search");
   const [folderPath, setFolderPath] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [indexJobs, setIndexJobs] = useState<KnowledgeIndexJobRecord[]>([]);
@@ -28,7 +24,7 @@ export function KnowledgePage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const knowledgeError = actionError ?? jobsError ?? loadError;
+  const knowledgeError = actionError ?? jobsError ?? null;
 
   useEffect(() => {
     let alive = true;
@@ -116,7 +112,7 @@ export function KnowledgePage() {
       setLoadError(null);
       setSelectedLibraryId(library.id);
       setFolderPath("");
-      setActiveMode("sources");
+
       const jobs = await listIndexJobs(library.id);
       setIndexJobs(jobs);
       setJobsError(null);
@@ -139,11 +135,9 @@ export function KnowledgePage() {
       const jobs = await listIndexJobs(selectedLibrary.id);
       setIndexJobs(jobs);
       setJobsError(null);
-      setActiveMode("jobs");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setActionError(message);
-      setActiveMode("jobs");
     }
   };
 
@@ -153,49 +147,31 @@ export function KnowledgePage() {
     try {
       const nextResults = await searchKnowledge(searchQuery);
       setResults(nextResults);
-      setActiveMode("search");
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setSearchError(message);
       setResults([]);
-      setActiveMode("search");
     }
   };
 
   return (
-    <div className="page-layout">
-      <SectionHeader
-        meta="Explorer, search lab, jobs, and engine-aware retrieval contracts"
-        status="Workbench"
-        tag="Knowledge"
-        title="Knowledge Libraries"
-      />
+    <div className="page-layout knowledge-page">
+      <div className="page-layout__body knowledge-page__body">
+        <LibraryExplorer
+          libraries={libraries}
+          loadError={loadError}
+          onSelect={setSelectedLibraryId}
+          selectedLibraryId={selectedLibraryId}
+        />
 
-      <div className="page-layout__body">
-        <div
-          className="page-layout__main"
-          style={{
-            display: "grid",
-            gap: "1rem",
-            gridTemplateColumns: "minmax(240px, 320px) minmax(0, 1fr)",
-          }}
-        >
-          <LibraryExplorer
-            libraries={libraries}
-            loadError={loadError}
-            onSelect={setSelectedLibraryId}
-            selectedLibraryId={selectedLibraryId}
-          />
-
+        <div className="knowledge-page__main">
           <KnowledgeWorkbench
-            activeMode={activeMode}
             folderPath={folderPath}
             jobs={indexJobs}
             jobsError={jobsError}
             libraries={libraries}
             onAddFolder={() => void handleAddFolder()}
             onFolderPathChange={setFolderPath}
-            onModeChange={setActiveMode}
             onRebuild={() => void handleRebuild()}
             onSearch={() => void handleSearch()}
             onSearchQueryChange={setSearchQuery}
@@ -205,43 +181,8 @@ export function KnowledgePage() {
             selectedLibrary={selectedLibrary}
           />
 
-          {knowledgeError ? (
-            <Card description={knowledgeError} title="Knowledge Error" tone="soft" />
-          ) : null}
+          {knowledgeError ? <div className="knowledge-inline-error">{knowledgeError}</div> : null}
         </div>
-
-        <Inspector
-          description="Library identity, source metadata, and engine metadata stay separate here so future adapters can expand without reworking the page."
-          title="Knowledge Inspector"
-        >
-          {selectedLibrary ? (
-            <div style={{ display: "grid", gap: "0.75rem" }}>
-              <Card description={selectedLibrary.name} title="Selected Library" tone="accent" />
-              <Card
-                description={selectedLibrary.connectors.map((connector) => connector.label).join(", ")}
-                title="Source Connectors"
-                tone="soft"
-              />
-              <Card
-                description={selectedLibrary.connectors.map((connector) => connector.path).join(" | ")}
-                title="Source Paths"
-                tone="soft"
-              />
-              <Card description={selectedLibrary.engine.label} title="Engine Summary" tone="soft" />
-              <Card description={selectedLibrary.engine.health} title="Engine Health" tone="soft" />
-              <Card
-                description={selectedLibrary.engine.capabilities.join(", ")}
-                title="Capabilities"
-                tone="soft"
-              />
-            </div>
-          ) : (
-            <Card
-              description="Select or add a library to inspect its source connectors and engine summary."
-              title="Knowledge Inspector"
-            />
-          )}
-        </Inspector>
       </div>
     </div>
   );
