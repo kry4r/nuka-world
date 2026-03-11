@@ -6,6 +6,7 @@ import { ChatPage } from "./features/chat/ChatPage";
 import { KnowledgePage } from "./features/knowledge/KnowledgePage";
 import { MemoryPage } from "./features/memory/MemoryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { TeamPage } from "./features/team/TeamPage";
 import { WorkflowPage } from "./features/workflow/WorkflowPage";
 import {
   getWorkflowSummary,
@@ -89,12 +90,13 @@ export default function App() {
     workflow: {
       label: "Team",
       render: () => (
-        <WorkflowPage
-          intent={workflowIntent}
-          onIntentHandled={() => {
-            setWorkflowIntent(null);
-          }}
-        />
+        workflowIntent ? (
+          <WorkflowPage
+            intent={workflowIntent}
+          />
+        ) : (
+          <TeamPage />
+        )
       ),
     },
     agents: {
@@ -129,6 +131,12 @@ export default function App() {
       activePage={activePage}
       navigation={navigation}
       onNavigate={(page) => {
+        if (page === "workflow") {
+          setWorkflowIntent(null);
+          setSelectedWorkflowId(null);
+          setSelectedWorkflowSummary(null);
+        }
+
         if (page === "chat") {
           setActivePage("chat");
           return;

@@ -2532,6 +2532,234 @@ button {
   min-height: 0;
 }
 
+.team-page__body {
+  gap: 16px;
+  min-height: 0;
+}
+
+.team-list {
+  width: 236px;
+  min-width: 236px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px 12px;
+  border: 1px solid rgba(217, 205, 190, 0.72);
+  border-radius: var(--radius-panel);
+  background: rgba(252, 248, 242, 0.96);
+}
+
+.team-list__header,
+.team-list__stack,
+.team-editor,
+.team-editor__generator,
+.team-editor__generator-copy,
+.team-editor__detail,
+.team-editor__summary-copy,
+.team-editor__summary-grid,
+.team-editor__agents,
+.team-agent-card,
+.team-agent-card__copy,
+.team-tool-bindings,
+.team-tool-bindings__header,
+.team-tool-bindings__list,
+.team-tool-bindings__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.team-list__eyebrow,
+.team-editor__eyebrow,
+.team-editor__summary-card span {
+  color: #766d63;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.team-list__header h1,
+.team-editor__generator-copy h2,
+.team-editor__summary-copy h2,
+.team-agent-card__copy h3,
+.team-tool-bindings__header h4 {
+  margin: 0;
+}
+
+.team-list__header p,
+.team-list__item-summary,
+.team-editor__generator-copy p,
+.team-editor__summary-copy p,
+.team-editor__summary-card p,
+.team-agent-card__responsibility,
+.team-tool-bindings__header p,
+.team-tool-bindings__meta,
+.team-editor__empty .ui-card__description {
+  margin: 0;
+  color: var(--color-text-soft);
+  line-height: 1.5;
+}
+
+.team-list__stack {
+  min-height: 0;
+  overflow: auto;
+}
+
+.team-list__empty {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 252, 247, 0.9);
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.team-list__item {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 11px;
+  border: 1px solid rgba(217, 205, 190, 0.82);
+  border-radius: 16px;
+  background: rgba(255, 252, 247, 0.9);
+  color: var(--color-text);
+  text-align: left;
+}
+
+.team-list__item.is-active {
+  border-color: rgba(182, 157, 122, 0.88);
+  box-shadow: 0 8px 16px rgba(88, 69, 47, 0.05);
+}
+
+.team-list__item-title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.team-list__item-summary {
+  font-size: 11px;
+}
+
+.team-editor {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.team-editor__generator {
+  gap: 14px;
+}
+
+.team-editor__generator-form,
+.team-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.team-editor__field {
+  flex: 1;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team-editor__field-label,
+.team-agent-card__copy span,
+.team-agent-card__policy {
+  color: #766d63;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.team-editor__summary,
+.team-agent-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: #fcf8f2;
+}
+
+.team-editor__summary {
+  gap: 14px;
+}
+
+.team-editor__summary-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.team-editor__summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-editor__summary-card {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 252, 247, 0.92);
+}
+
+.team-agent-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.team-agent-card__policy {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(233, 221, 206, 0.8);
+}
+
+.team-tool-bindings__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 252, 247, 0.92);
+}
+
+.team-tool-bindings__item input {
+  margin-top: 2px;
+}
+
+.team-tool-bindings__name {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.team-tool-bindings__empty,
+.team-editor__notice,
+.team-editor__error {
+  padding: 12px 14px;
+  border-radius: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.team-tool-bindings__empty,
+.team-editor__notice {
+  background: rgba(255, 252, 247, 0.92);
+  color: var(--color-text-soft);
+}
+
+.team-editor__error {
+  background: rgba(247, 236, 233, 0.92);
+  color: #7b5044;
+}
+
 .workflow-catalog {
   width: 236px;
   min-width: 236px;
