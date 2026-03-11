@@ -284,7 +284,10 @@ describe("MemoryPage", () => {
     expect(sessionNode?.getAttribute("data-consolidation-state")).toBe("none");
   });
 
-  it("renders utility controls with search, filter, legend, and view mode affordances beside the graph canvas", async () => {
+  it("does not render graph utilities or node inspector when the graph is empty", async () => {
+    graphState.nodes = [];
+    graphState.edges = [];
+
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
@@ -293,23 +296,64 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    expect(view.container.querySelector('[data-testid="memory-graph-utilities"]')).toBeTruthy();
+    expect(view.container.textContent).not.toContain("Graph Utilities");
+    expect(view.container.textContent).not.toContain("Node Inspector");
+    expect(view.container.querySelector('[data-testid="memory-graph-utilities"]')).toBeFalsy();
+    expect(view.container.querySelector('input[aria-label="Node title"]')).toBeFalsy();
+  });
+
+  it("uses a light graph surface and overlays graph stats inside the canvas", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    const selectedNode = findButton(view.container, "Review Memory");
+
+    expect(canvas?.className).toContain("memory-graph");
+    expect(selectedNode?.className).toContain("memory-graph__node");
+    expect(view.container.querySelector(".memory-controls__summary")).toBeFalsy();
+    expect(canvas?.textContent).toContain("nodes");
+    expect(canvas?.textContent).toContain("edges");
+    expect(canvas?.textContent).toContain("% zoom");
+  });
+
+  it("keeps the graph canvas primary while node detail opens as an overlay", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    const canvasFrame = view.container.querySelector(".memory-stage__canvas-frame");
+    const nodeButton = findButton(view.container, "Review Memory");
+
+    expect(canvas).toBeTruthy();
+    expect(view.container.textContent).not.toContain("Node Inspector");
+    expect(view.container.querySelector('[data-testid="memory-node-detail"]')).toBeFalsy();
     expect(view.container.querySelector('input[aria-label="Search graph"]')).toBeTruthy();
     expect(view.container.querySelector('select[aria-label="Filter kind"]')).toBeTruthy();
     expect(view.container.querySelector('select[aria-label="View mode"]')).toBeTruthy();
-    expect(findText(view.container, "Legend")).toBeTruthy();
-    expect(findText(view.container, "workflow")).toBeTruthy();
-    expect(findText(view.container, "session")).toBeTruthy();
-    expect(findText(view.container, "fact")).toBeTruthy();
-    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
-    expect(canvas).toBeTruthy();
-    expect(canvas?.getAttribute("data-focus-target-id")).toBe("workflow-review");
-    expect(canvas?.getAttribute("data-pan-x")).toBe("318");
-    expect(canvas?.getAttribute("data-pan-y")).toBe("168");
-    expect(findText(view.container, "Memory Nodes")).toBeFalsy();
+
+    await act(async () => {
+      nodeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const detail = view.container.querySelector('[data-testid="memory-node-detail"]');
+
+    expect(detail?.className).toContain("memory-node-overlay");
+    expect(canvasFrame?.contains(detail ?? null)).toBe(true);
   });
 
-  it("opens editable inspector fields and marks focused neighbor depth when selecting a node", async () => {
+  it("opens editable node detail fields in the overlay when selecting a node", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
@@ -325,22 +369,16 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    expect(nodeButton?.getAttribute("aria-pressed")).toBe("true");
-
     const titleInput = view.container.querySelector('input[aria-label="Node title"]') as HTMLInputElement | null;
     const bodyInput = view.container.querySelector('textarea[aria-label="Node body"]') as HTMLTextAreaElement | null;
-    const selectedNode = findButton(view.container, "Review Memory");
-    const firstDegreeNode = findButton(view.container, "Review Session");
-    const secondDegreeNode = findButton(view.container, "Scout Agent");
 
     expect(titleInput?.value).toBe("Review Memory");
     expect(bodyInput?.value).toBe("Tracks the latest review conclusions.");
-    expect(selectedNode?.getAttribute("data-node-depth")).toBe("0");
-    expect(firstDegreeNode?.getAttribute("data-node-depth")).toBe("1");
-    expect(secondDegreeNode?.getAttribute("data-node-depth")).toBe("2");
+    expect(view.container.querySelector('[data-testid="memory-node-detail"]')).toBeTruthy();
+    expect(view.container.textContent).not.toContain("Node Inspector");
   });
 
-  it("shows trace and consolidation metadata in the inspector", async () => {
+  it("shows trace and consolidation metadata in the overlay", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
@@ -538,6 +576,13 @@ describe("MemoryPage", () => {
 
     await act(async () => {
       await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const nodeButton = findButton(view.container, "Review Memory");
+
+    await act(async () => {
+      nodeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
 

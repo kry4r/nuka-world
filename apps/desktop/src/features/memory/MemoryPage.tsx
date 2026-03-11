@@ -1,7 +1,5 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
-import { Inspector } from "@/components/shell/Inspector";
 import { Card } from "@/components/ui/Card";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import {
   createMemoryEdge,
   deleteMemoryEdge,
@@ -20,6 +18,7 @@ const defaultZoom = 1;
 export function MemoryPage() {
   const [graph, setGraph] = useState<MemoryGraph>({ nodes: [], edges: [] });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [bodyDraft, setBodyDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -124,6 +123,12 @@ export function MemoryPage() {
     setDeleteReview((current) =>
       current && current.nodeId !== selectedNode?.id ? null : current,
     );
+  }, [selectedNode?.id]);
+
+  useEffect(() => {
+    if (!selectedNode) {
+      setDetailOpen(false);
+    }
   }, [selectedNode?.id]);
 
   useEffect(() => {
@@ -261,6 +266,7 @@ export function MemoryPage() {
 
   const handleSelectNode = (nodeId: string) => {
     setSelectedNodeId(nodeId);
+    setDetailOpen(true);
   };
 
   const handleFocusSelected = () => {
@@ -287,108 +293,107 @@ export function MemoryPage() {
   };
 
   return (
-    <div className="page-layout">
-      <SectionHeader
-        meta="Editable local graph nodes, links, and note bodies"
-        status="Memory"
-        tag="Memory"
-        title="Memory Graph Workbench"
-      />
+    <div className="page-layout memory-page">
+      <div className="page-layout__body memory-page__body">
+        <div className="memory-page__main">
+          {loadError ? (
+            <section className="memory-empty-state memory-empty-state--error">
+              <span className="memory-page__eyebrow">Memory</span>
+              <h1>Memory graph unavailable</h1>
+              <p>{loadError}</p>
+            </section>
+          ) : graph.nodes.length === 0 ? (
+            <section className="memory-empty-state">
+              <span className="memory-page__eyebrow">Memory</span>
+              <h1>No graph nodes yet</h1>
+              <p>The graph will appear here once chat, workflows, or agents write local memory.</p>
+            </section>
+          ) : (
+            <>
+              <section className="memory-stage">
+                <div className="memory-stage__header">
+                  <span className="memory-page__eyebrow">Memory</span>
+                  <h1>Graph</h1>
+                  <p>Search, filter, and inspect the graph without keeping a permanent side inspector open.</p>
+                </div>
 
-      <div className="page-layout__body">
-        <aside
-          data-testid="memory-graph-utilities"
-          style={{ alignContent: "start", display: "grid", gap: "1rem", width: "18rem" }}
-        >
-          <Card title="Graph Utilities" tone="accent">
-            <MemoryGraphControls
-              edgesCount={visibleState.graph.edges.length}
-              filterKind={filterKind}
-              nodesCount={visibleState.graph.nodes.length}
-              onFilterKindChange={setFilterKind}
-              onFitView={handleFitView}
-              onFocusSelected={handleFocusSelected}
-              onSearchQueryChange={setSearchQuery}
-              onViewModeChange={setViewMode}
-              onWorkbenchViewChange={setWorkbenchView}
-              onZoomIn={() => setZoom((current) => Math.min(1.8, current + 0.12))}
-              onZoomOut={() => setZoom((current) => Math.max(0.55, current - 0.12))}
-              searchQuery={searchQuery}
-              selectedNodeTitle={selectedNode?.title ?? null}
-              viewMode={viewMode}
-              workbenchView={workbenchView}
-              zoom={zoom}
-            />
-          </Card>
-        </aside>
+                <div className="memory-stage__controls">
+                  <MemoryGraphControls
+                    filterKind={filterKind}
+                    onFilterKindChange={setFilterKind}
+                    onFitView={handleFitView}
+                    onFocusSelected={handleFocusSelected}
+                    onSearchQueryChange={setSearchQuery}
+                    onViewModeChange={setViewMode}
+                    onWorkbenchViewChange={setWorkbenchView}
+                    onZoomIn={() => setZoom((current) => Math.min(1.8, current + 0.12))}
+                    onZoomOut={() => setZoom((current) => Math.max(0.55, current - 0.12))}
+                    searchQuery={searchQuery}
+                    selectedNodeTitle={selectedNode?.title ?? null}
+                    viewMode={viewMode}
+                    workbenchView={workbenchView}
+                  />
+                </div>
 
-        <div className="page-layout__main">
-          <Card
-            description="Inspect the local memory graph, search into focused neighborhoods, and tune node copy directly from the inspector."
-            title="Graph Workspace"
-            tone="accent"
-          />
+                <div className="memory-stage__canvas">
+                  {visibleState.graph.nodes.length === 0 ? (
+                    <Card
+                      description="Adjust the current search or filter to bring matching memory nodes back into view."
+                      title="No graph nodes yet"
+                      tone="soft"
+                    />
+                  ) : (
+                    <div className="memory-stage__canvas-frame">
+                      <MemoryGraphCanvas
+                        depthByNodeId={visibleState.depthByNodeId}
+                        focusTargetId={selectedNode?.id ?? null}
+                        graph={visibleState.graph}
+                        onPanChange={setPan}
+                        onSelectNode={handleSelectNode}
+                        onZoomChange={setZoom}
+                        pan={pan}
+                        selectedNodeId={selectedNode?.id ?? null}
+                        workbenchView={workbenchView}
+                        zoom={zoom}
+                      />
 
-          <Card title="Memory Graph">
-            {loadError ? (
-              <Card
-                description={loadError}
-                title="Memory graph unavailable"
-                tone="soft"
-              />
-            ) : visibleState.graph.nodes.length === 0 ? (
-              <Card
-                description="Adjust the current search or filter to bring matching memory nodes back into view."
-                title="No graph nodes yet"
-                tone="soft"
-              />
-            ) : (
-              <MemoryGraphCanvas
-                depthByNodeId={visibleState.depthByNodeId}
-                focusTargetId={selectedNode?.id ?? null}
-                graph={visibleState.graph}
-                onPanChange={setPan}
-                onSelectNode={handleSelectNode}
-                onZoomChange={setZoom}
-                pan={pan}
-                selectedNodeId={selectedNode?.id ?? null}
-                workbenchView={workbenchView}
-                zoom={zoom}
-              />
-            )}
-          </Card>
+                      {detailOpen && selectedNode ? (
+                        <aside className="memory-node-overlay" data-testid="memory-node-detail">
+                          <MemoryNodeInspector
+                            bodyDraft={bodyDraft}
+                            busy={busy}
+                            connectedEdges={connectedEdges}
+                            deleteImpact={
+                              deleteReview && deleteReview.nodeId === selectedNode?.id
+                                ? {
+                                    connectedTitles: deleteReview.connectedTitles,
+                                    edgeCount: deleteReview.edgeCount,
+                                  }
+                                : null
+                            }
+                            error={error}
+                            node={selectedNode}
+                            nodes={graph.nodes}
+                            onCancelDelete={() => setDeleteReview(null)}
+                            onBodyDraftChange={setBodyDraft}
+                            onClose={() => setDetailOpen(false)}
+                            onConfirmDelete={handleConfirmDelete}
+                            onCreateEdge={handleCreateEdge}
+                            onDeleteEdge={handleDeleteEdge}
+                            onRequestDelete={handleRequestDelete}
+                            onSave={handleSave}
+                            onTitleDraftChange={setTitleDraft}
+                            titleDraft={titleDraft}
+                          />
+                        </aside>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </section>
+            </>
+          )}
         </div>
-
-        <Inspector
-          description="Edit the selected memory node, remove it, and manage graph links without leaving the canvas."
-          title="Node Inspector"
-        >
-          <MemoryNodeInspector
-            bodyDraft={bodyDraft}
-            busy={busy}
-            connectedEdges={connectedEdges}
-            deleteImpact={
-              deleteReview && deleteReview.nodeId === selectedNode?.id
-                ? {
-                    connectedTitles: deleteReview.connectedTitles,
-                    edgeCount: deleteReview.edgeCount,
-                  }
-                : null
-            }
-            error={error}
-            node={selectedNode}
-            nodes={graph.nodes}
-            onCancelDelete={() => setDeleteReview(null)}
-            onBodyDraftChange={setBodyDraft}
-            onConfirmDelete={handleConfirmDelete}
-            onCreateEdge={handleCreateEdge}
-            onDeleteEdge={handleDeleteEdge}
-            onRequestDelete={handleRequestDelete}
-            onSave={handleSave}
-            onTitleDraftChange={setTitleDraft}
-            titleDraft={titleDraft}
-          />
-        </Inspector>
       </div>
     </div>
   );

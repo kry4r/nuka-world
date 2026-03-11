@@ -1,15 +1,5 @@
-import { useEffect, useState, type CSSProperties } from "react";
-import { Card } from "@/components/ui/Card";
+import { useEffect, useState } from "react";
 import type { MemoryGraphEdge, MemoryGraphNode } from "@/lib/memory";
-
-const inputSurfaceStyle = {
-  background: "rgba(255, 255, 255, 0.04)",
-  border: "1px solid rgba(255, 255, 255, 0.12)",
-  borderRadius: "0.95rem",
-  color: "rgba(248, 244, 236, 0.96)",
-  padding: "0.8rem 0.95rem",
-  width: "100%",
-} satisfies CSSProperties;
 
 type MemoryNodeInspectorProps = {
   busy: boolean;
@@ -25,6 +15,7 @@ type MemoryNodeInspectorProps = {
   bodyDraft: string;
   onCancelDelete: () => void;
   onBodyDraftChange: (value: string) => void;
+  onClose: () => void;
   onConfirmDelete: () => Promise<void>;
   onCreateEdge: (targetId: string, relation: string) => Promise<void>;
   onDeleteEdge: (edgeId: string) => Promise<void>;
@@ -44,6 +35,7 @@ export function MemoryNodeInspector({
   bodyDraft,
   onCancelDelete,
   onBodyDraftChange,
+  onClose,
   onConfirmDelete,
   onCreateEdge,
   onDeleteEdge,
@@ -63,13 +55,7 @@ export function MemoryNodeInspector({
   }, [defaultTargetId, node?.id]);
 
   if (!node) {
-    return (
-      <Card
-        description="Select a node in the graph to edit its note, delete it, or manage its links."
-        title="No node selected"
-        tone="soft"
-      />
-    );
+    return null;
   }
 
   const handleCreateEdge = async () => {
@@ -81,167 +67,124 @@ export function MemoryNodeInspector({
   };
 
   return (
-    <div style={{ display: "grid", gap: "1rem" }}>
-      <Card title="Selected Node" tone="accent">
-        <div style={{ display: "grid", gap: "0.9rem" }}>
-          <label style={{ display: "grid", gap: "0.35rem" }}>
-            <span>Title</span>
-            <input
-              aria-label="Node title"
-              className="field-input"
-              onChange={(event) => onTitleDraftChange(event.target.value)}
-              style={inputSurfaceStyle}
-              value={titleDraft}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: "0.35rem" }}>
-            <span>Body</span>
-            <textarea
-              aria-label="Node body"
-              onChange={(event) => onBodyDraftChange(event.target.value)}
-              rows={6}
-              style={{ ...inputSurfaceStyle, minHeight: "8.5rem", resize: "vertical" }}
-              value={bodyDraft}
-            />
-          </label>
-
-          <div style={{ display: "flex", gap: "0.75rem" }}>
-            <button className="composer__send" disabled={busy} onClick={() => void onSave()} type="button">
-              Save node
-            </button>
-            <button className="settings-panel__trigger" disabled={busy} onClick={onRequestDelete} type="button">
-              Delete node
-            </button>
-          </div>
+    <div className="memory-node-detail">
+      <div className="memory-node-detail__header">
+        <div className="memory-node-detail__copy">
+          <span className="memory-page__eyebrow">Node detail</span>
+          <h2>{node.title}</h2>
+          <p>Update local memory, review consolidation state, and manage connected edges inline.</p>
         </div>
-      </Card>
-
-      <Card title="Memory State" tone="soft">
-        <div style={{ display: "grid", gap: "0.55rem" }}>
-          <div style={{ display: "grid", gap: "0.15rem" }}>
-            <strong>Trace type</strong>
-            <span style={{ color: "rgba(248, 244, 236, 0.72)" }}>{node.traceType}</span>
-          </div>
-          <div style={{ display: "grid", gap: "0.15rem" }}>
-            <strong>Consolidation state</strong>
-            <span style={{ color: "rgba(248, 244, 236, 0.72)" }}>
-              {node.consolidationState}
-            </span>
-          </div>
-        </div>
-      </Card>
-
-      {deleteImpact ? (
-        <Card
-          description={`${deleteImpact.edgeCount} connected links will be removed.`}
-          title="Delete impact"
-          tone="soft"
-        >
-          <div style={{ display: "grid", gap: "0.8rem" }}>
-            <div style={{ display: "grid", gap: "0.35rem" }}>
-              {deleteImpact.connectedTitles.length === 0 ? (
-                <p style={{ color: "rgba(248, 244, 236, 0.68)", margin: 0 }}>
-                  This node has no linked neighbors.
-                </p>
-              ) : (
-                deleteImpact.connectedTitles.map((title) => (
-                  <span key={title} style={{ color: "rgba(248, 244, 236, 0.78)" }}>
-                    {title}
-                  </span>
-                ))
-              )}
-            </div>
-            <div style={{ display: "flex", gap: "0.75rem" }}>
-              <button
-                className="settings-panel__trigger"
-                disabled={busy}
-                onClick={onCancelDelete}
-                type="button"
-              >
-                Keep node
-              </button>
-              <button
-                className="settings-button settings-button--danger"
-                disabled={busy}
-                onClick={() => void onConfirmDelete()}
-                type="button"
-              >
-                Confirm delete
-              </button>
-            </div>
-          </div>
-        </Card>
-      ) : null}
-
-      <Card description={`Kind: ${node.kind}`} title="Graph Links" tone="soft">
-        <div style={{ display: "grid", gap: "0.8rem" }}>
-          <label style={{ display: "grid", gap: "0.35rem" }}>
-            <span>Link target</span>
-            <select
-              aria-label="Link target"
-              onChange={(event) => setTargetId(event.target.value)}
-              style={inputSurfaceStyle}
-              value={targetId}
-            >
-              {availableTargets.length === 0 ? <option value="">No other nodes</option> : null}
-              {availableTargets.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.title}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ display: "grid", gap: "0.35rem" }}>
-            <span>Relation</span>
-            <input
-              aria-label="Edge relation"
-              className="field-input"
-              onChange={(event) => setRelation(event.target.value)}
-              style={inputSurfaceStyle}
-              value={relation}
-            />
-          </label>
-
-          <button
-            className="settings-panel__trigger"
-            disabled={busy || !targetId || !relation.trim()}
-            onClick={() => void handleCreateEdge()}
-            type="button"
-          >
-            Create link
+        <div className="memory-node-detail__actions">
+          <button className="memory-node-detail__action" onClick={onClose} type="button">
+            Close detail
           </button>
+          <button className="memory-node-detail__action is-primary" disabled={busy} onClick={() => void onSave()} type="button">
+            Save node
+          </button>
+          <button className="memory-node-detail__action is-danger" disabled={busy} onClick={onRequestDelete} type="button">
+            Delete node
+          </button>
+        </div>
+      </div>
 
-          <div style={{ display: "grid", gap: "0.6rem" }}>
+      <div className="memory-node-detail__grid">
+        <label className="memory-node-detail__field memory-node-detail__field--full">
+          <span className="memory-node-detail__label">Title</span>
+          <input
+            aria-label="Node title"
+            className="memory-node-detail__input"
+            onChange={(event) => onTitleDraftChange(event.target.value)}
+            value={titleDraft}
+          />
+        </label>
+
+        <label className="memory-node-detail__field memory-node-detail__field--full">
+          <span className="memory-node-detail__label">Body</span>
+          <textarea
+            aria-label="Node body"
+            className="memory-node-detail__textarea"
+            onChange={(event) => onBodyDraftChange(event.target.value)}
+            rows={6}
+            value={bodyDraft}
+          />
+        </label>
+
+        <section className="memory-node-detail__panel">
+          <div className="memory-node-detail__panel-header">
+            <h3>Memory state</h3>
+            <span>{node.kind}</span>
+          </div>
+          <dl className="memory-node-detail__meta">
+            <div>
+              <dt>Trace type</dt>
+              <dd>{node.traceType}</dd>
+            </div>
+            <div>
+              <dt>Consolidation state</dt>
+              <dd>{node.consolidationState}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="memory-node-detail__panel memory-node-detail__panel--links">
+          <div className="memory-node-detail__panel-header">
+            <h3>Graph links</h3>
+            <span>{connectedEdges.length} connected</span>
+          </div>
+
+          <div className="memory-node-detail__link-form">
+            <label className="memory-node-detail__field">
+              <span className="memory-node-detail__label">Link target</span>
+              <select
+                aria-label="Link target"
+                className="memory-node-detail__select"
+                onChange={(event) => setTargetId(event.target.value)}
+                value={targetId}
+              >
+                {availableTargets.length === 0 ? <option value="">No other nodes</option> : null}
+                {availableTargets.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="memory-node-detail__field">
+              <span className="memory-node-detail__label">Relation</span>
+              <input
+                aria-label="Edge relation"
+                className="memory-node-detail__input"
+                onChange={(event) => setRelation(event.target.value)}
+                value={relation}
+              />
+            </label>
+
+            <button
+              className="memory-node-detail__action"
+              disabled={busy || !targetId || !relation.trim()}
+              onClick={() => void handleCreateEdge()}
+              type="button"
+            >
+              Create link
+            </button>
+          </div>
+
+          <div className="memory-node-detail__link-list">
             {connectedEdges.length === 0 ? (
-              <p style={{ color: "rgba(248, 244, 236, 0.68)", margin: 0 }}>No connected edges yet.</p>
+              <p className="memory-node-detail__empty">No connected edges yet.</p>
             ) : (
               connectedEdges.map((edge) => {
                 const peerId = edge.sourceId === node.id ? edge.targetId : edge.sourceId;
                 const peer = nodes.find((candidate) => candidate.id === peerId);
 
                 return (
-                  <div
-                    key={edge.id}
-                    style={{
-                      alignItems: "center",
-                      background: "rgba(255, 255, 255, 0.04)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      borderRadius: "1rem",
-                      display: "flex",
-                      gap: "0.75rem",
-                      justifyContent: "space-between",
-                      padding: "0.85rem 1rem",
-                    }}
-                  >
-                    <div style={{ display: "grid", gap: "0.2rem" }}>
+                  <div className="memory-node-detail__link-row" key={edge.id}>
+                    <div className="memory-node-detail__link-copy">
                       <strong>{edge.relation}</strong>
-                      <span style={{ color: "rgba(248, 244, 236, 0.68)", fontSize: "0.9rem" }}>
-                        {peer?.title ?? peerId}
-                      </span>
+                      <span>{peer?.title ?? peerId}</span>
                     </div>
-                    <button className="settings-panel__trigger" disabled={busy} onClick={() => void onDeleteEdge(edge.id)} type="button">
+                    <button className="memory-node-detail__action" disabled={busy} onClick={() => void onDeleteEdge(edge.id)} type="button">
                       Remove edge
                     </button>
                   </div>
@@ -249,10 +192,53 @@ export function MemoryNodeInspector({
               })
             )}
           </div>
-        </div>
-      </Card>
+        </section>
+      </div>
 
-      {error ? <Card description={error} title="Memory graph error" tone="soft" /> : null}
+      {deleteImpact ? (
+        <section className="memory-node-detail__panel memory-node-detail__panel--warning">
+          <div className="memory-node-detail__panel-header">
+            <h3>Delete impact</h3>
+            <span>{deleteImpact.edgeCount} links</span>
+          </div>
+
+          <p className="memory-node-detail__warning-copy">
+            {deleteImpact.edgeCount} connected links will be removed.
+          </p>
+          <div className="memory-node-detail__warning-list">
+            {deleteImpact.connectedTitles.length === 0 ? (
+              <span>This node has no linked neighbors.</span>
+            ) : (
+              deleteImpact.connectedTitles.map((title) => <span key={title}>{title}</span>)
+            )}
+          </div>
+          <div className="memory-node-detail__actions">
+            <button
+              className="memory-node-detail__action"
+              disabled={busy}
+              onClick={onCancelDelete}
+              type="button"
+            >
+              Keep node
+            </button>
+            <button
+              className="memory-node-detail__action is-danger"
+              disabled={busy}
+              onClick={() => void onConfirmDelete()}
+              type="button"
+            >
+              Confirm delete
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {error ? (
+        <section className="memory-node-detail__error">
+          <strong>Memory graph error</strong>
+          <span>{error}</span>
+        </section>
+      ) : null}
     </div>
   );
 }

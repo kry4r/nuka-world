@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent, type WheelEvent } from "react";
+import { useRef, type CSSProperties, type PointerEvent, type WheelEvent } from "react";
 import type {
   MemoryConsolidationState,
   MemoryGraph,
@@ -91,6 +91,7 @@ export function MemoryGraphCanvas({
   return (
     <div
       aria-label="Memory graph canvas"
+      className="memory-graph"
       data-focus-target-id={focusTargetId ?? ""}
       data-pan-x={String(pan.x)}
       data-pan-y={String(pan.y)}
@@ -100,37 +101,21 @@ export function MemoryGraphCanvas({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onWheel={handleWheel}
-      style={{
-        background:
-          "radial-gradient(circle at top, rgba(243, 178, 103, 0.18), transparent 45%), linear-gradient(180deg, rgba(14, 17, 24, 0.98), rgba(8, 10, 15, 0.94))",
-        border: "1px solid rgba(243, 178, 103, 0.18)",
-        borderRadius: "1.5rem",
-        minHeight: "34rem",
-        overflow: "hidden",
-        position: "relative",
-        touchAction: "none",
-      }}
     >
-      <div
-        style={{
-          color: "rgba(255, 255, 255, 0.58)",
-          display: "flex",
-          fontSize: "0.85rem",
-          justifyContent: "space-between",
-          left: "1rem",
-          letterSpacing: "0.08em",
-          position: "absolute",
-          right: "1rem",
-          textTransform: "uppercase",
-          top: "1rem",
-          zIndex: 2,
-        }}
-      >
-        <span>Drag to pan</span>
-        <span>Scroll to zoom</span>
+      <div className="memory-graph__toolbar">
+        <div className="memory-graph__help">
+          <span>Drag to pan</span>
+          <span>Scroll to zoom</span>
+        </div>
+        <div className="memory-graph__stats">
+          <span>{graph.nodes.length} nodes</span>
+          <span>{graph.edges.length} edges</span>
+          <span>{Math.round(zoom * 100)}% zoom</span>
+        </div>
       </div>
 
       <div
+        className="memory-graph__board"
         style={{
           height: `${canvasSize.height}px`,
           left: 0,
@@ -181,64 +166,35 @@ export function MemoryGraphCanvas({
               key={node.id}
               aria-label={`${node.title} memory node`}
               aria-pressed={selected}
+              className="memory-graph__node"
               data-consolidation-state={node.consolidationState}
               data-node-depth={depth}
               data-node-emphasis={emphasis}
               data-trace-type={node.traceType}
               onClick={() => onSelectNode(node.id)}
-              style={{
-                alignItems: "flex-start",
-                background: presentation.background,
-                border: presentation.border,
-                borderRadius: "1.25rem",
-                boxShadow: presentation.shadow,
-                color: "rgba(248, 244, 236, 0.96)",
-                cursor: "pointer",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
-                height: `${nodeSize.height}px`,
-                justifyContent: "space-between",
-                left: `${point.x}px`,
-                opacity: depth === 2 ? 0.74 : depth >= 3 ? 0.46 : 1,
-                padding: "1rem",
-                position: "absolute",
-                textAlign: "left",
-                top: `${point.y}px`,
-                width: `${nodeSize.width}px`,
-              }}
+              style={
+                {
+                  "--memory-node-background": presentation.background,
+                  "--memory-node-badge-color": presentation.badgeColor,
+                  "--memory-node-border": presentation.borderColor,
+                  "--memory-node-eyebrow-color": presentation.eyebrowColor,
+                  height: `${nodeSize.height}px`,
+                  left: `${point.x}px`,
+                  opacity: depth === 2 ? 0.74 : depth >= 3 ? 0.46 : 1,
+                  top: `${point.y}px`,
+                  width: `${nodeSize.width}px`,
+                } as CSSProperties
+              }
               type="button"
-              >
-              <span
-                style={{
-                  color: presentation.eyebrowColor,
-                  fontSize: "0.74rem",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                }}
-              >
+            >
+              <span className="memory-graph__node-eyebrow">
                 {node.kind} · {node.traceType}
               </span>
-              <span style={{ fontSize: "1rem", fontWeight: 600, lineHeight: 1.2 }}>{node.title}</span>
-              <span
-                style={{
-                  color: "rgba(255, 255, 255, 0.62)",
-                  fontSize: "0.82rem",
-                  lineHeight: 1.35,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
+              <span className="memory-graph__node-title">{node.title}</span>
+              <span className="memory-graph__node-body">
                 {node.body ?? "No note yet."}
               </span>
-              <span
-                style={{
-                  color: presentation.badgeColor,
-                  fontSize: "0.74rem",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                }}
-              >
+              <span className="memory-graph__node-badge">
                 {workbenchView === "schema"
                   ? schemaLabel(node.traceType)
                   : node.consolidationState}
@@ -344,10 +300,7 @@ function nodePresentation(
         : muted
           ? consolidation.mutedBackground
           : consolidation.background,
-      border: selected ? consolidation.selectedBorder : consolidation.border,
-      shadow: selected
-        ? "0 18px 40px rgba(243, 178, 103, 0.22)"
-        : "0 12px 30px rgba(0, 0, 0, 0.24)",
+      borderColor: selected ? consolidation.selectedBorder : consolidation.border,
       eyebrowColor: consolidation.eyebrowColor,
       badgeColor: consolidation.badgeColor,
     };
@@ -357,16 +310,11 @@ function nodePresentation(
     const semantic = node.traceType === "semantic";
     return {
       background: semantic
-        ? "linear-gradient(180deg, rgba(92, 201, 165, 0.24), rgba(92, 201, 165, 0.08))"
-        : "linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02))",
-      border: semantic
-        ? "1px solid rgba(92, 201, 165, 0.78)"
-        : "1px solid rgba(255, 255, 255, 0.08)",
-      shadow: selected
-        ? "0 18px 40px rgba(92, 201, 165, 0.18)"
-        : "0 12px 30px rgba(0, 0, 0, 0.24)",
-      eyebrowColor: semantic ? "rgba(214, 255, 241, 0.92)" : "rgba(255, 255, 255, 0.62)",
-      badgeColor: semantic ? "rgba(214, 255, 241, 0.78)" : "rgba(255, 255, 255, 0.54)",
+        ? "rgba(222, 239, 229, 0.98)"
+        : "rgba(247, 241, 233, 0.98)",
+      borderColor: semantic ? "rgba(128, 170, 146, 0.72)" : "rgba(207, 192, 173, 0.78)",
+      eyebrowColor: semantic ? "#58755f" : "#766d63",
+      badgeColor: semantic ? "#58755f" : "#766d63",
     };
   }
 
@@ -376,10 +324,7 @@ function nodePresentation(
       : muted
         ? trace.mutedBackground
         : trace.background,
-    border: selected ? trace.selectedBorder : trace.border,
-    shadow: selected
-      ? "0 20px 48px rgba(243, 178, 103, 0.18)"
-      : "0 12px 30px rgba(0, 0, 0, 0.24)",
+    borderColor: selected ? trace.selectedBorder : trace.border,
     eyebrowColor: trace.eyebrowColor,
     badgeColor: trace.badgeColor,
   };
@@ -389,40 +334,34 @@ function tracePalette(traceType: MemoryTraceType) {
   switch (traceType) {
     case "working":
       return {
-        background: "linear-gradient(180deg, rgba(244, 208, 96, 0.2), rgba(244, 208, 96, 0.06))",
-        border: "1px solid rgba(244, 208, 96, 0.52)",
-        selectedBackground:
-          "linear-gradient(180deg, rgba(244, 208, 96, 0.32), rgba(244, 208, 96, 0.1))",
-        selectedBorder: "1px solid rgba(255, 224, 125, 0.92)",
-        mutedBackground:
-          "linear-gradient(180deg, rgba(244, 208, 96, 0.08), rgba(244, 208, 96, 0.02))",
-        eyebrowColor: "rgba(255, 237, 173, 0.88)",
-        badgeColor: "rgba(255, 237, 173, 0.78)",
+        background: "rgba(244, 233, 211, 0.98)",
+        border: "rgba(194, 167, 127, 0.66)",
+        selectedBackground: "rgba(234, 218, 199, 0.98)",
+        selectedBorder: "rgba(171, 143, 106, 0.82)",
+        mutedBackground: "rgba(244, 233, 211, 0.74)",
+        eyebrowColor: "#776550",
+        badgeColor: "#776550",
       };
     case "episodic":
       return {
-        background: "linear-gradient(180deg, rgba(233, 143, 96, 0.2), rgba(233, 143, 96, 0.06))",
-        border: "1px solid rgba(233, 143, 96, 0.52)",
-        selectedBackground:
-          "linear-gradient(180deg, rgba(233, 143, 96, 0.32), rgba(233, 143, 96, 0.1))",
-        selectedBorder: "1px solid rgba(255, 178, 138, 0.9)",
-        mutedBackground:
-          "linear-gradient(180deg, rgba(233, 143, 96, 0.08), rgba(233, 143, 96, 0.02))",
-        eyebrowColor: "rgba(255, 214, 194, 0.88)",
-        badgeColor: "rgba(255, 214, 194, 0.78)",
+        background: "rgba(244, 226, 217, 0.98)",
+        border: "rgba(196, 149, 129, 0.62)",
+        selectedBackground: "rgba(237, 214, 203, 0.98)",
+        selectedBorder: "rgba(176, 126, 105, 0.8)",
+        mutedBackground: "rgba(244, 226, 217, 0.72)",
+        eyebrowColor: "#7d5f53",
+        badgeColor: "#7d5f53",
       };
     case "semantic":
     default:
       return {
-        background: "linear-gradient(180deg, rgba(103, 171, 243, 0.2), rgba(103, 171, 243, 0.06))",
-        border: "1px solid rgba(103, 171, 243, 0.48)",
-        selectedBackground:
-          "linear-gradient(180deg, rgba(103, 171, 243, 0.34), rgba(103, 171, 243, 0.1))",
-        selectedBorder: "1px solid rgba(171, 217, 255, 0.9)",
-        mutedBackground:
-          "linear-gradient(180deg, rgba(103, 171, 243, 0.08), rgba(103, 171, 243, 0.02))",
-        eyebrowColor: "rgba(214, 232, 255, 0.88)",
-        badgeColor: "rgba(214, 232, 255, 0.78)",
+        background: "rgba(225, 234, 242, 0.98)",
+        border: "rgba(147, 171, 192, 0.62)",
+        selectedBackground: "rgba(214, 226, 237, 0.98)",
+        selectedBorder: "rgba(126, 152, 174, 0.82)",
+        mutedBackground: "rgba(225, 234, 242, 0.74)",
+        eyebrowColor: "#566a7b",
+        badgeColor: "#566a7b",
       };
   }
 }
@@ -431,64 +370,54 @@ function consolidationPalette(state: MemoryConsolidationState) {
   switch (state) {
     case "candidate":
       return {
-        background: "linear-gradient(180deg, rgba(243, 178, 103, 0.22), rgba(243, 178, 103, 0.08))",
-        border: "1px solid rgba(243, 178, 103, 0.68)",
-        selectedBackground:
-          "linear-gradient(180deg, rgba(243, 178, 103, 0.3), rgba(243, 178, 103, 0.12))",
-        selectedBorder: "1px solid rgba(255, 214, 156, 0.92)",
-        mutedBackground:
-          "linear-gradient(180deg, rgba(243, 178, 103, 0.08), rgba(243, 178, 103, 0.03))",
-        eyebrowColor: "rgba(255, 226, 194, 0.9)",
-        badgeColor: "rgba(255, 226, 194, 0.78)",
+        background: "rgba(244, 233, 211, 0.98)",
+        border: "rgba(194, 167, 127, 0.7)",
+        selectedBackground: "rgba(234, 218, 199, 0.98)",
+        selectedBorder: "rgba(171, 143, 106, 0.84)",
+        mutedBackground: "rgba(244, 233, 211, 0.74)",
+        eyebrowColor: "#776550",
+        badgeColor: "#776550",
       };
     case "approved":
       return {
-        background: "linear-gradient(180deg, rgba(92, 201, 165, 0.22), rgba(92, 201, 165, 0.08))",
-        border: "1px solid rgba(92, 201, 165, 0.64)",
-        selectedBackground:
-          "linear-gradient(180deg, rgba(92, 201, 165, 0.3), rgba(92, 201, 165, 0.12))",
-        selectedBorder: "1px solid rgba(205, 255, 241, 0.9)",
-        mutedBackground:
-          "linear-gradient(180deg, rgba(92, 201, 165, 0.08), rgba(92, 201, 165, 0.03))",
-        eyebrowColor: "rgba(205, 255, 241, 0.88)",
-        badgeColor: "rgba(205, 255, 241, 0.78)",
+        background: "rgba(224, 238, 230, 0.98)",
+        border: "rgba(128, 170, 146, 0.68)",
+        selectedBackground: "rgba(214, 230, 220, 0.98)",
+        selectedBorder: "rgba(106, 149, 124, 0.82)",
+        mutedBackground: "rgba(224, 238, 230, 0.74)",
+        eyebrowColor: "#58755f",
+        badgeColor: "#58755f",
       };
     case "rejected":
       return {
-        background: "linear-gradient(180deg, rgba(160, 160, 160, 0.16), rgba(160, 160, 160, 0.04))",
-        border: "1px solid rgba(160, 160, 160, 0.36)",
-        selectedBackground:
-          "linear-gradient(180deg, rgba(160, 160, 160, 0.22), rgba(160, 160, 160, 0.08))",
-        selectedBorder: "1px solid rgba(208, 208, 208, 0.7)",
-        mutedBackground:
-          "linear-gradient(180deg, rgba(160, 160, 160, 0.06), rgba(160, 160, 160, 0.02))",
-        eyebrowColor: "rgba(222, 222, 222, 0.78)",
-        badgeColor: "rgba(222, 222, 222, 0.68)",
+        background: "rgba(236, 233, 229, 0.98)",
+        border: "rgba(170, 163, 154, 0.58)",
+        selectedBackground: "rgba(227, 223, 217, 0.98)",
+        selectedBorder: "rgba(144, 136, 128, 0.76)",
+        mutedBackground: "rgba(236, 233, 229, 0.72)",
+        eyebrowColor: "#6e675f",
+        badgeColor: "#6e675f",
       };
     case "archived":
       return {
-        background: "linear-gradient(180deg, rgba(109, 123, 140, 0.14), rgba(109, 123, 140, 0.04))",
-        border: "1px solid rgba(109, 123, 140, 0.3)",
-        selectedBackground:
-          "linear-gradient(180deg, rgba(109, 123, 140, 0.2), rgba(109, 123, 140, 0.08))",
-        selectedBorder: "1px solid rgba(176, 188, 202, 0.66)",
-        mutedBackground:
-          "linear-gradient(180deg, rgba(109, 123, 140, 0.06), rgba(109, 123, 140, 0.02))",
-        eyebrowColor: "rgba(208, 220, 235, 0.76)",
-        badgeColor: "rgba(208, 220, 235, 0.66)",
+        background: "rgba(231, 235, 239, 0.98)",
+        border: "rgba(152, 164, 176, 0.56)",
+        selectedBackground: "rgba(221, 226, 231, 0.98)",
+        selectedBorder: "rgba(128, 141, 154, 0.76)",
+        mutedBackground: "rgba(231, 235, 239, 0.72)",
+        eyebrowColor: "#5e6974",
+        badgeColor: "#5e6974",
       };
     case "none":
     default:
       return {
-        background: "linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02))",
-        border: "1px solid rgba(255, 255, 255, 0.12)",
-        selectedBackground:
-          "linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04))",
-        selectedBorder: "1px solid rgba(255, 255, 255, 0.32)",
-        mutedBackground:
-          "linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02))",
-        eyebrowColor: "rgba(255, 255, 255, 0.72)",
-        badgeColor: "rgba(255, 255, 255, 0.58)",
+        background: "rgba(247, 241, 233, 0.98)",
+        border: "rgba(207, 192, 173, 0.76)",
+        selectedBackground: "rgba(239, 231, 220, 0.98)",
+        selectedBorder: "rgba(182, 157, 122, 0.82)",
+        mutedBackground: "rgba(247, 241, 233, 0.72)",
+        eyebrowColor: "#766d63",
+        badgeColor: "#766d63",
       };
   }
 }
@@ -513,27 +442,27 @@ function edgeStrokeColor(
 ) {
   if (workbenchView === "schema") {
     return sourceNode?.traceType === "semantic" || targetNode?.traceType === "semantic"
-      ? "rgba(92, 201, 165, 0.42)"
-      : "rgba(255, 255, 255, 0.18)";
+      ? "rgba(128, 170, 146, 0.58)"
+      : "rgba(184, 169, 150, 0.46)";
   }
 
   if (workbenchView === "consolidation") {
     return sourceNode?.consolidationState === "candidate" ||
       targetNode?.consolidationState === "candidate"
-      ? "rgba(243, 178, 103, 0.42)"
+      ? "rgba(194, 167, 127, 0.6)"
       : sourceNode?.consolidationState === "approved" ||
           targetNode?.consolidationState === "approved"
-        ? "rgba(92, 201, 165, 0.36)"
+        ? "rgba(128, 170, 146, 0.54)"
         : depth >= 2
-          ? "rgba(255, 255, 255, 0.14)"
-          : "rgba(255, 255, 255, 0.24)";
+          ? "rgba(193, 179, 160, 0.32)"
+          : "rgba(170, 156, 138, 0.46)";
   }
 
   return sourceNode?.traceType === "working" || targetNode?.traceType === "working"
-    ? "rgba(244, 208, 96, 0.38)"
+    ? "rgba(194, 167, 127, 0.58)"
     : sourceNode?.traceType === "episodic" || targetNode?.traceType === "episodic"
-      ? "rgba(233, 143, 96, 0.34)"
+      ? "rgba(196, 149, 129, 0.56)"
       : depth >= 2
-        ? "rgba(103, 171, 243, 0.22)"
-        : "rgba(103, 171, 243, 0.38)";
+        ? "rgba(147, 171, 192, 0.36)"
+        : "rgba(126, 152, 174, 0.56)";
 }
