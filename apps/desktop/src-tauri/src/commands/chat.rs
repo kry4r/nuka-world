@@ -101,7 +101,11 @@ async fn route_world_prompt_inner(
     let (session, messages, provider) = match turn.chat_turn {
         Some(chat_turn) => (
             ChatSessionResponse::from(chat_turn.session.clone()),
-            vec![ChatMessageResponse::from(chat_turn.user_message)],
+            chat_turn
+                .messages
+                .into_iter()
+                .map(ChatMessageResponse::from)
+                .collect(),
             Some(ChatProviderResponse::from(chat_turn.provider)),
         ),
         None => (
@@ -255,8 +259,9 @@ mod tests {
         .unwrap();
 
         assert!(!response.session.id.is_empty());
-        assert_eq!(response.messages.len(), 1);
+        assert_eq!(response.messages.len(), 2);
         assert_eq!(response.messages[0].content, "summarize today's notes");
+        assert_eq!(response.messages[1].role, "assistant");
         assert_eq!(response.provider.as_ref().map(|provider| provider.name.as_str()), Some("Local"));
     }
 

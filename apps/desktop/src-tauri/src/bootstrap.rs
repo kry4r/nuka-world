@@ -47,6 +47,10 @@ async fn build_app_state_from_pool(
             nuka_knowledge::process_manager::FilesystemProcessManager,
         )),
     );
+    #[cfg(test)]
+    let chat_service =
+        nuka_runtime::chat_service::ChatService::new_for_test_with_seeded_completion(pool.clone());
+    #[cfg(not(test))]
     let chat_service = nuka_runtime::chat_service::ChatService::new(pool.clone());
     let memory_service = nuka_runtime::memory_service::MemoryService::new(pool);
     let settings = settings_service.load().await?;
