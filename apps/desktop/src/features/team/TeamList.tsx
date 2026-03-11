@@ -15,7 +15,12 @@ export function TeamList({ teams, selectedTeamId, onSelect }: TeamListProps) {
 
       <div className="team-list__stack">
         {teams.length === 0 ? (
-          <div className="team-list__empty">No teams yet.</div>
+          <div
+            className="team-list__empty team-list__empty--centered"
+            data-testid="team-list-empty"
+          >
+            No teams yet.
+          </div>
         ) : (
           teams.map((team) => {
             const isActive = team.id === selectedTeamId;

@@ -82,8 +82,11 @@ export function TeamEditor({
           </div>
         </div>
       ) : (
-        <div className="team-editor__empty team-editor__empty--anchored ui-card ui-card--soft">
-          <h3 className="ui-card__title team-editor__empty-title">No teams yet</h3>
+        <div
+          className="team-editor__empty team-editor__empty--centered"
+          data-testid="team-editor-empty"
+        >
+          No teams yet.
         </div>
       )}
     </section>

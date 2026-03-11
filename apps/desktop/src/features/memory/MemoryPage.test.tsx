@@ -691,6 +691,50 @@ describe("MemoryPage", () => {
     expect(view.container.querySelector('input[aria-label="Node title"]')).toBeFalsy();
   });
 
+  it("renders the root empty memory state as a single muted line without the boxed copy", async () => {
+    invokeMock
+      .mockImplementationOnce(async (command: string) => {
+        if (command === "list_memory_scopes") {
+          return [
+            {
+              id: "workflow:workflow-review",
+              title: "Release Workflow",
+              kind: "workflow",
+              workflowId: "workflow-review",
+              sessionId: null,
+              agentId: null,
+            },
+          ];
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      })
+      .mockImplementationOnce(async (command: string) => {
+        if (command === "load_memory_graph") {
+          return { nodes: [], edges: [] };
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      });
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const emptyState = view.container.querySelector('[data-testid="memory-empty-copy"]');
+
+    expect(emptyState?.textContent?.trim()).toBe("No graph nodes yet");
+    expect(findText(view.container, "Memory")).toBeFalsy();
+    expect(
+      findText(view.container, "The graph will appear here once chat, workflows, or agents write local memory."),
+    ).toBeFalsy();
+    expect(view.container.querySelector(".memory-empty-state")).toBeFalsy();
+  });
+
   it("recenters the viewport when search changes the visible selection", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);

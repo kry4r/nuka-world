@@ -761,6 +761,17 @@ button {
   gap: 16px;
 }
 
+.memory-page__empty-copy {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: rgba(118, 109, 99, 0.58);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .memory-empty-state,
 .memory-stage,
 .memory-node-detail,
@@ -2827,6 +2838,7 @@ button {
 }
 
 .team-list__stack {
+  flex: 1;
   min-height: 0;
   overflow: auto;
 }
@@ -2838,6 +2850,16 @@ button {
   color: var(--color-text-soft);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.team-list__empty--centered {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  background: transparent;
+  text-align: center;
 }
 
 .team-list__item {
@@ -2896,14 +2918,15 @@ button {
   background: #fcf8f2;
 }
 
-.team-editor__empty--anchored {
-  align-self: flex-start;
-  min-width: 220px;
-  background: rgba(255, 252, 247, 0.7);
-}
-
-.team-editor__empty-title {
-  color: rgba(118, 109, 99, 0.76);
+.team-editor__empty--centered {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: rgba(118, 109, 99, 0.58);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .team-editor__summary {

@@ -182,7 +182,7 @@ describe("TeamPage", () => {
     expect(findText(view.container, "Run started: Release Team Run")).toBeTruthy();
   });
 
-  it("anchors the empty team state to the top edge instead of centering it in the editor pane", async () => {
+  it("centers both empty team states inside their panels", async () => {
     invokeMock.mockImplementationOnce(async (command: string) => {
       if (command === "list_teams") {
         return [];
@@ -194,8 +194,12 @@ describe("TeamPage", () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
 
-    const emptyTitle = view.container.querySelector(".team-editor__empty-title");
-    expect(emptyTitle?.textContent?.trim()).toBe("No teams yet");
-    expect(emptyTitle?.closest(".team-editor__empty--anchored")).toBeTruthy();
+    const listEmpty = view.container.querySelector('[data-testid="team-list-empty"]');
+    const editorEmpty = view.container.querySelector('[data-testid="team-editor-empty"]');
+
+    expect(listEmpty?.textContent?.trim()).toBe("No teams yet.");
+    expect(editorEmpty?.textContent?.trim()).toBe("No teams yet.");
+    expect(listEmpty?.className).toContain("team-list__empty--centered");
+    expect(editorEmpty?.className).toContain("team-editor__empty--centered");
   });
 });
