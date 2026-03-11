@@ -158,9 +158,9 @@ export function WorkflowPage({ intent, onIntentHandled }: WorkflowPageProps = {}
           }}
         />
 
-        <div className="page-layout__main workflow-page__detail">
+        <div className="workflow-page__detail">
           <div
-            className="workflow-page__detail-scroll"
+            className="workflow-page__detail-scroll workflow-scrollable workflow-scrollable--detail"
             data-testid="workflow-detail-scroll"
           >
             <WorkflowExplanationView

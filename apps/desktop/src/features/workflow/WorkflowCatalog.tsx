@@ -18,7 +18,10 @@ export function WorkflowCatalog({
         <h1>Workflows</h1>
       </div>
 
-      <div className="workflow-catalog__list">
+      <div
+        className="workflow-catalog__list workflow-scrollable workflow-scrollable--catalog"
+        data-testid="workflow-catalog-scroll"
+      >
         {workflows.map((workflow) => (
           <button
             aria-pressed={workflow.id === selectedWorkflowId}

@@ -273,16 +273,216 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
     }
   };
 
+  const composer = (
+    <div
+      aria-label="World chat composer"
+      className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}
+    >
+      {workflowToken ? (
+        <div className="composer__workflow-token" data-testid="chat-workflow-token">
+          <span className="composer__workflow-token-label">{workflowToken.label}</span>
+          <div className="composer__workflow-token-actions">
+            <button
+              className="composer__token-action"
+              onClick={() => {
+                if (workflowHandoff?.kind === "open_workflow_room") {
+                  onWorkflowHandoff?.(workflowHandoff);
+                  window.dispatchEvent(
+                    new CustomEvent("nuka:navigate", {
+                      detail: { page: "workflow" },
+                    }),
+                  );
+                }
+              }}
+              type="button"
+            >
+              Open Workflow
+            </button>
+            <button
+              className="composer__token-action"
+              onClick={() => {
+                setWorkflowToken(null);
+                setWorkflowHandoff(null);
+                setSelectedWorkflowId("");
+                setEntryMode("direct");
+                setSessionMode({ kind: "chat_only" });
+              }}
+              type="button"
+            >
+              Clear Workflow
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {workflowHandoff?.kind === "open_workflow_lobby" ? (
+        <div className="composer__draft-status">
+          <span>Workflow draft ready</span>
+          <button
+            className="composer__token-action"
+            onClick={() => onWorkflowHandoff?.(workflowHandoff)}
+            type="button"
+          >
+            Open Workflow
+          </button>
+        </div>
+      ) : null}
+
+      {!landing ? (
+        <SuggestionStrip
+          disabled={!providerGate.ready || isRouting}
+          onSelect={(choice) => {
+            void handleSend(choice);
+          }}
+          suggestions={suggestionsForMode(composerMode)}
+        />
+      ) : null}
+
+      {entryMode === "choose_workflow" && !workflowToken ? (
+        <label className="composer__workflow-picker">
+          <span>Saved workflow</span>
+          <select
+            aria-label="Saved workflow"
+            onChange={(event) => {
+              setSelectedWorkflowId(event.target.value);
+              setError(null);
+            }}
+            value={selectedWorkflowId}
+          >
+            <option value="">Select a workflow</option>
+            {SAVED_WORKFLOW_OPTIONS.map((workflow) => (
+              <option key={workflow.id} value={workflow.id}>
+                {workflow.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      {providerGate.blocked ? (
+        <div className="composer__inline-feedback" data-testid="chat-provider-inline">
+          <span>{providerGate.message}</span>
+          <button
+            className="composer__token-action"
+            onClick={providerGate.openSettings}
+            type="button"
+          >
+            Open Settings
+          </button>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="composer__inline-feedback composer__inline-feedback--error">{error}</div>
+      ) : null}
+
+      <div className="composer__bar">
+        <div className="composer__menu">
+          <button
+            aria-expanded={entryMenuOpen}
+            aria-haspopup="menu"
+            className="composer__add"
+            onClick={() => setEntryMenuOpen((current) => !current)}
+            type="button"
+          >
+            <span className="composer__visually-hidden">+</span>
+            <ComposerPlusIcon />
+          </button>
+
+          {entryMenuOpen ? (
+            <div
+              aria-label="Composer entry modes"
+              className="composer__entry-menu"
+              role="menu"
+            >
+              <button
+                className="composer__entry-option"
+                onClick={() => handleEntryModeSelect("direct")}
+                type="button"
+              >
+                Direct chat
+              </button>
+              <button
+                className="composer__entry-option"
+                onClick={() => handleEntryModeSelect("choose_workflow")}
+                type="button"
+              >
+                Choose workflow
+              </button>
+              <button
+                className="composer__entry-option"
+                onClick={() => handleEntryModeSelect("create_workflow")}
+                type="button"
+              >
+                Create workflow
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="composer__field">
+          {showComposerSummary ? (
+            <span className="composer__context-summary">
+              {entrySummary(entryMode, selectedWorkflowId)}
+            </span>
+          ) : null}
+          <textarea
+            className="composer__input"
+            disabled={!providerGate.ready}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void handleSend();
+              }
+            }}
+            placeholder={composerPlaceholder(landing, entryMode)}
+            rows={1}
+            value={prompt}
+          />
+        </div>
+
+        <button
+          aria-label={landing ? "Send to World" : "Send"}
+          className="composer__send"
+          disabled={!providerGate.ready || isRouting || prompt.trim().length === 0}
+          onClick={() => {
+            void handleSend();
+          }}
+          type="button"
+        >
+          {landing ? (
+            <>
+              <span className="composer__visually-hidden">
+                {isRouting ? "..." : "Send"}
+              </span>
+              <ComposerSendIcon />
+            </>
+          ) : (
+            <>
+              <span className="composer__send-label">{isRouting ? "..." : "Send"}</span>
+              {isRouting ? null : <ComposerSendIcon />}
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className={`page-layout chat-page ${landing ? "is-landing" : "is-active"}`}>
       <div className="page-layout__body chat-page__body">
-        <div className="page-layout__main chat-stage">
+        <div className="chat-stage">
           <div
             className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}
           >
             {landing ? (
-              <div aria-label="World chat landing hero" className="chat-hero">
-                <NukaLockup className="chat-hero__lockup" width={240} />
+              <div className="chat-landing-stack" data-testid="chat-landing-stack">
+                <div aria-label="World chat landing hero" className="chat-hero">
+                  <NukaLockup className="chat-hero__lockup" width={240} />
+                </div>
+
+                {composer}
               </div>
             ) : (
               <section aria-label="World conversation surface" className="chat-surface">
@@ -310,197 +510,7 @@ export function ChatPage({ onWorkflowHandoff }: ChatPageProps = {}) {
               </section>
             )}
 
-            <div
-              aria-label="World chat composer"
-              className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}
-            >
-              {workflowToken ? (
-                <div className="composer__workflow-token" data-testid="chat-workflow-token">
-                  <span className="composer__workflow-token-label">{workflowToken.label}</span>
-                  <div className="composer__workflow-token-actions">
-                    <button
-                      className="composer__token-action"
-                      onClick={() => {
-                        if (workflowHandoff?.kind === "open_workflow_room") {
-                          onWorkflowHandoff?.(workflowHandoff);
-                          window.dispatchEvent(
-                            new CustomEvent("nuka:navigate", {
-                              detail: { page: "workflow" },
-                            }),
-                          );
-                        }
-                      }}
-                      type="button"
-                    >
-                      Open Workflow
-                    </button>
-                    <button
-                      className="composer__token-action"
-                      onClick={() => {
-                        setWorkflowToken(null);
-                        setWorkflowHandoff(null);
-                        setSelectedWorkflowId("");
-                        setEntryMode("direct");
-                        setSessionMode({ kind: "chat_only" });
-                      }}
-                      type="button"
-                    >
-                      Clear Workflow
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-
-              {workflowHandoff?.kind === "open_workflow_lobby" ? (
-                <div className="composer__draft-status">
-                  <span>Workflow draft ready</span>
-                  <button
-                    className="composer__token-action"
-                    onClick={() => onWorkflowHandoff?.(workflowHandoff)}
-                    type="button"
-                  >
-                    Open Workflow
-                  </button>
-                </div>
-              ) : null}
-
-              {!landing ? (
-                <SuggestionStrip
-                  disabled={!providerGate.ready || isRouting}
-                  onSelect={(choice) => {
-                    void handleSend(choice);
-                  }}
-                  suggestions={suggestionsForMode(composerMode)}
-                />
-              ) : null}
-
-              {entryMode === "choose_workflow" && !workflowToken ? (
-                <label className="composer__workflow-picker">
-                  <span>Saved workflow</span>
-                  <select
-                    aria-label="Saved workflow"
-                    onChange={(event) => {
-                      setSelectedWorkflowId(event.target.value);
-                      setError(null);
-                    }}
-                    value={selectedWorkflowId}
-                  >
-                    <option value="">Select a workflow</option>
-                    {SAVED_WORKFLOW_OPTIONS.map((workflow) => (
-                      <option key={workflow.id} value={workflow.id}>
-                        {workflow.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-
-              {providerGate.blocked ? (
-                <div className="composer__inline-feedback" data-testid="chat-provider-inline">
-                  <span>{providerGate.message}</span>
-                  <button
-                    className="composer__token-action"
-                    onClick={providerGate.openSettings}
-                    type="button"
-                  >
-                    Open Settings
-                  </button>
-                </div>
-              ) : null}
-
-              {error ? <div className="composer__inline-feedback composer__inline-feedback--error">{error}</div> : null}
-
-              <div className="composer__bar">
-                <div className="composer__menu">
-                  <button
-                    aria-expanded={entryMenuOpen}
-                    aria-haspopup="menu"
-                    className="composer__add"
-                    onClick={() => setEntryMenuOpen((current) => !current)}
-                    type="button"
-                  >
-                    <span className="composer__visually-hidden">+</span>
-                    <ComposerPlusIcon />
-                  </button>
-
-                  {entryMenuOpen ? (
-                    <div
-                      aria-label="Composer entry modes"
-                      className="composer__entry-menu"
-                      role="menu"
-                    >
-                      <button
-                        className="composer__entry-option"
-                        onClick={() => handleEntryModeSelect("direct")}
-                        type="button"
-                      >
-                        Direct chat
-                      </button>
-                      <button
-                        className="composer__entry-option"
-                        onClick={() => handleEntryModeSelect("choose_workflow")}
-                        type="button"
-                      >
-                        Choose workflow
-                      </button>
-                      <button
-                        className="composer__entry-option"
-                        onClick={() => handleEntryModeSelect("create_workflow")}
-                        type="button"
-                      >
-                        Create workflow
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="composer__field">
-                  {showComposerSummary ? (
-                    <span className="composer__context-summary">
-                      {entrySummary(entryMode, selectedWorkflowId)}
-                    </span>
-                  ) : null}
-                  <textarea
-                    className="composer__input"
-                    disabled={!providerGate.ready}
-                    onChange={(event) => setPrompt(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void handleSend();
-                      }
-                    }}
-                    placeholder={composerPlaceholder(landing, entryMode)}
-                    rows={1}
-                    value={prompt}
-                  />
-                </div>
-
-                <button
-                  aria-label={landing ? "Send to World" : "Send"}
-                  className="composer__send"
-                  disabled={!providerGate.ready || isRouting || prompt.trim().length === 0}
-                  onClick={() => {
-                    void handleSend();
-                  }}
-                  type="button"
-                >
-                  {landing ? (
-                    <>
-                      <span className="composer__visually-hidden">
-                        {isRouting ? "..." : "Send"}
-                      </span>
-                      <ComposerSendIcon />
-                    </>
-                  ) : (
-                    <>
-                      <span className="composer__send-label">{isRouting ? "..." : "Send"}</span>
-                      {isRouting ? null : <ComposerSendIcon />}
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
+            {landing ? null : composer}
           </div>
         </div>
       </div>

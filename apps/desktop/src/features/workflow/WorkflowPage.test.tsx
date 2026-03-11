@@ -210,9 +210,13 @@ describe("WorkflowPage", () => {
 
     await flushEffects();
 
+    const catalogScroll = view.container.querySelector('[data-testid="workflow-catalog-scroll"]');
     const detailScroll = view.container.querySelector('[data-testid="workflow-detail-scroll"]');
 
+    expect(catalogScroll).toBeTruthy();
+    expect(catalogScroll?.className).toContain("workflow-scrollable");
     expect(detailScroll).toBeTruthy();
+    expect(detailScroll?.className).toContain("workflow-scrollable");
     expect(detailScroll?.textContent).toContain("Improve workflow");
   });
 

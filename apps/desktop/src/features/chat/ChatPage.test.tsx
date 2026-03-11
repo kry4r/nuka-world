@@ -180,6 +180,7 @@ describe("ChatPage", () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
 
+    expect(view.container.querySelector('[data-testid="chat-landing-stack"]')).toBeTruthy();
     expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
     expect(view.container.querySelector("textarea")).toBeTruthy();
     expect(view.container.querySelector(".composer__add")).toBeTruthy();
