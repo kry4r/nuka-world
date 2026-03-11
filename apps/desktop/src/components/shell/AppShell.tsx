@@ -32,11 +32,10 @@ export function AppShell({
     <div className="app-shell">
       <header className="app-titlebar app-shell__chrome-lock" data-testid="app-titlebar">
         <div
-          className="app-titlebar__drag app-titlebar__drag--stretch app-shell__chrome-lock"
+          className="app-titlebar__drag app-titlebar__drag--overlay app-shell__chrome-lock"
           data-tauri-drag-region
-        >
-          <span className="app-titlebar__caption">Nuka World Desktop</span>
-        </div>
+        />
+        <span className="app-titlebar__caption">Nuka World Desktop</span>
         <div className="app-titlebar__actions">
           <button
             aria-label="Minimize window"

@@ -39,14 +39,9 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
 
   return (
     <aside aria-label="Primary" className="app-sidebar app-shell__chrome-lock">
-      <button
-        aria-label="Open Chat"
-        className="app-sidebar__brand app-shell__chrome-lock"
-        onClick={() => onNavigate("chat")}
-        type="button"
-      >
+      <div className="app-sidebar__brand app-shell__chrome-lock">
         <NukaLogo className="app-sidebar__logo" size={124} />
-      </button>
+      </div>
 
       <nav aria-label="Primary pages" className="app-sidebar__nav">
         {primaryItems.map((item) => {

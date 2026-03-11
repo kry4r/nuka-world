@@ -445,6 +445,16 @@ describe("App shell", () => {
     expect(view.container.querySelector('.app-shell__page[data-active-page="settings"]')).toBeTruthy();
   });
 
+  it("renders the sidebar logo as a static brand mark without button semantics", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    const brand = view.container.querySelector(".app-sidebar__brand");
+
+    expect(brand?.tagName).toBe("DIV");
+    expect(view.container.querySelector('button[aria-label="Open Chat"]')).toBeFalsy();
+  });
+
   it("renders a custom title bar and wires window controls", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
@@ -486,11 +496,22 @@ describe("App shell", () => {
     const sidebarBrand = view.container.querySelector(".app-sidebar__brand");
     const providerCard = view.container.querySelector('[data-testid="sidebar-provider-card"]');
 
-    expect(dragRegion?.className).toContain("app-titlebar__drag--stretch");
+    expect(dragRegion?.className).toContain("app-titlebar__drag--overlay");
     expect(dragRegion?.className).toContain("app-shell__chrome-lock");
     expect(sidebar?.className).toContain("app-shell__chrome-lock");
     expect(sidebarBrand?.className).toContain("app-shell__chrome-lock");
     expect(providerCard?.className).toContain("app-shell__chrome-lock");
+  });
+
+  it("keeps a full-row drag layer behind the titlebar chrome", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    const titlebar = view.container.querySelector('[data-testid="app-titlebar"]');
+    const dragRegion = view.container.querySelector(".app-titlebar__drag");
+
+    expect(titlebar?.firstElementChild).toBe(dragRegion);
+    expect(dragRegion?.hasAttribute("data-tauri-drag-region")).toBe(true);
   });
 
   it("keeps the custom window controls outside the drag region", async () => {

@@ -1566,6 +1566,7 @@ button {
 }
 
 .app-titlebar {
+  position: relative;
   display: flex;
   min-height: 38px;
   align-items: center;
@@ -1579,17 +1580,19 @@ button {
 }
 
 .app-titlebar__drag {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  align-items: center;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
 }
 
-.app-titlebar__drag--stretch {
-  align-self: stretch;
+.app-titlebar__drag--overlay {
+  z-index: 0;
 }
 
 .app-titlebar__caption {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
   color: #6d6257;
   font-size: 11px;
   font-weight: 700;
@@ -1598,6 +1601,8 @@ button {
 }
 
 .app-titlebar__actions {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1706,13 +1711,11 @@ button {
   text-align: center;
 }
 
-.app-sidebar__brand:hover,
 .app-sidebar__nav-item:hover,
 .app-sidebar__settings:hover {
   background: rgba(255, 252, 247, 0.7);
 }
 
-.app-sidebar__brand:focus-visible,
 .app-sidebar__nav-item:focus-visible,
 .app-sidebar__settings:focus-visible {
   outline: 2px solid rgba(117, 132, 111, 0.9);
