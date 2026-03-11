@@ -1,4 +1,4 @@
-import goodLogo from "@/assets/goodlogo.png";
+import nukaLogo from "@/assets/nuka.svg";
 
 type NukaLogoProps = {
   size?: number;
@@ -11,10 +11,10 @@ export function NukaLogo({ size = 112, className }: NukaLogoProps) {
       aria-hidden="true"
       className={["nuka-logo", className].filter(Boolean).join(" ")}
       data-brand-kind="mark"
-      data-brand-source="goodlogo-png"
+      data-brand-source="nuka-svg"
       style={{ width: size }}
     >
-      <img alt="" src={goodLogo} />
+      <img alt="" src={nukaLogo} />
     </span>
   );
 }

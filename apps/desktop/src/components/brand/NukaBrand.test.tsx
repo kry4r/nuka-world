@@ -15,15 +15,15 @@ afterEach(async () => {
 });
 
 describe("Nuka brand assets", () => {
-  it("renders the compact in-app logo from the shipped png asset", async () => {
+  it("renders the compact in-app logo from the shipped svg asset", async () => {
     const view = await renderIntoDocument(<NukaLogo size={112} />);
     cleanups.push(view.cleanup);
 
     const logo = view.container.querySelector('[data-brand-kind="mark"]');
     const image = view.container.querySelector("img");
 
-    expect(logo?.getAttribute("data-brand-source")).toBe("goodlogo-png");
-    expect(image?.getAttribute("src")).toContain("goodlogo");
+    expect(logo?.getAttribute("data-brand-source")).toBe("nuka-svg");
+    expect(image?.getAttribute("src")).toContain("nuka");
     expect(image?.getAttribute("alt")).toBe("");
   });
 

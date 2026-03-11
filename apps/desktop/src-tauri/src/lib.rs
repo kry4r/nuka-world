@@ -174,5 +174,17 @@ mod tests {
                 "expected generated desktop icon asset at {icon}"
             );
         }
+
+        let icon_png_size = std::fs::metadata("icons/icon.png").unwrap().len();
+        let icon_ico_size = std::fs::metadata("icons/icon.ico").unwrap().len();
+
+        assert_eq!(
+            icon_png_size, 6464,
+            "expected icon.png generated from the same nuka.svg brand asset as chat"
+        );
+        assert_eq!(
+            icon_ico_size, 6247,
+            "expected icon.ico generated from the same nuka.svg brand asset as chat"
+        );
     }
 }
