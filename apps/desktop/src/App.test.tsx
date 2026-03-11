@@ -384,6 +384,14 @@ afterEach(async () => {
 });
 
 describe("App shell", () => {
+  it("shows Team in navigation and no longer shows Workflow in the shell nav", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    expect(findText(view.container, "Team")).toBeTruthy();
+    expect(view.container.querySelector('button[aria-label="Workflow"]')).toBeFalsy();
+  });
+
   it("renders a custom title bar and wires window controls", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);

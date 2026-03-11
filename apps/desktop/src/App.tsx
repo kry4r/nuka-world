@@ -87,7 +87,7 @@ export default function App() {
       ),
     },
     workflow: {
-      label: "Workflow",
+      label: "Team",
       render: () => (
         <WorkflowPage
           intent={workflowIntent}
