@@ -17,6 +17,9 @@ tauri-build = { version = "2" }
 
 [dependencies]
 anyhow = "1"
+async-trait = "0.1"
+keyring = "4.0.0-rc.3"
+keyring-core = "0.7.2"
 nuka-domain = { path = "../../../crates/nuka-domain" }
 nuka-integrations = { path = "../../../crates/nuka-integrations" }
 nuka-knowledge = { path = "../../../crates/nuka-knowledge" }

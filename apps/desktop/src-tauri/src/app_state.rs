@@ -1,5 +1,5 @@
 use crate::settings::SettingsState;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]
 pub struct RuntimeCapabilityStatus {
@@ -48,6 +48,7 @@ impl AppRuntimeStatus {
 pub struct AppState {
     settings: RwLock<SettingsState>,
     runtime_status: AppRuntimeStatus,
+    provider_secret_store: Arc<dyn crate::provider_secrets::ProviderSecretStore>,
     provider_service: nuka_runtime::providers::ProvidersService,
     settings_service: nuka_runtime::settings_service::SettingsService,
     team_service: nuka_runtime::team_service::TeamService,
@@ -65,6 +66,7 @@ impl AppState {
     pub fn new(
         settings: SettingsState,
         runtime_status: AppRuntimeStatus,
+        provider_secret_store: Arc<dyn crate::provider_secrets::ProviderSecretStore>,
         provider_service: nuka_runtime::providers::ProvidersService,
         settings_service: nuka_runtime::settings_service::SettingsService,
         team_service: nuka_runtime::team_service::TeamService,
@@ -79,6 +81,7 @@ impl AppState {
         Self {
             settings: RwLock::new(settings),
             runtime_status,
+            provider_secret_store,
             provider_service,
             settings_service,
             team_service,
@@ -106,6 +109,12 @@ impl AppState {
 
     pub fn provider_service(&self) -> &nuka_runtime::providers::ProvidersService {
         &self.provider_service
+    }
+
+    pub fn provider_secret_store(
+        &self,
+    ) -> Arc<dyn crate::provider_secrets::ProviderSecretStore> {
+        self.provider_secret_store.clone()
     }
 
     pub fn settings_service(&self) -> &nuka_runtime::settings_service::SettingsService {

@@ -37,6 +37,15 @@ async fn build_app_state_from_pool(
 ) -> anyhow::Result<crate::app_state::AppState> {
     nuka_storage::migrations::run(&pool).await?;
 
+    #[cfg(test)]
+    let provider_secret_store: std::sync::Arc<dyn crate::provider_secrets::ProviderSecretStore> =
+        std::sync::Arc::new(crate::provider_secrets::InMemoryProviderSecretStore::default());
+    #[cfg(not(test))]
+    let provider_secret_store: std::sync::Arc<dyn crate::provider_secrets::ProviderSecretStore> =
+        std::sync::Arc::new(crate::provider_secrets::WindowsCredentialSecretStore::new()?);
+
+    migrate_provider_tokens_to_secret_store(&pool, provider_secret_store.as_ref()).await?;
+
     let settings_service = nuka_runtime::settings_service::SettingsService::new(pool.clone());
     let provider_service = nuka_runtime::providers::ProvidersService::new(pool.clone());
     #[cfg(test)]
@@ -77,6 +86,7 @@ async fn build_app_state_from_pool(
             ),
             knowledge_status(knowledge_health),
         ),
+        provider_secret_store,
         provider_service,
         settings_service,
         team_service,
@@ -88,6 +98,32 @@ async fn build_app_state_from_pool(
         nuka_runtime::world::WorldRuntime::new(chat_service.clone()),
         nuka_runtime::workflow_world::WorkflowWorldRuntime::new(chat_service.clone()),
     ))
+}
+
+pub(crate) async fn migrate_provider_tokens_to_secret_store(
+    pool: &sqlx::SqlitePool,
+    store: &dyn crate::provider_secrets::ProviderSecretStore,
+) -> anyhow::Result<()> {
+    let repo = nuka_storage::providers::ProviderRepository::new(pool.clone());
+
+    for mut provider in repo.list().await? {
+        if provider.token.trim().is_empty() {
+            continue;
+        }
+
+        let secret = std::mem::take(&mut provider.token);
+        let secret_updated_at: String = sqlx::query_scalar("select datetime('now')")
+            .fetch_one(pool)
+            .await?;
+
+        store.write(&provider.id, &secret).await?;
+        provider.secret_ref = Some(store.secret_ref(&provider.id));
+        provider.secret_present = true;
+        provider.secret_updated_at = Some(secret_updated_at);
+        repo.upsert(provider).await?;
+    }
+
+    Ok(())
 }
 
 fn resolve_bundled_pageindex_runtime<R: tauri::Runtime>(
@@ -137,6 +173,37 @@ async fn connect_persistent_pool(path: &PathBuf) -> anyhow::Result<sqlx::SqliteP
 
 #[cfg(test)]
 mod tests {
+    use crate::provider_secrets::ProviderSecretStore;
+
+    #[tokio::test]
+    async fn migrates_plaintext_provider_tokens_into_secret_store() {
+        let store = crate::provider_secrets::InMemoryProviderSecretStore::default();
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        nuka_storage::migrations::run(&pool).await.unwrap();
+
+        sqlx::query(
+            "insert into providers (id, name, kind, base_url, token, model, enabled, created_at, updated_at)
+             values (?1, ?2, 'openai_compatible', ?3, ?4, ?5, 1, datetime('now'), datetime('now'))",
+        )
+        .bind("provider-legacy")
+        .bind("Legacy")
+        .bind("https://api.example.com/v1")
+        .bind("sk-legacy")
+        .bind("gpt-oss")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        super::migrate_provider_tokens_to_secret_store(&pool, &store)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store.read("provider-legacy").await.unwrap().as_deref(),
+            Some("sk-legacy")
+        );
+    }
+
     #[tokio::test]
     async fn connect_persistent_pool_creates_missing_sqlite_file() {
         let unique = format!(

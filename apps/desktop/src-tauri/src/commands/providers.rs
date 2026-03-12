@@ -164,6 +164,9 @@ impl ProviderInput {
             token: self.api_key,
             model: self.model,
             enabled: self.enabled,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
         }
     }
 }

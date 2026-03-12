@@ -43,6 +43,9 @@ mod tests {
             token: String::new(),
             model: "gpt-oss".to_string(),
             enabled: true,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
         }
     }
 
