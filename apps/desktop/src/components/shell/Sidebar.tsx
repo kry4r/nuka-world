@@ -24,7 +24,7 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
           : "Provider unavailable";
   const providerMessage =
     providerKind === "ready"
-      ? "Ready for chat and team runs."
+      ? null
       : providerKind === "missing"
         ? null
         : providerKind === "checking"

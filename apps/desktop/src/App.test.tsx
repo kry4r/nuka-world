@@ -262,7 +262,7 @@ describe("App shell", () => {
     expect(providerCard?.nextElementSibling).toBe(settingsButton);
     expect(findText(view.container, "Provider")).toBeTruthy();
     expect(findText(view.container, "Local Provider")).toBeTruthy();
-    expect(findText(view.container, "Ready for chat and team runs.")).toBeTruthy();
+    expect(findText(view.container, "Ready for chat and team runs.")).toBeFalsy();
     expect(providerCard?.querySelector(".status-badge")).toBeFalsy();
   });
 
