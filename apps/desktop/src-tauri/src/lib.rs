@@ -1,6 +1,7 @@
 mod app_state;
 mod bootstrap;
 mod commands;
+mod provider_secrets;
 mod settings;
 mod tray;
 
