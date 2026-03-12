@@ -19,11 +19,13 @@ struct GeneratedTeamDraft {
     name: String,
     summary: String,
     #[serde(default)]
-    prompt_constraints: String,
+    prompt_constraints: serde_json::Value,
     #[serde(default)]
-    permission_policy: String,
-    success_criteria: String,
-    coordination_policy: String,
+    permission_policy: serde_json::Value,
+    #[serde(default)]
+    success_criteria: serde_json::Value,
+    #[serde(default)]
+    coordination_policy: serde_json::Value,
     agents: Vec<GeneratedTeamAgentDraft>,
 }
 
@@ -32,9 +34,12 @@ struct GeneratedTeamDraft {
 struct GeneratedTeamAgentDraft {
     name: String,
     role: String,
+    #[serde(default, alias = "description")]
     responsibility: String,
+    #[serde(default)]
     system_prompt: String,
-    tool_bindings: Vec<nuka_domain::tool::AgentToolBinding>,
+    #[serde(default)]
+    tool_bindings: serde_json::Value,
     #[serde(default)]
     tool_use_policy: Option<nuka_domain::tool::ToolUsePolicy>,
 }
@@ -253,7 +258,8 @@ fn hydrate_generated_team(
     nuka_domain::team::Team,
     Vec<nuka_domain::agent::AgentPreset>,
 )> {
-    let draft: GeneratedTeamDraft = serde_json::from_str(payload)?;
+    let normalized_payload = normalize_generated_team_payload(payload);
+    let draft: GeneratedTeamDraft = serde_json::from_str(&normalized_payload)?;
     let team_id = uuid::Uuid::new_v4().to_string();
     let mut agents = Vec::new();
     let mut agent_assignments = Vec::new();
@@ -264,17 +270,20 @@ fn hydrate_generated_team(
         let team_agent_id = uuid::Uuid::new_v4().to_string();
         let assignment_id = uuid::Uuid::new_v4().to_string();
         let order_hint = index as i64;
+        let responsibility = normalize_agent_responsibility(&agent);
+        let system_prompt = normalize_agent_system_prompt(&agent, &responsibility);
+        let tool_bindings = normalize_tool_bindings(&agent.tool_bindings);
         let tool_use_policy = agent.tool_use_policy.unwrap_or_default();
 
         generated_agents.push(nuka_domain::agent::AgentPreset {
             id: agent_id.clone(),
             name: agent.name.clone(),
-            description: format!("{}: {}", agent.role, agent.responsibility),
-            system_prompt: agent.system_prompt.clone(),
+            description: format!("{}: {}", agent.role, responsibility),
+            system_prompt: system_prompt.clone(),
             provider_id: Some(provider_id.to_string()),
             knowledge_collection_ids: Vec::new(),
             memory_scope_ids: Vec::new(),
-            tool_bindings: agent.tool_bindings.clone(),
+            tool_bindings: tool_bindings.clone(),
         });
 
         agents.push(nuka_domain::team::TeamAgent {
@@ -282,9 +291,9 @@ fn hydrate_generated_team(
             team_id: team_id.clone(),
             name: agent.name,
             role: agent.role,
-            responsibility: agent.responsibility,
-            system_prompt: agent.system_prompt,
-            tool_bindings: agent.tool_bindings,
+            responsibility,
+            system_prompt,
+            tool_bindings,
             tool_use_policy: tool_use_policy.clone(),
             order_hint,
             created_at: String::new(),
@@ -310,10 +319,10 @@ fn hydrate_generated_team(
         name: draft.name,
         goal: goal.to_string(),
         summary: draft.summary,
-        prompt_constraints: draft.prompt_constraints,
-        permission_policy: draft.permission_policy,
-        success_criteria: draft.success_criteria,
-        coordination_policy: draft.coordination_policy,
+        prompt_constraints: json_field_to_storage_text(draft.prompt_constraints),
+        permission_policy: json_field_to_storage_text(draft.permission_policy),
+        success_criteria: json_field_to_storage_text(draft.success_criteria),
+        coordination_policy: json_field_to_storage_text(draft.coordination_policy),
         created_at: String::new(),
         updated_at: String::new(),
         status: nuka_domain::team::TeamStatus::Ready,
@@ -322,6 +331,95 @@ fn hydrate_generated_team(
     },
         generated_agents,
     ))
+}
+
+fn normalize_generated_team_payload(payload: &str) -> String {
+    let trimmed = payload.trim();
+    if let Some(stripped) = trimmed.strip_prefix("```") {
+        let without_language = stripped
+            .split_once('\n')
+            .map(|(_, rest)| rest)
+            .unwrap_or(stripped);
+        if let Some((body, _)) = without_language.rsplit_once("```") {
+            return body.trim().to_string();
+        }
+    }
+
+    if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        return trimmed[start..=end].trim().to_string();
+    }
+
+    trimmed.to_string()
+}
+
+fn json_field_to_storage_text(value: serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(text) => text,
+        other => serde_json::to_string_pretty(&other).unwrap_or_default(),
+    }
+}
+
+fn normalize_agent_responsibility(agent: &GeneratedTeamAgentDraft) -> String {
+    let trimmed = agent.responsibility.trim();
+    if trimmed.is_empty() {
+        format!("Contribute as {} for the team goal.", agent.role)
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn normalize_agent_system_prompt(
+    agent: &GeneratedTeamAgentDraft,
+    responsibility: &str,
+) -> String {
+    let trimmed = agent.system_prompt.trim();
+    if trimmed.is_empty() {
+        format!(
+            "Act as {} in the {} role and focus on {}.",
+            agent.name, agent.role, responsibility
+        )
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn normalize_tool_bindings(
+    value: &serde_json::Value,
+) -> Vec<nuka_domain::tool::AgentToolBinding> {
+    match value {
+        serde_json::Value::Array(items) => items
+            .iter()
+            .filter_map(parse_tool_binding)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn parse_tool_binding(
+    value: &serde_json::Value,
+) -> Option<nuka_domain::tool::AgentToolBinding> {
+    if let Ok(binding) =
+        serde_json::from_value::<nuka_domain::tool::AgentToolBinding>(value.clone())
+    {
+        return Some(binding);
+    }
+
+    let tool = value.get("tool").and_then(serde_json::Value::as_str)?.trim();
+    let purpose = value
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    Some(nuka_domain::tool::AgentToolBinding {
+        tool_id: format!("generated:{tool}"),
+        allowed: true,
+        adapter_kind: nuka_domain::tool::ToolAdapterKind::Mcp,
+        purpose,
+        cost_class: nuka_domain::tool::ToolCostClass::Low,
+    })
 }
 
 const PROVIDERS_STATE_KEY: &str = "settings.providers";
@@ -421,5 +519,74 @@ mod tests {
         assert!(error
             .to_string()
             .contains("provider connection check failed"));
+    }
+
+    #[test]
+    fn hydrate_generated_team_accepts_code_fenced_json_and_flexible_agent_fields() {
+        let payload = r#"```json
+{
+  "name": "GoalOutlineTeam",
+  "summary": "A persistent multi-agent team that creates a clear goal outline.",
+  "promptConstraints": [
+    "All prompts must be in English.",
+    "Keep the outline concise."
+  ],
+  "permissionPolicy": {
+    "allow": ["read:public", "write:team_output"],
+    "deny": ["exec:system"]
+  },
+  "successCriteria": {
+    "containsOutline": true,
+    "hasObjectives": true
+  },
+  "coordinationPolicy": {
+    "type": "sequential",
+    "lead": "PlannerAgent"
+  },
+  "agents": [
+    {
+      "name": "PlannerAgent",
+      "role": "lead",
+      "description": "Generates a high-level goal outline based on the prompt.",
+      "toolBindings": [
+        {
+          "tool": "text_generate",
+          "description": "Generates a short outline."
+        }
+      ]
+    },
+    {
+      "name": "OutlineAgent",
+      "role": "member",
+      "description": "Expands the outline into milestones and responsibilities.",
+      "toolBindings": [
+        {
+          "tool": "text_expand",
+          "description": "Expands outline bullets into detail."
+        }
+      ]
+    }
+  ]
+}
+```"#;
+
+        let (team, generated_agents) =
+            super::hydrate_generated_team("Outline the team goal", "provider-live", payload)
+                .unwrap();
+
+        assert_eq!(team.name, "GoalOutlineTeam");
+        assert_eq!(team.agents.len(), 2);
+        assert_eq!(team.agent_assignments.len(), 2);
+        assert_eq!(
+            team.agents[0].responsibility,
+            "Generates a high-level goal outline based on the prompt."
+        );
+        assert!(team.agents[0].system_prompt.contains("PlannerAgent"));
+        assert!(!team.agents[0].tool_bindings.is_empty());
+        assert!(team.prompt_constraints.contains("All prompts must be in English."));
+        assert!(team.permission_policy.contains("\"allow\""));
+        assert!(team.success_criteria.contains("containsOutline"));
+        assert!(team.coordination_policy.contains("PlannerAgent"));
+        assert_eq!(generated_agents.len(), 2);
     }
 }
