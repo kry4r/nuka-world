@@ -62,6 +62,7 @@ pub fn run() {
             commands::team::load_team_run,
             commands::team::start_team_run,
             commands::team::update_team,
+            commands::workspace::create_workspace_session_branch,
             commands::workspace::list_workspace_sessions,
             commands::workspace::load_workspace_session,
         ])
@@ -128,6 +129,20 @@ mod tests {
                 "missing invoke handler registration for {command}"
             );
         }
+    }
+
+    #[test]
+    fn tauri_lib_registers_workspace_branch_command() {
+        let lib_rs = std::fs::read_to_string("src/lib.rs").unwrap();
+        let invoke_handler_region = lib_rs
+            .split("#[cfg(test)]")
+            .next()
+            .expect("lib.rs should contain a non-test region");
+
+        assert!(
+            invoke_handler_region.contains("commands::workspace::create_workspace_session_branch"),
+            "missing invoke handler registration for workspace branch creation"
+        );
     }
 
     #[test]
