@@ -13,6 +13,17 @@ import type {
 } from "@/lib/workspace";
 import { findText, renderIntoDocument } from "@/test/render";
 
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) => {
+    switch (command) {
+      case "open_external_prompt_draft":
+        return `${String(args?.initialContent ?? "")}\nExpanded draft from editor`;
+      default:
+        throw new Error(`unexpected tauri command: ${command}`);
+    }
+  }),
+}));
+
 const sampleTeam: TeamRecord = {
   id: "team-release",
   name: "Release Team",
@@ -120,7 +131,11 @@ const sampleRun: TeamRunRecord = {
 };
 
 const routeWorldPromptMock = vi.fn(
-  async (prompt: string, sessionId?: string) => {
+  async (
+    prompt: string,
+    sessionId?: string,
+    _mode: { kind: "direct_chat" } = { kind: "direct_chat" },
+  ) => {
     if (prompt === "Broken provider") {
       throw new Error("default provider is not configured");
     }
@@ -130,7 +145,6 @@ const routeWorldPromptMock = vi.fn(
         id: sessionId ?? "session-123",
         title: "Summarize today's notes",
         providerId: "provider-local",
-        workflowId: null,
         messageCount: sessionId ? 2 : 1,
       },
       route: {
@@ -268,6 +282,10 @@ vi.mock("@/lib/team", () => ({
     addTeamRunAgentMock(...args),
 }));
 
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (...args: Parameters<typeof invokeMock>) => invokeMock(...args),
+}));
+
 const cleanups: Array<() => Promise<void>> = [];
 
 function getButtonByText(container: HTMLElement, text: string) {
@@ -354,41 +372,46 @@ function deferredValue<T>() {
 
 afterEach(async () => {
   routeWorldPromptMock.mockReset();
-  routeWorldPromptMock.mockImplementation(async (prompt: string, sessionId?: string) => {
-    if (prompt === "Broken provider") {
-      throw new Error("default provider is not configured");
-    }
+  routeWorldPromptMock.mockImplementation(
+    async (
+      prompt: string,
+      sessionId?: string,
+      _mode: { kind: "direct_chat" } = { kind: "direct_chat" },
+    ) => {
+      if (prompt === "Broken provider") {
+        throw new Error("default provider is not configured");
+      }
 
-    return {
-      session: {
-        id: sessionId ?? "session-123",
-        title: "Summarize today's notes",
-        providerId: "provider-local",
-        workflowId: null,
-        messageCount: sessionId ? 2 : 1,
-      },
-      route: {
-        kind: "direct_reply" as const,
-      },
-      messages: [
-        {
-          id: sessionId ? "message-user-2" : "message-user-1",
-          role: "user" as const,
-          content: prompt,
+      return {
+        session: {
+          id: sessionId ?? "session-123",
+          title: "Summarize today's notes",
+          providerId: "provider-local",
+          messageCount: sessionId ? 2 : 1,
         },
-      ],
-      provider: {
-        id: "provider-local",
-        name: "Local",
-        model: "gpt-oss",
-        baseUrl: "http://localhost:11434/v1",
-      },
-      context: {
-        attachedAgents: [],
-        attachedKnowledgeLibraries: [],
-      },
-    };
-  });
+        route: {
+          kind: "direct_reply" as const,
+        },
+        messages: [
+          {
+            id: sessionId ? "message-user-2" : "message-user-1",
+            role: "user" as const,
+            content: prompt,
+          },
+        ],
+        provider: {
+          id: "provider-local",
+          name: "Local",
+          model: "gpt-oss",
+          baseUrl: "http://localhost:11434/v1",
+        },
+        context: {
+          attachedAgents: [],
+          attachedKnowledgeLibraries: [],
+        },
+      };
+    },
+  );
   listPendingMemoryCandidatesMock.mockReset();
   reviewMemoryCandidateMock.mockReset();
   listWorkspaceSessionsMock.mockReset();
@@ -399,6 +422,7 @@ afterEach(async () => {
   startTeamRunMock.mockReset();
   continueTeamRunMock.mockReset();
   addTeamRunAgentMock.mockReset();
+  invokeMock.mockReset();
 
   listPendingMemoryCandidatesMock.mockImplementation(async () => []);
   reviewMemoryCandidateMock.mockImplementation(async () => undefined);
@@ -418,6 +442,14 @@ afterEach(async () => {
   });
   addTeamRunAgentMock.mockImplementation(async () => {
     throw new Error("unexpected addTeamRunAgent call");
+  });
+  invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+    switch (command) {
+      case "open_external_prompt_draft":
+        return `${String(args?.initialContent ?? "")}\nExpanded draft from editor`;
+      default:
+        throw new Error(`unexpected tauri command: ${command}`);
+    }
   });
 
   providerGateState.ready = true;
@@ -461,6 +493,22 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Create team")).toBeTruthy();
     expect(findText(view.container, "Choose workflow")).toBeFalsy();
     expect(findText(view.container, "Create workflow")).toBeFalsy();
+  });
+
+  it("opens the external editor draft flow and injects the returned content into the composer", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await setComposerValue(view.container, "Initial outline");
+    await clickButton(view.container, "Draft");
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "open_external_prompt_draft",
+      expect.objectContaining({ initialContent: "Initial outline" }),
+    );
+
+    const textarea = view.container.querySelector("textarea") as HTMLTextAreaElement | null;
+    expect(textarea?.value).toContain("Expanded draft from editor");
   });
 
   it("shows a choose-team pill and loads saved teams from the real team client", async () => {

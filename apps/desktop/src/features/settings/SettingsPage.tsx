@@ -17,6 +17,7 @@ type SettingsPayload = {
   defaultProviderId: string;
   fallbackProviderId: string;
   connectionChecks: boolean;
+  externalEditorPath: string;
   closeBehavior: string;
   launchAtLogin: boolean;
   trayResident: boolean;
@@ -45,6 +46,7 @@ const EMPTY_SETTINGS: SettingsPayload = {
   defaultProviderId: "",
   fallbackProviderId: "",
   connectionChecks: true,
+  externalEditorPath: "",
   closeBehavior: "Minimize to tray",
   launchAtLogin: false,
   trayResident: true,
@@ -54,6 +56,7 @@ const EMPTY_SETTINGS: SettingsPayload = {
 };
 
 const RUNTIME_FIELDS: Array<keyof SettingsPayload> = [
+  "externalEditorPath",
   "closeBehavior",
   "launchAtLogin",
   "trayResident",
@@ -542,6 +545,17 @@ export function SettingsPage() {
 
       <section className="settings-directory__panel">
         <div className="settings-form-grid">
+          <label className="settings-form-field settings-form-field--full">
+            <span className="settings-form-field__label">External editor path</span>
+            <input
+              aria-label="External editor path"
+              className="settings-input"
+              onChange={(event) => updateSetting("externalEditorPath", event.target.value)}
+              placeholder="Path to editor executable"
+              value={settings.externalEditorPath}
+            />
+          </label>
+
           <label className="settings-form-field">
             <span className="settings-form-field__label">Close behavior</span>
             <select

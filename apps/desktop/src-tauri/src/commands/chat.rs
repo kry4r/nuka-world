@@ -336,7 +336,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(matches!(response.route, super::ChatRoute::DirectReply));
+        assert_eq!(response.output, "Seeded assistant response");
     }
 
     #[tokio::test]
@@ -373,6 +373,7 @@ mod tests {
         assert_eq!(response_json["exitStatus"], "completed");
         assert_eq!(response_json["provider"]["id"], provider_id);
         assert_eq!(response_json["provider"]["model"], "gpt-oss");
+        assert_eq!(response_json["route"]["kind"], "direct_reply");
     }
 
     #[tokio::test]

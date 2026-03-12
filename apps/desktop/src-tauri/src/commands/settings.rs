@@ -11,6 +11,7 @@ pub struct SettingsPayload {
     pub default_provider_id: String,
     pub fallback_provider_id: String,
     pub connection_checks: bool,
+    pub external_editor_path: String,
     pub interface_font: String,
     pub message_font: String,
     pub text_size: String,
@@ -54,6 +55,7 @@ struct ProviderSettingsState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeSettingsState {
+    external_editor_path: String,
     close_behavior: String,
     launch_at_login: bool,
     tray_resident: bool,
@@ -81,6 +83,16 @@ pub async fn save_settings(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub async fn open_external_prompt_draft(
+    initial_content: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    open_external_prompt_draft_inner(initial_content, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 async fn load_settings_inner(state: &AppState) -> anyhow::Result<SettingsPayload> {
     let settings = state.settings_service().load().await?;
     let appearance = load_state::<AppearanceSettingsState>(state, APPEARANCE_STATE_KEY)
@@ -97,6 +109,7 @@ async fn load_settings_inner(state: &AppState) -> anyhow::Result<SettingsPayload
         default_provider_id: settings.default_provider_id.unwrap_or_default(),
         fallback_provider_id: provider_preferences.fallback_provider_id,
         connection_checks: provider_preferences.connection_checks,
+        external_editor_path: runtime.external_editor_path,
         interface_font: appearance.interface_font,
         message_font: appearance.message_font,
         text_size: appearance.text_size,
@@ -164,6 +177,44 @@ where
         .map_err(Into::into)
 }
 
+async fn open_external_prompt_draft_inner(
+    initial_content: String,
+    state: &AppState,
+) -> anyhow::Result<String> {
+    let settings = load_settings_inner(state).await?;
+    let editor_path = settings.external_editor_path.trim().to_string();
+    if editor_path.is_empty() {
+        anyhow::bail!("external editor path is not configured");
+    }
+
+    let draft_path = create_external_draft_path("nuka-prompt-draft");
+    std::fs::write(&draft_path, initial_content.as_bytes())?;
+    let read_path = draft_path.clone();
+
+    let read_result = tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
+        let status = std::process::Command::new(&editor_path)
+            .arg(&read_path)
+            .status()?;
+        if !status.success() {
+            anyhow::bail!("external editor exited with status {status}");
+        }
+
+        Ok(std::fs::read_to_string(&read_path)?)
+    })
+    .await??;
+
+    let _ = std::fs::remove_file(&draft_path);
+    Ok(read_result)
+}
+
+fn create_external_draft_path(prefix: &str) -> std::path::PathBuf {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    std::env::temp_dir().join(format!("{prefix}-{millis}-{}.txt", std::process::id()))
+}
+
 fn option_string(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -208,6 +259,7 @@ impl Default for RuntimeSettingsState {
 impl RuntimeSettingsState {
     fn from_close_policy(minimize_to_tray: bool) -> Self {
         Self {
+            external_editor_path: String::new(),
             close_behavior: if minimize_to_tray {
                 "Minimize to tray".to_string()
             } else {
@@ -251,6 +303,7 @@ impl From<&SettingsPayload> for ProviderSettingsState {
 impl From<&SettingsPayload> for RuntimeSettingsState {
     fn from(value: &SettingsPayload) -> Self {
         Self {
+            external_editor_path: value.external_editor_path.clone(),
             close_behavior: value.close_behavior.clone(),
             launch_at_login: value.launch_at_login,
             tray_resident: value.tray_resident,
@@ -273,6 +326,7 @@ mod tests {
                 default_provider_id: "provider-local".to_string(),
                 fallback_provider_id: "provider-fallback".to_string(),
                 connection_checks: false,
+                external_editor_path: "C:\\Tools\\notepad++.exe".to_string(),
                 interface_font: "IBM Plex Sans".to_string(),
                 message_font: "System UI".to_string(),
                 text_size: "16 px".to_string(),
@@ -298,5 +352,74 @@ mod tests {
 
         assert_eq!(loaded, saved);
         assert!(!state.settings().minimize_to_tray);
+    }
+
+    #[tokio::test]
+    async fn external_prompt_draft_returns_saved_editor_content() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let script_path = write_editor_fixture();
+
+        super::save_settings_inner(
+            &state,
+            super::SettingsPayload {
+                default_provider_id: String::new(),
+                fallback_provider_id: String::new(),
+                connection_checks: true,
+                external_editor_path: script_path.to_string_lossy().into_owned(),
+                interface_font: "IBM Plex Sans".to_string(),
+                message_font: "System UI".to_string(),
+                text_size: "16 px".to_string(),
+                language: "English (US)".to_string(),
+                response_locale: "Follow session".to_string(),
+                time_format: "12-hour".to_string(),
+                density: "Compact".to_string(),
+                motion: "Reduced".to_string(),
+                window_chrome: "Native frame".to_string(),
+                sidebar_default: "Collapsed".to_string(),
+                close_behavior: "Quit app".to_string(),
+                launch_at_login: false,
+                tray_resident: false,
+                background_adapters: false,
+                logging: "Verbose".to_string(),
+                notifications: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let edited = super::open_external_prompt_draft_inner("Initial draft".to_string(), &state)
+            .await
+            .unwrap();
+
+        assert_eq!(edited.trim(), "Edited from fixture");
+
+        let _ = std::fs::remove_file(script_path);
+    }
+
+    fn write_editor_fixture() -> std::path::PathBuf {
+        let base = super::create_external_draft_path("nuka-editor-fixture");
+        let (path, body) = if cfg!(windows) {
+            (
+                base.with_extension("cmd"),
+                "@echo off\r\nset DRAFT=%~1\r\n> \"%DRAFT%\" echo Edited from fixture\r\n"
+                    .to_string(),
+            )
+        } else {
+            (
+                base.with_extension("sh"),
+                "#!/usr/bin/env sh\nprintf 'Edited from fixture\n' > \"$1\"\n".to_string(),
+            )
+        };
+
+        std::fs::write(&path, body).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(&path, permissions).unwrap();
+        }
+
+        path
     }
 }
