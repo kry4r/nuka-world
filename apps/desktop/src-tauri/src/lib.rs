@@ -64,10 +64,6 @@ pub fn run() {
             commands::team::update_team,
             commands::workspace::list_workspace_sessions,
             commands::workspace::load_workspace_session,
-            commands::workflow::explain_workflow,
-            commands::workflow::revise_workflow,
-            commands::workflow::continue_workflow_session,
-            commands::workflow::start_workflow_session,
         ])
         .on_window_event(|window, event| {
             crate::tray::handle_window_event(window, event);
@@ -111,7 +107,7 @@ mod tests {
     }
 
     #[test]
-    fn tauri_lib_registers_memory_and_workflow_room_commands() {
+    fn tauri_lib_registers_memory_commands_without_workflow_surface() {
         let lib_rs = std::fs::read_to_string("src/lib.rs").unwrap();
         let invoke_handler_region = lib_rs
             .split("#[cfg(test)]")
@@ -126,13 +122,31 @@ mod tests {
             "commands::memory::delete_memory_edge",
             "commands::memory::list_pending_memory_candidates",
             "commands::memory::review_memory_candidate",
-            "commands::workflow::explain_workflow",
-            "commands::workflow::revise_workflow",
-            "commands::workflow::continue_workflow_session",
         ] {
             assert!(
                 invoke_handler_region.contains(command),
                 "missing invoke handler registration for {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn tauri_lib_does_not_register_workflow_commands() {
+        let lib_rs = std::fs::read_to_string("src/lib.rs").unwrap();
+        let invoke_handler_region = lib_rs
+            .split("#[cfg(test)]")
+            .next()
+            .expect("lib.rs should contain a non-test region");
+
+        for command in [
+            "commands::workflow::explain_workflow",
+            "commands::workflow::revise_workflow",
+            "commands::workflow::continue_workflow_session",
+            "commands::workflow::start_workflow_session",
+        ] {
+            assert!(
+                !invoke_handler_region.contains(command),
+                "unexpected workflow command registration for {command}"
             );
         }
     }

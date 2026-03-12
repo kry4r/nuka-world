@@ -58,7 +58,6 @@ pub struct AppState {
     memory_service: nuka_runtime::memory_service::MemoryService,
     workspace_sessions_service: nuka_runtime::workspace_sessions::WorkspaceSessionsService,
     world_runtime: nuka_runtime::world::WorldRuntime,
-    workflow_world_runtime: nuka_runtime::workflow_world::WorkflowWorldRuntime,
 }
 
 #[allow(dead_code)]
@@ -76,7 +75,6 @@ impl AppState {
         memory_service: nuka_runtime::memory_service::MemoryService,
         workspace_sessions_service: nuka_runtime::workspace_sessions::WorkspaceSessionsService,
         world_runtime: nuka_runtime::world::WorldRuntime,
-        workflow_world_runtime: nuka_runtime::workflow_world::WorkflowWorldRuntime,
     ) -> Self {
         Self {
             settings: RwLock::new(settings),
@@ -91,7 +89,6 @@ impl AppState {
             memory_service,
             workspace_sessions_service,
             world_runtime,
-            workflow_world_runtime,
         }
     }
 
@@ -149,9 +146,5 @@ impl AppState {
 
     pub fn world_runtime(&self) -> &nuka_runtime::world::WorldRuntime {
         &self.world_runtime
-    }
-
-    pub fn workflow_world_runtime(&self) -> &nuka_runtime::workflow_world::WorkflowWorldRuntime {
-        &self.workflow_world_runtime
     }
 }

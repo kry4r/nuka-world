@@ -57,90 +57,6 @@ const sampleRun = {
   events: [],
 };
 
-const workflowExplanations = {
-  "workflow-research-brief": {
-    workflowId: "workflow-research-brief",
-    title: "Research Brief",
-    summary: "Turn a rough goal into a clear brief with staged drafting and review.",
-    steps: [
-      {
-        id: "scope",
-        title: "Scope intake",
-        purpose: "Capture the product goal and framing constraints.",
-        executor: "Room coordinator",
-        inputSource: "Chat goal",
-        output: "Structured workflow brief",
-        completion: "Goal and audience are clear",
-      },
-      {
-        id: "draft",
-        title: "Draft brief",
-        purpose: "Draft the first research brief from the captured scope.",
-        executor: "Draft lane",
-        inputSource: "Structured workflow brief",
-        output: "Research brief draft",
-        completion: "Draft is ready for review",
-      },
-    ],
-    dependencies: {
-      agents: ["Room coordinator", "Draft lane"],
-      toolsAndKnowledge: ["Project notes", "Knowledge search"],
-      requiredInputs: ["Goal"],
-    },
-  },
-  "workflow-release-notes": {
-    workflowId: "workflow-release-notes",
-    title: "Release Notes",
-    summary: "Draft, review, and publish release notes with a cleaner publish handoff.",
-    steps: [
-      {
-        id: "collect",
-        title: "Collect changes",
-        purpose: "Gather changes that belong in the release.",
-        executor: "Release reviewer",
-        inputSource: "Release scope",
-        output: "Confirmed release change list",
-        completion: "Candidate changes are validated",
-      },
-      {
-        id: "publish",
-        title: "Prepare publish draft",
-        purpose: "Turn validated changes into a publish-ready note set.",
-        executor: "Publishing lane",
-        inputSource: "Confirmed release change list",
-        output: "Release notes draft",
-        completion: "Draft is ready for approval",
-      },
-    ],
-    dependencies: {
-      agents: ["Release reviewer", "Publishing lane"],
-      toolsAndKnowledge: ["Knowledge search", "Release changelog"],
-      requiredInputs: ["Release scope"],
-    },
-  },
-  "workflow-customer-triage": {
-    workflowId: "workflow-customer-triage",
-    title: "Customer Triage",
-    summary: "Classify and route customer issues with a compact triage loop.",
-    steps: [
-      {
-        id: "triage",
-        title: "Classify issue",
-        purpose: "Determine severity and routing path.",
-        executor: "Triage lane",
-        inputSource: "Issue summary",
-        output: "Severity and owner suggestion",
-        completion: "Issue is categorized",
-      },
-    ],
-    dependencies: {
-      agents: ["Triage lane"],
-      toolsAndKnowledge: ["Issue history"],
-      requiredInputs: ["Issue summary"],
-    },
-  },
-} as const;
-
 const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
   switch (command) {
     case "app_runtime_status":
@@ -194,58 +110,6 @@ const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>)
       return [];
     case "load_workspace_session":
       return null;
-    case "explain_workflow":
-      return (
-        workflowExplanations[String(args?.workflowId ?? "workflow-research-brief") as keyof typeof workflowExplanations] ??
-        workflowExplanations["workflow-research-brief"]
-      );
-    case "revise_workflow":
-      return {
-        workflowId: String(args?.workflowId ?? "workflow-research-brief"),
-        prompt: String(args?.prompt ?? ""),
-        changeSummary: "Split drafting and publishing into clearer review stages.",
-        stepChanges: [
-          "Add a dedicated review step before publish.",
-          "Search the knowledge base before drafting.",
-        ],
-        dependencyChanges: ["Add Knowledge search before draft generation."],
-        outcomeChanges: ["Draft output is now optimized for a publish-ready changelog."],
-      };
-    case "start_workflow_session":
-      return {
-        sessionId: "workflow-session-1",
-        workflowId: String(args?.workflowId ?? "workflow-release-notes"),
-        inputs: (args?.inputs as Record<string, string> | undefined) ?? {},
-        status: "active",
-        origin:
-          (args?.origin as
-            | { sourceSessionId: string; sourceMode: "create_workflow" | "specific_workflow" }
-            | undefined) ?? null,
-        events: [
-          {
-            kind: "user_message",
-            id: "workflow-user-1",
-            content:
-              ((args?.inputs as Record<string, string> | undefined)?.goal ??
-                (args?.inputs as Record<string, string> | undefined)?.releaseScope ??
-                (args?.inputs as Record<string, string> | undefined)?.issueSummary ??
-                (args?.inputs as Record<string, string> | undefined)?.request ??
-                "Prepare a workflow room"),
-          },
-          {
-            kind: "assistant_message",
-            id: "workflow-assistant-1",
-            content: "I opened the workflow room from chat context.",
-          },
-          {
-            kind: "node_event",
-            id: "workflow-node-1",
-            title: "Chat handoff",
-            status: "completed",
-            detail: "Workflow room seeded from the active World chat session.",
-          },
-        ],
-      };
     case "list_memory_scopes":
       return [];
     case "get_memory_node_detail":
@@ -345,21 +209,6 @@ async function setComposerValue(container: HTMLElement, value: string) {
     )?.set;
     setter?.call(textarea, value);
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    await Promise.resolve();
-  });
-}
-
-async function clickWorkflowOption(container: HTMLElement, workflowId: string) {
-  const option = container.querySelector(
-    `[data-workflow-id="${workflowId}"]`,
-  ) as HTMLButtonElement | null;
-
-  await act(async () => {
-    if (!option) {
-      throw new Error("workflow option missing");
-    }
-
-    option.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await Promise.resolve();
   });
 }
@@ -621,7 +470,7 @@ describe("App shell", () => {
     expect(shellInspector()).toBeFalsy();
   });
 
-  it("creates a team from chat and stays on the chat execution surface", async () => {
+  it("creates a team from chat without auto-starting a run", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
@@ -636,14 +485,12 @@ describe("App shell", () => {
     });
 
     expect(view.container.querySelector('.app-shell__page[data-active-page="chat"]')).toBeTruthy();
-    expect(findText(view.container, "Release Team Run")).toBeTruthy();
+    expect(findText(view.container, "Release Team Run")).toBeFalsy();
     expect(findText(view.container, "Workflow Lobby")).toBeFalsy();
     expect(findText(view.container, "Workflow Room")).toBeFalsy();
     expect(invokeMock).toHaveBeenCalledWith("create_team_from_goal", {
       goal: "Ship the release and publish notes",
     });
-    expect(invokeMock).toHaveBeenCalledWith("start_team_run", {
-      teamId: "team-release",
-    });
+    expect(invokeMock).not.toHaveBeenCalledWith("start_team_run", expect.anything());
   });
 });

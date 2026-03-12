@@ -123,7 +123,6 @@ async fn build_app_state_from_pool(
         memory_service,
         workspace_sessions_service,
         nuka_runtime::world::WorldRuntime::new(chat_service.clone()),
-        nuka_runtime::workflow_world::WorkflowWorldRuntime::new(chat_service.clone()),
     ))
 }
 
