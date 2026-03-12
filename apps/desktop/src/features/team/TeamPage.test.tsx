@@ -127,31 +127,6 @@ const { invokeMock } = vi.hoisted(() => ({
         return availableAgents;
       case "update_team":
         return args?.team ?? sampleTeam;
-      case "start_team_run":
-        return {
-          id: "run-release",
-          teamId: sampleTeam.id,
-          title: "Release Team Run",
-          goal: sampleTeam.goal,
-          status: "active",
-          currentPhase: "kickoff",
-          leadAgentId: "agent-moderator",
-          charter: {
-            goal: sampleTeam.goal,
-            successCriteria: sampleTeam.successCriteria,
-            outputFormat: "Release summary",
-            currentPhase: "kickoff",
-            maxRounds: 6,
-            maxActiveAgentsPerRound: 2,
-            maxMessagesPerAgentPerRound: 2,
-            budgetPolicy: "Summaries only",
-            stopConditions: ["Checklist complete"],
-          },
-          createdAt: "2026-03-11T12:30:00Z",
-          updatedAt: "2026-03-11T12:30:00Z",
-          agents: [],
-          events: [],
-        };
       default:
         throw new Error(`unexpected command: ${command}`);
     }
@@ -243,14 +218,13 @@ describe("TeamPage", () => {
     ]);
   });
 
-  it("shows persisted teams without the goal generator copy and still allows starting a run", async () => {
-    const dispatchEventSpy = vi.spyOn(window, "dispatchEvent");
+  it("keeps Team edit-only without a run launch action", async () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
 
     expect(findText(view.container, "Release Team")).toBeTruthy();
     expect(findText(view.container, "Allowed tools")).toBeTruthy();
-    expect(findText(view.container, "Start Run")).toBeTruthy();
+    expect(findText(view.container, "Start Run")).toBeFalsy();
     expect(findText(view.container, "Provider-backed teams stay persisted and can be resumed into new runs.")).toBeFalsy();
     expect(findText(view.container, "Generate a Team from a goal")).toBeFalsy();
     expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
@@ -259,18 +233,6 @@ describe("TeamPage", () => {
         (node) => node.getAttribute("aria-label") === "Team goal",
       ),
     ).toBeUndefined();
-
-    await clickButton(view.container, "Start Run");
-
-    expect(findText(view.container, "Run started: Release Team Run")).toBeTruthy();
-    expect(dispatchEventSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "nuka:navigate",
-        detail: expect.objectContaining({ page: "chat" }),
-      }),
-    );
-
-    dispatchEventSpy.mockRestore();
   });
 
   it("centers both empty team states inside their panels", async () => {

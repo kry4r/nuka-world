@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { listAgents, type AgentRecord } from "@/lib/agents";
 import {
   listTeams,
-  startTeamRun,
   updateTeam,
   type TeamRecord,
   type TeamAgentAssignmentRecord,
@@ -103,7 +102,6 @@ export function TeamPage() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [editorTeam, setEditorTeam] = useState<TeamRecord | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isStartingRun, setIsStartingRun] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -255,35 +253,6 @@ export function TeamPage() {
     }
   };
 
-  const handleStartRun = async () => {
-    if (!editorTeam) {
-      return;
-    }
-
-    setIsStartingRun(true);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const run = await startTeamRun(editorTeam.id);
-      setNotice(`Run started: ${run.title}`);
-      window.dispatchEvent(
-        new CustomEvent("nuka:navigate", {
-          detail: {
-            page: "chat",
-            sessionId: run.id,
-            kind: "team_run",
-          },
-        }),
-      );
-    } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
-    } finally {
-      setIsStartingRun(false);
-    }
-  };
-
   return (
     <div className="page-layout team-page">
       <div className="page-layout__body team-page__body">
@@ -297,16 +266,12 @@ export function TeamPage() {
           availableAgents={availableAgents}
           error={error}
           isSaving={isSaving}
-          isStartingRun={isStartingRun}
           notice={notice}
           onAddAssignedAgent={handleAddAssignedAgent}
           onChangeField={handleFieldChange}
           onRemoveAssignedAgent={handleRemoveAssignedAgent}
           onSave={() => {
             void handleSave();
-          }}
-          onStartRun={() => {
-            void handleStartRun();
           }}
           onToggleTool={handleToggleTool}
           team={editorTeam}

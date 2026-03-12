@@ -6,7 +6,6 @@ import { TeamAgentCard } from "./TeamAgentCard";
 type TeamEditorProps = {
   availableAgents: AgentRecord[];
   isSaving: boolean;
-  isStartingRun: boolean;
   notice: string | null;
   error: string | null;
   team: TeamRecord | null;
@@ -17,14 +16,12 @@ type TeamEditorProps = {
   ) => void;
   onRemoveAssignedAgent: (agentId: string) => void;
   onSave: () => void;
-  onStartRun: () => void;
   onToggleTool: (agentId: string, toolId: string, allowed: boolean) => void;
 };
 
 export function TeamEditor({
   availableAgents,
   isSaving,
-  isStartingRun,
   notice,
   error,
   team,
@@ -32,7 +29,6 @@ export function TeamEditor({
   onChangeField,
   onRemoveAssignedAgent,
   onSave,
-  onStartRun,
   onToggleTool,
 }: TeamEditorProps) {
   const assignedAgentIds = new Set(team?.agentAssignments.map((assignment) => assignment.agentId) ?? []);
@@ -151,14 +147,6 @@ export function TeamEditor({
               type="button"
             >
               {isSaving ? "Saving..." : "Save Changes"}
-            </button>
-            <button
-              className="settings-button settings-button--accent"
-              disabled={isStartingRun}
-              onClick={onStartRun}
-              type="button"
-            >
-              {isStartingRun ? "Starting..." : "Start Run"}
             </button>
           </div>
         </div>
