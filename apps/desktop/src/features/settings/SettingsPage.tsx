@@ -41,34 +41,28 @@ type SettingsPayload = {
 type SettingsSectionDefinition = {
   id: SettingsSectionId;
   label: string;
-  summary: string;
 };
 
 const SECTION_DEFINITIONS: SettingsSectionDefinition[] = [
   {
     id: "general",
     label: "General",
-    summary: "Language, locale, and reading density.",
   },
   {
     id: "providers",
     label: "Providers",
-    summary: "Default routing and saved model endpoints.",
   },
   {
     id: "appearance",
     label: "Appearance",
-    summary: "Fonts, shell chrome, and motion.",
   },
   {
     id: "shortcuts",
     label: "Shortcuts",
-    summary: "Common bindings only.",
   },
   {
     id: "runtime",
     label: "Runtime",
-    summary: "Window lifecycle and background behavior.",
   },
 ];
 
@@ -159,10 +153,6 @@ function createProviderDraft(index: number): ProviderRecord {
     local: false,
     enabled: false,
   };
-}
-
-function providerRuntimeLabel(provider: ProviderRecord) {
-  return provider.local ? "Local runtime" : "Remote provider";
 }
 
 function sameProviderRecord(
@@ -274,10 +264,6 @@ export function SettingsPage() {
       JSON.stringify(pickSettingsFields(settings, PROVIDER_SCOPE_FIELDS)) !==
       JSON.stringify(pickSettingsFields(initialSettings, PROVIDER_SCOPE_FIELDS)),
     [initialSettings, settings],
-  );
-  const selectedDefaultProvider = useMemo(
-    () => providers.find((provider) => provider.id === settings.defaultProviderId) ?? null,
-    [providers, settings.defaultProviderId],
   );
 
   const updateSetting = <K extends keyof SettingsPayload>(
@@ -441,14 +427,12 @@ export function SettingsPage() {
 
   const renderSectionHeader = (
     title: string,
-    summary: string,
     actions?: ReactNode,
   ) => (
     <header className="settings-directory__header">
       <div className="settings-directory__header-copy">
         <span className="settings-directory__eyebrow">{activeDefinition.label}</span>
         <h1>{title}</h1>
-        <p>{summary}</p>
       </div>
       {actions ? <div className="settings-directory__header-actions">{actions}</div> : null}
     </header>
@@ -456,10 +440,7 @@ export function SettingsPage() {
 
   const renderGeneralSection = () => (
     <>
-      {renderSectionHeader(
-        "General",
-        "Keep language, locale, and density in one compact place.",
-      )}
+      {renderSectionHeader("General")}
 
       <section className="settings-directory__panel">
         <div className="settings-form-grid">
@@ -534,10 +515,7 @@ export function SettingsPage() {
 
   const renderAppearanceSection = () => (
     <>
-      {renderSectionHeader(
-        "Appearance Defaults",
-        "Adjust fonts, shell chrome, and motion without stretching the page.",
-      )}
+      {renderSectionHeader("Appearance Defaults")}
 
       <section className="settings-directory__panel">
         <div className="settings-form-grid">
@@ -641,7 +619,6 @@ export function SettingsPage() {
     <>
       {renderSectionHeader(
         "Providers",
-        "Set default routing and keep saved runtimes compact.",
         <div className="settings-panel__actions">
           <button
             className="settings-button"
@@ -698,18 +675,9 @@ export function SettingsPage() {
           </label>
         </div>
 
-        {selectedDefaultProvider ? (
-          <div className="settings-form-field__meta">
-            <span>{`New chat and team work routes through ${selectedDefaultProvider.name}.`}</span>
-          </div>
-        ) : null}
-
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
             <strong>Connection checks</strong>
-            <span className="settings-form-field__hint">
-              Run lightweight provider checks before new work starts.
-            </span>
           </span>
           <input
             aria-label="Connection checks"
@@ -719,12 +687,6 @@ export function SettingsPage() {
             type="checkbox"
           />
         </label>
-
-        {settings.connectionChecks ? (
-          <div className="settings-form-field__meta">
-            <span>Provider checks run before new work starts.</span>
-          </div>
-        ) : null}
       </section>
 
       <section className="settings-directory__panel">
@@ -734,7 +696,6 @@ export function SettingsPage() {
               <div className="settings-provider-card__header">
                 <div className="settings-provider-card__title">
                   <strong>{provider.name || "Untitled Provider"}</strong>
-                  <span>{providerRuntimeLabel(provider)}</span>
                 </div>
                 <div className="settings-panel__summary">
                   <StatusBadge tone="soft">
@@ -810,9 +771,6 @@ export function SettingsPage() {
               <label className="settings-toggle-row">
                 <span className="settings-form-field__copy">
                   <strong>Enabled</strong>
-                  <span className="settings-form-field__hint">
-                    Disabled providers stay saved but are skipped for new work.
-                  </span>
                 </span>
                 <input
                   aria-label={`Enable ${provider.name}`}
@@ -842,10 +800,7 @@ export function SettingsPage() {
 
   const renderShortcutsSection = () => (
     <>
-      {renderSectionHeader(
-        "Shortcuts",
-        "Keep the common bindings visible without turning settings into a keymap editor.",
-      )}
+      {renderSectionHeader("Shortcuts")}
 
       <section className="settings-directory__panel">
         <div className="settings-shortcuts__header">
@@ -871,9 +826,6 @@ export function SettingsPage() {
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
             <strong>Enable global shortcuts</strong>
-            <span className="settings-form-field__hint">
-              Keep the common app bindings available when the window is focused.
-            </span>
           </span>
           <input
             aria-label="Enable global shortcuts"
@@ -893,10 +845,7 @@ export function SettingsPage() {
 
   const renderRuntimeSection = () => (
     <>
-      {renderSectionHeader(
-        "Runtime Controls",
-        "Shape how the desktop app closes, stays resident, and surfaces notifications.",
-      )}
+      {renderSectionHeader("Runtime Controls")}
 
       <section className="settings-directory__panel">
         <div className="settings-form-grid">
@@ -930,9 +879,6 @@ export function SettingsPage() {
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
             <strong>Launch at login</strong>
-            <span className="settings-form-field__hint">
-              Restore the desktop shell when the operating system starts.
-            </span>
           </span>
           <input
             aria-label="Launch at login"
@@ -946,9 +892,6 @@ export function SettingsPage() {
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
             <strong>Tray resident</strong>
-            <span className="settings-form-field__hint">
-              Keep the app available from the system tray after the main window closes.
-            </span>
           </span>
           <input
             aria-label="Tray resident"
@@ -962,9 +905,6 @@ export function SettingsPage() {
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
             <strong>Background adapters</strong>
-            <span className="settings-form-field__hint">
-              Let longer-running adapters keep processing after the initiating page changes.
-            </span>
           </span>
           <input
             aria-label="Background adapters"
@@ -978,9 +918,6 @@ export function SettingsPage() {
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
             <strong>Notifications</strong>
-            <span className="settings-form-field__hint">
-              Surface completion and warning events outside the focused page.
-            </span>
           </span>
           <input
             aria-label="Notifications"
@@ -1026,7 +963,6 @@ export function SettingsPage() {
                   type="button"
                 >
                   <span className="settings-directory__nav-label">{section.label}</span>
-                  <span className="settings-directory__nav-summary">{section.summary}</span>
                 </button>
               );
             })}

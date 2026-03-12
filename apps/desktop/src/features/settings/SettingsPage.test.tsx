@@ -141,6 +141,51 @@ describe("SettingsPage", () => {
     expect(view.container.textContent).not.toContain("Application Settings");
   });
 
+  it("removes decorative helper copy across the settings surface", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    expect(findText(view.container, "Language, locale, and reading density.")).toBeFalsy();
+    expect(findText(view.container, "Keep language, locale, and density in one compact place.")).toBeFalsy();
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(findText(view.container, "Default routing and saved model endpoints.")).toBeFalsy();
+    expect(findText(view.container, "Set default routing and keep saved runtimes compact.")).toBeFalsy();
+    expect(findText(view.container, "Run lightweight provider checks before new work starts.")).toBeFalsy();
+    expect(findText(view.container, "Provider checks run before new work starts.")).toBeFalsy();
+    expect(findText(view.container, "Disabled providers stay saved but are skipped for new work.")).toBeFalsy();
+
+    const runtimeButton = findButton(view.container, "Runtime");
+    expect(runtimeButton).toBeTruthy();
+
+    await act(async () => {
+      runtimeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(findText(view.container, "Window lifecycle and background behavior.")).toBeFalsy();
+    expect(
+      findText(
+        view.container,
+        "Shape how the desktop app closes, stays resident, and surfaces notifications.",
+      ),
+    ).toBeFalsy();
+    expect(
+      findText(view.container, "Restore the desktop shell when the operating system starts."),
+    ).toBeFalsy();
+    expect(
+      findText(
+        view.container,
+        "Keep the app available from the system tray after the main window closes.",
+      ),
+    ).toBeFalsy();
+  });
+
   it("renders provider status truthfully in the redesigned provider surface", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
@@ -203,7 +248,7 @@ describe("SettingsPage", () => {
     expect(findText(view.container, "No secret saved")).toBeTruthy();
   });
 
-  it("shows the selected default provider as the active route in settings", async () => {
+  it("keeps the selected default provider selected in settings", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
@@ -214,10 +259,15 @@ describe("SettingsPage", () => {
       providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(findText(view.container, "New chat and team work routes through Local.")).toBeTruthy();
+    const defaultProviderSelect = view.container.querySelector(
+      'select[aria-label="Default Provider"]',
+    ) as HTMLSelectElement | null;
+
+    expect(defaultProviderSelect?.value).toBe("provider-local");
+    expect(findText(view.container, "Set default routing and keep saved runtimes compact.")).toBeFalsy();
   });
 
-  it("shows connection-check status only when the setting is enabled", async () => {
+  it("saves the connection-check setting without helper copy", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
@@ -227,13 +277,14 @@ describe("SettingsPage", () => {
     await act(async () => {
       providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-
-    expect(findText(view.container, "Provider checks run before new work starts.")).toBeTruthy();
 
     const connectionChecksToggle = view.container.querySelector(
       'input[aria-label="Connection checks"]',
     ) as HTMLInputElement | null;
     const saveProviders = findButton(view.container, "Save Provider Changes");
+
+    expect(connectionChecksToggle?.checked).toBe(true);
+    expect(findText(view.container, "Provider checks run before new work starts.")).toBeFalsy();
 
     await act(async () => {
       if (!connectionChecksToggle) {
