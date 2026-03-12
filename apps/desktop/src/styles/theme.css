@@ -1093,14 +1093,18 @@ button {
 
 .session-tabs {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   overflow-x: auto;
   align-items: stretch;
-  padding-bottom: 4px;
+  padding: 10px 12px 2px;
   scrollbar-width: thin;
 }
 
 .session-tabs--uniform {
+  border: 1px solid rgba(213, 200, 183, 0.72);
+  border-radius: 22px 22px 0 0;
+  background:
+    linear-gradient(180deg, rgba(247, 241, 232, 0.98) 0%, rgba(242, 235, 225, 0.86) 100%);
   scroll-snap-type: x proximity;
 }
 
@@ -1109,25 +1113,35 @@ button {
   min-width: 0;
   flex-direction: column;
   gap: 4px;
-  padding: 10px 12px;
+  justify-content: center;
+  padding: 10px 14px;
   border: 1px solid rgba(210, 199, 184, 0.78);
-  border-radius: 16px;
-  background: rgba(255, 252, 247, 0.9);
+  border-radius: 18px 18px 12px 12px;
+  background: rgba(255, 251, 245, 0.72);
   color: var(--color-text);
   text-align: left;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
 }
 
 .session-tab--uniform {
-  flex: 1 1 196px;
-  min-width: 176px;
-  max-width: 220px;
+  flex: 1 1 184px;
+  min-width: 164px;
+  max-width: 208px;
+  min-height: 58px;
   scroll-snap-align: start;
 }
 
 .session-tab.is-active {
-  border-color: rgba(182, 157, 122, 0.88);
-  background: rgba(250, 244, 236, 0.96);
-  box-shadow: 0 14px 28px rgba(114, 92, 61, 0.1);
+  border-color: rgba(181, 153, 112, 0.92);
+  background: rgba(255, 252, 248, 0.98);
+  box-shadow:
+    0 18px 30px rgba(114, 92, 61, 0.12),
+    0 1px 0 rgba(255, 252, 248, 0.98);
+  transform: translateY(2px);
 }
 
 .session-tab__kind {
