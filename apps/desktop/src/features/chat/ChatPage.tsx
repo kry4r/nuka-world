@@ -301,7 +301,7 @@ export function ChatPage() {
       }
 
       const response = await routeWorldPrompt(value, activeSessionRecord?.id, {
-        kind: "chat_only",
+        kind: "direct_chat",
       });
       setMessages((current) => [...current, ...response.messages]);
       setSession(response);

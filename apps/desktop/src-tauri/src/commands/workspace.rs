@@ -150,7 +150,7 @@ mod tests {
             .world_runtime()
             .start_session(
                 "Summarize the release",
-                nuka_runtime::world::WorldChatMode::ChatOnly,
+                nuka_runtime::world::WorldChatMode::DirectChat,
             )
             .await
             .unwrap();

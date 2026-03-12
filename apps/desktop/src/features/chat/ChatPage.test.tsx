@@ -868,7 +868,7 @@ describe("ChatPage", () => {
     expect(routeWorldPromptMock).toHaveBeenCalledWith(
       "Summarize today's notes",
       undefined,
-      { kind: "chat_only" },
+      { kind: "direct_chat" },
     );
     expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeTruthy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();

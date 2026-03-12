@@ -5,16 +5,12 @@ use std::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorldChatMode {
-    ChatOnly,
-    CreateWorkflow,
-    SpecificWorkflow(String),
+    DirectChat,
 }
 
 #[derive(Debug, Clone)]
 pub enum WorldRoute {
     DirectReply,
-    ExistingWorkflow(String),
-    NewWorkflow,
 }
 
 #[derive(Debug, Clone)]
@@ -51,17 +47,9 @@ impl WorldRuntime {
     pub async fn route_prompt(
         &self,
         _prompt: &str,
-        mode: &WorldChatMode,
+        _mode: &WorldChatMode,
     ) -> anyhow::Result<WorldRoute> {
-        let route = match mode {
-            WorldChatMode::ChatOnly => WorldRoute::DirectReply,
-            WorldChatMode::CreateWorkflow => WorldRoute::NewWorkflow,
-            WorldChatMode::SpecificWorkflow(workflow_id) => {
-                WorldRoute::ExistingWorkflow(workflow_id.clone())
-            }
-        };
-
-        Ok(route)
+        Ok(WorldRoute::DirectReply)
     }
 
     pub async fn start_session(
@@ -136,7 +124,10 @@ mod tests {
     async fn world_routes_simple_prompts_to_direct_reply() {
         let runtime = crate::world::WorldRuntime::new_for_test();
         let result = runtime
-            .route_prompt("summarize today's notes", &crate::world::WorldChatMode::ChatOnly)
+            .route_prompt(
+                "summarize today's notes",
+                &crate::world::WorldChatMode::DirectChat,
+            )
             .await
             .unwrap();
         assert!(matches!(result, crate::world::WorldRoute::DirectReply));
@@ -146,7 +137,10 @@ mod tests {
     async fn world_starts_session_for_prompt() {
         let runtime = crate::world::WorldRuntime::new_for_test();
         let turn = runtime
-            .start_session("summarize today's notes", crate::world::WorldChatMode::ChatOnly)
+            .start_session(
+                "summarize today's notes",
+                crate::world::WorldChatMode::DirectChat,
+            )
             .await
             .unwrap();
 
@@ -158,7 +152,10 @@ mod tests {
     async fn world_continues_existing_session_for_follow_up_prompt() {
         let runtime = crate::world::WorldRuntime::new_for_test();
         let first = runtime
-            .start_session("summarize today's notes", crate::world::WorldChatMode::ChatOnly)
+            .start_session(
+                "summarize today's notes",
+                crate::world::WorldChatMode::DirectChat,
+            )
             .await
             .unwrap();
         let next = runtime
@@ -170,30 +167,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn world_routes_specific_workflow_mode_to_existing_workflow() {
+    async fn world_routes_direct_chat_mode_to_direct_reply() {
         let runtime = crate::world::WorldRuntime::new_for_test();
         let result = runtime
             .route_prompt(
                 "focus on the release checklist",
-                &crate::world::WorldChatMode::SpecificWorkflow("workflow-release".to_string()),
+                &crate::world::WorldChatMode::DirectChat,
             )
             .await
             .unwrap();
 
-        assert!(matches!(
-            result,
-            crate::world::WorldRoute::ExistingWorkflow(workflow_id)
-            if workflow_id == "workflow-release"
-        ));
+        assert!(matches!(result, crate::world::WorldRoute::DirectReply));
     }
 
     #[tokio::test]
-    async fn world_sessions_preserve_the_chosen_mode() {
+    async fn world_sessions_preserve_direct_chat_mode() {
         let runtime = crate::world::WorldRuntime::new_for_test();
         let first = runtime
             .start_session(
                 "start a release workflow",
-                crate::world::WorldChatMode::SpecificWorkflow("workflow-release".to_string()),
+                crate::world::WorldChatMode::DirectChat,
             )
             .await
             .unwrap();
@@ -204,44 +197,32 @@ mod tests {
 
         assert!(matches!(
             next.session.mode,
-            crate::world::WorldChatMode::SpecificWorkflow(workflow_id)
-            if workflow_id == "workflow-release"
+            crate::world::WorldChatMode::DirectChat
         ));
-        assert!(matches!(
-            next.route,
-            crate::world::WorldRoute::ExistingWorkflow(workflow_id)
-            if workflow_id == "workflow-release"
-        ));
+        assert!(matches!(next.route, crate::world::WorldRoute::DirectReply));
     }
 
     #[tokio::test]
-    async fn world_can_upgrade_an_existing_chat_session_into_a_specific_workflow() {
+    async fn world_keeps_follow_up_turns_on_the_direct_chat_path() {
         let runtime = crate::world::WorldRuntime::new_for_test();
         let first = runtime
-            .start_session("summarize today's notes", crate::world::WorldChatMode::ChatOnly)
+            .start_session(
+                "summarize today's notes",
+                crate::world::WorldChatMode::DirectChat,
+            )
             .await
             .unwrap();
         let next = runtime
             .continue_session(
                 &first.session.id,
-                "continue in the release workflow",
-                Some(crate::world::WorldChatMode::SpecificWorkflow(
-                    "workflow-release".to_string(),
-                )),
+                "continue with the release notes follow-up",
+                Some(crate::world::WorldChatMode::DirectChat),
             )
             .await
             .unwrap();
 
         assert_eq!(first.session.id, next.session.id);
-        assert!(matches!(
-            next.session.mode,
-            crate::world::WorldChatMode::SpecificWorkflow(workflow_id)
-            if workflow_id == "workflow-release"
-        ));
-        assert!(matches!(
-            next.route,
-            crate::world::WorldRoute::ExistingWorkflow(workflow_id)
-            if workflow_id == "workflow-release"
-        ));
+        assert!(matches!(next.session.mode, crate::world::WorldChatMode::DirectChat));
+        assert!(matches!(next.route, crate::world::WorldRoute::DirectReply));
     }
 }

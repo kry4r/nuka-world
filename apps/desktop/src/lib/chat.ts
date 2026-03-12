@@ -1,14 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type ChatMode =
-  | { kind: "chat_only" }
-  | { kind: "create_workflow" }
-  | { kind: "specific_workflow"; workflowId: string };
+export type ChatMode = { kind: "direct_chat" };
 
-export type WorldRoute =
-  | { kind: "direct_reply" }
-  | { kind: "existing_workflow"; workflowId: string }
-  | { kind: "new_workflow" };
+export type WorldRoute = { kind: "direct_reply" };
 
 export type ChatSessionSummary = {
   id: string;
@@ -47,7 +41,7 @@ export type ChatRouteResponse = {
 export async function routeWorldPrompt(
   prompt: string,
   sessionId?: string,
-  mode: ChatMode = { kind: "chat_only" },
+  mode: ChatMode = { kind: "direct_chat" },
 ): Promise<ChatRouteResponse> {
   return invoke<ChatRouteResponse>("route_world_prompt", { prompt, mode, sessionId });
 }
