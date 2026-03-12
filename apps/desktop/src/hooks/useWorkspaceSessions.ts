@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  createWorkspaceSessionBranch,
   listWorkspaceSessions,
   loadWorkspaceSession,
   type WorkspaceSessionDetail,
@@ -117,10 +118,32 @@ export function useWorkspaceSessions() {
     });
   };
 
+  const createBranch = async (
+    selection: WorkspaceSelection,
+    anchorId: string,
+    branchTitle: string,
+  ) => {
+    const branch = await createWorkspaceSessionBranch(
+      selection.id,
+      selection.kind,
+      anchorId,
+      branchTitle,
+    );
+    const nextSelection =
+      branch.kind === "direct_chat"
+        ? { id: branch.session.id, kind: branch.kind }
+        : { id: branch.run.id, kind: branch.kind };
+
+    await refresh(nextSelection);
+
+    return branch;
+  };
+
   return {
     activeSession,
     activeSessionId: activeSelection?.id ?? null,
     activeSummary,
+    createBranch,
     error,
     isLoading,
     refresh,

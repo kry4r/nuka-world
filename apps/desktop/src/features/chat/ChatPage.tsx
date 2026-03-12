@@ -38,6 +38,11 @@ const CHOOSE_TEAM_SUGGESTIONS = [
 ];
 
 type ComposerEntryMode = "direct" | "choose_team" | "create_team";
+type BranchAnchor = {
+  id: string;
+  label: string;
+  title: string;
+};
 
 const META_SEPARATOR = " · ";
 const SESSION_ELLIPSIS = "…";
@@ -96,6 +101,15 @@ function composerPlaceholder(landing: boolean, entryMode: ComposerEntryMode) {
     default:
       return "Message World to start a session...";
   }
+}
+
+function trimBranchTitle(value: string) {
+  const normalized = value.trim();
+  if (normalized.length <= 44) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 41)}...`;
 }
 
 function ComposerPlusIcon() {
@@ -162,6 +176,8 @@ export function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
+  const [isBranching, setIsBranching] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
   const [teamRunState, setTeamRunState] = useState<TeamRunRecord | null>(null);
   const [teamRunError, setTeamRunError] = useState<string | null>(null);
   const [isTeamRunBusy, setIsTeamRunBusy] = useState(false);
@@ -180,6 +196,37 @@ export function ChatPage() {
     activeSessionRecord?.id && activeSessionRecord.id === session?.session.id
       ? session?.route
       : null;
+  const activeWorkspaceSelection = workspaceSessions.activeSummary
+    ? {
+        id: workspaceSessions.activeSummary.id,
+        kind: workspaceSessions.activeSummary.kind,
+      }
+    : null;
+  const activeWorkspaceTitle =
+    workspaceSessions.activeSession?.kind === "direct_chat"
+      ? workspaceSessions.activeSession.session.title
+      : workspaceSessions.activeSession?.kind === "team_run"
+        ? workspaceSessions.activeSession.run.title
+        : null;
+  const branchAnchors = useMemo<BranchAnchor[]>(() => {
+    if (workspaceSessions.activeSession?.kind === "direct_chat") {
+      return workspaceSessions.activeSession.messages.map((message, index) => ({
+        id: message.id,
+        label: `Turn ${index + 1}`,
+        title: trimBranchTitle(message.content),
+      }));
+    }
+
+    if (workspaceSessions.activeSession?.kind === "team_run") {
+      return workspaceSessions.activeSession.run.events.map((event) => ({
+        id: event.id,
+        label: `Event ${event.sequence}`,
+        title: trimBranchTitle(event.title),
+      }));
+    }
+
+    return [];
+  }, [workspaceSessions.activeSession]);
   const selectedTeam = useMemo(
     () => availableTeams.find((team) => team.id === selectedTeamId) ?? null,
     [availableTeams, selectedTeamId],
@@ -244,8 +291,36 @@ export function ChatPage() {
     setTeamPickerOpen(false);
     setSelectedTeamId("");
     setEntryMode("direct");
+    setBranchError(null);
     setError(null);
     setNotice(null);
+  };
+
+  const handleCreateBranch = async (anchorId: string) => {
+    if (!activeWorkspaceSelection || !activeWorkspaceTitle || isBranching) {
+      return;
+    }
+
+    setBranchError(null);
+    setIsBranching(true);
+
+    try {
+      await workspaceSessions.createBranch(
+        activeWorkspaceSelection,
+        anchorId,
+        `${activeWorkspaceTitle} / branch`,
+      );
+      setEntryMenuOpen(false);
+      setTeamPickerOpen(false);
+      setSelectedTeamId("");
+      setEntryMode("direct");
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setBranchError(message);
+    } finally {
+      setIsBranching(false);
+    }
   };
 
   const handleSend = async (nextPrompt?: string) => {
@@ -563,6 +638,38 @@ export function ChatPage() {
     </div>
   );
 
+  const branchRail =
+    activeWorkspaceSelection && activeWorkspaceTitle && branchAnchors.length > 0 ? (
+      <div className="chat-stage__branch-rail">
+        {branchError ? (
+          <div className="composer__inline-feedback composer__inline-feedback--error">
+            {branchError}
+          </div>
+        ) : null}
+        <div
+          aria-label="Session branch anchors"
+          className="session-tabs session-tabs--uniform"
+          data-testid="chat-branch-anchors"
+          role="tablist"
+        >
+          {branchAnchors.map((anchor) => (
+            <button
+              className="session-tab session-tab--uniform"
+              disabled={isBranching}
+              key={anchor.id}
+              onClick={() => {
+                void handleCreateBranch(anchor.id);
+              }}
+              type="button"
+            >
+              <span className="session-tab__kind">{anchor.label}</span>
+              <span className="session-tab__title">{anchor.title}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   return (
     <div className={`page-layout chat-page ${landing ? "is-landing" : "is-active"}`}>
       <div className="page-layout__body chat-page__body">
@@ -576,6 +683,8 @@ export function ChatPage() {
           <div
             className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}
           >
+            {branchRail}
+
             {activeTeamRun ? (
               <TeamRunPanel
                 error={teamRunError}

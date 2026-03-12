@@ -10,6 +10,15 @@ function kindLabel(kind: WorkspaceSessionSummary["kind"]) {
   return kind === "team_run" ? "Team Run" : "Chat";
 }
 
+function branchLabel(session: WorkspaceSessionSummary) {
+  const depth = session.lineage?.branchDepth ?? 0;
+  if (depth === 0) {
+    return null;
+  }
+
+  return `Branch ${depth}`;
+}
+
 export function SessionTabs({
   activeSessionId,
   onSelect,
@@ -38,6 +47,9 @@ export function SessionTabs({
             type="button"
           >
             <span className="session-tab__kind">{kindLabel(session.kind)}</span>
+            {branchLabel(session) ? (
+              <span className="session-tab__kind">{branchLabel(session)}</span>
+            ) : null}
             <span className="session-tab__title">{session.title}</span>
           </button>
         );
