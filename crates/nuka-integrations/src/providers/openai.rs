@@ -15,7 +15,7 @@ impl Default for OpenAiCompatibleProvider {
     fn default() -> Self {
         Self {
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(15))
+                .timeout(default_request_timeout())
                 .build()
                 .expect("openai-compatible reqwest client should build"),
         }
@@ -136,6 +136,10 @@ pub fn build_chat_completions_url(base_url: &str) -> anyhow::Result<String> {
     Ok(url.to_string().trim_end_matches('/').to_string())
 }
 
+fn default_request_timeout() -> std::time::Duration {
+    std::time::Duration::from_secs(60)
+}
+
 fn classify_validation_errors(errors: &[ProviderValidationError]) -> ProviderConnectionStatus {
     if errors.iter().any(|error| matches!(error, ProviderValidationError::MissingModel)) {
         ProviderConnectionStatus::MissingModel
@@ -152,5 +156,16 @@ fn classify_http_failure(status: u16, body: &str) -> ProviderConnectionStatus {
         408 | 504 => ProviderConnectionStatus::Timeout,
         500..=599 => ProviderConnectionStatus::UpstreamFailure,
         _ => ProviderConnectionStatus::UpstreamFailure,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn default_request_timeout_supports_real_team_generation_requests() {
+        assert_eq!(
+            super::default_request_timeout(),
+            std::time::Duration::from_secs(60)
+        );
     }
 }
