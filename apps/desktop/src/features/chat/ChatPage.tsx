@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import { NukaLockup } from "@/components/brand/NukaLockup";
-import { routeWorldPrompt, type ChatMessage, type ChatRouteResponse } from "@/lib/chat";
+import { sendChatPrompt, type ChatMessage, type ChatPromptResponse } from "@/lib/chat";
 import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
 import { useProviderGate } from "@/hooks/useProviderGate";
 import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
@@ -45,16 +45,7 @@ type BranchAnchor = {
   title: string;
 };
 
-const META_SEPARATOR = " · ";
 const SESSION_ELLIPSIS = "…";
-
-function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
-  if (!route || route.kind === "direct_reply") {
-    return "Direct reply";
-  }
-
-  return "Direct reply";
-}
 
 function formatSession(sessionId: string | undefined) {
   if (!sessionId) {
@@ -168,7 +159,7 @@ export function ChatPage() {
   const workspaceSessions = useWorkspaceSessions();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
-  const [session, setSession] = useState<ChatRouteResponse | null>(null);
+  const [session, setSession] = useState<ChatPromptResponse | null>(null);
   const [entryMode, setEntryMode] = useState<ComposerEntryMode>("direct");
   const [entryMenuOpen, setEntryMenuOpen] = useState(false);
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
@@ -194,10 +185,6 @@ export function ChatPage() {
   const activeTeamRun = teamRunState ?? workspaceTeamRun;
   const activeSessionRecord = activeDirectSession?.session ?? session?.session ?? null;
   const activeMessages = activeDirectSession?.messages ?? messages;
-  const activeRoute =
-    activeSessionRecord?.id && activeSessionRecord.id === session?.session.id
-      ? session?.route
-      : null;
   const activeWorkspaceSelection = workspaceSessions.activeSummary
     ? {
         id: workspaceSessions.activeSummary.id,
@@ -377,9 +364,7 @@ export function ChatPage() {
         return;
       }
 
-      const response = await routeWorldPrompt(value, activeSessionRecord?.id, {
-        kind: "direct_chat",
-      });
+      const response = await sendChatPrompt(value, activeSessionRecord?.id);
       setMessages((current) => [...current, ...response.messages]);
       setSession(response);
       void workspaceSessions.refresh({
@@ -733,24 +718,20 @@ export function ChatPage() {
               />
             ) : landing ? (
               <div className="chat-landing-stack" data-testid="chat-landing-stack">
-                <div aria-label="World chat landing hero" className="chat-hero">
+                <div aria-label="Chat landing hero" className="chat-hero">
                   <NukaLockup className="chat-hero__lockup" width={240} />
                 </div>
 
                 {composer}
               </div>
             ) : (
-              <section aria-label="World conversation surface" className="chat-surface">
+              <section aria-label="Chat conversation surface" className="chat-surface">
                 <header className="chat-surface__header">
                   <div className="chat-surface__identity">
                     <span className="chat-surface__eyebrow">
                       {entrySummary(entryMode, selectedTeam)}
                     </span>
-                    <span className="chat-surface__meta">
-                      Session {formatSession(activeSessionRecord?.id)}
-                      {META_SEPARATOR}
-                      {formatRoute(activeRoute)}
-                    </span>
+                    <span className="chat-surface__meta">Session {formatSession(activeSessionRecord?.id)}</span>
                   </div>
                 </header>
 

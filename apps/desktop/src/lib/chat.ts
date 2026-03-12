@@ -1,9 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type ChatMode = { kind: "direct_chat" };
-
-export type WorldRoute = { kind: "direct_reply" };
-
 export type ChatSessionSummary = {
   id: string;
   title: string;
@@ -29,18 +25,20 @@ export type ChatContextInfo = {
   attachedKnowledgeLibraries: string[];
 };
 
-export type ChatRouteResponse = {
+export type ChatPromptResponse = {
+  sessionId: string;
+  runId: string | null;
   session: ChatSessionSummary;
-  route: WorldRoute;
   messages: ChatMessage[];
+  output: string;
+  exitStatus: string;
   provider: ChatProviderInfo | null;
   context: ChatContextInfo;
 };
 
-export async function routeWorldPrompt(
+export async function sendChatPrompt(
   prompt: string,
   sessionId?: string,
-  mode: ChatMode = { kind: "direct_chat" },
-): Promise<ChatRouteResponse> {
-  return invoke<ChatRouteResponse>("route_world_prompt", { prompt, mode, sessionId });
+): Promise<ChatPromptResponse> {
+  return invoke<ChatPromptResponse>("send_chat_prompt", { prompt, sessionId });
 }

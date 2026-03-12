@@ -1,12 +1,11 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatRouteResponse {
+pub struct SendChatPromptResponse {
     pub session_id: String,
     pub run_id: Option<String>,
     pub session: ChatSessionResponse,
-    pub route: ChatRoute,
     pub messages: Vec<ChatMessageResponse>,
     pub output: String,
     pub exit_status: String,
@@ -47,26 +46,13 @@ pub struct ChatContextResponse {
     pub attached_knowledge_libraries: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ChatRoute {
-    DirectReply,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ChatModeInput {
-    DirectChat,
-}
-
 #[tauri::command]
-pub async fn route_world_prompt(
+pub async fn send_chat_prompt(
     prompt: String,
     session_id: Option<String>,
-    mode: ChatModeInput,
     state: tauri::State<'_, crate::app_state::AppState>,
-) -> Result<ChatRouteResponse, String> {
-    route_world_prompt_inner(prompt, session_id, mode, &state)
+) -> Result<SendChatPromptResponse, String> {
+    send_chat_prompt_inner(prompt, session_id, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -76,7 +62,7 @@ pub async fn execute_prompt_json(
     prompt: String,
     session_id: Option<String>,
     state: tauri::State<'_, crate::app_state::AppState>,
-) -> Result<ChatRouteResponse, String> {
+) -> Result<SendChatPromptResponse, String> {
     execute_prompt_json_inner(prompt, session_id, &state)
         .await
         .map_err(|error| error.to_string())
@@ -86,57 +72,27 @@ async fn execute_prompt_json_inner(
     prompt: String,
     session_id: Option<String>,
     state: &crate::app_state::AppState,
-) -> anyhow::Result<ChatRouteResponse> {
-    route_world_prompt_inner(prompt, session_id, ChatModeInput::DirectChat, state).await
+) -> anyhow::Result<SendChatPromptResponse> {
+    send_chat_prompt_inner(prompt, session_id, state).await
 }
 
-async fn route_world_prompt_inner(
+async fn send_chat_prompt_inner(
     prompt: String,
     session_id: Option<String>,
-    mode: ChatModeInput,
     state: &crate::app_state::AppState,
-) -> anyhow::Result<ChatRouteResponse> {
+) -> anyhow::Result<SendChatPromptResponse> {
     let prompt_for_memory = prompt.clone();
-    let world_mode: nuka_runtime::world::WorldChatMode = mode.into();
-    let turn = match session_id.as_deref() {
-        Some(session_id) => {
-            state
-                .world_runtime()
-                .continue_session(session_id, &prompt, Some(world_mode))
-                .await
-        }
-        None => state.world_runtime().start_session(&prompt, world_mode).await,
-    }?;
-
-    let route = match turn.route {
-        nuka_runtime::world::WorldRoute::DirectReply => ChatRoute::DirectReply,
-    };
-
-    let (session, messages, provider) = match turn.chat_turn {
-        Some(chat_turn) => (
-            ChatSessionResponse::from(chat_turn.session.clone()),
-            chat_turn
-                .messages
-                .into_iter()
-                .map(ChatMessageResponse::from)
-                .collect(),
-            Some(ChatProviderResponse::from(chat_turn.provider)),
-        ),
-        None => (
-            ChatSessionResponse {
-                id: turn.session.id.clone(),
-                title: prompt.chars().take(48).collect(),
-                provider_id: None,
-                message_count: 1,
-            },
-            vec![ChatMessageResponse {
-                id: format!("{}-user", turn.session.id),
-                role: "user".to_string(),
-                content: prompt,
-            }],
-            None,
-        ),
-    };
+    let turn = state
+        .chat_service()
+        .send_message(&prompt, session_id.as_deref())
+        .await?;
+    let session = ChatSessionResponse::from(turn.session.clone());
+    let messages = turn
+        .messages
+        .into_iter()
+        .map(ChatMessageResponse::from)
+        .collect::<Vec<_>>();
+    let provider = Some(ChatProviderResponse::from(turn.provider));
     let output = messages
         .iter()
         .rev()
@@ -153,11 +109,10 @@ async fn route_world_prompt_inner(
         })
         .await?;
 
-    Ok(ChatRouteResponse {
+    Ok(SendChatPromptResponse {
         session_id: session.id.clone(),
         run_id: None,
         session,
-        route,
         messages,
         output,
         exit_status: "completed".to_string(),
@@ -167,14 +122,6 @@ async fn route_world_prompt_inner(
             attached_knowledge_libraries: Vec::new(),
         },
     })
-}
-
-impl From<ChatModeInput> for nuka_runtime::world::WorldChatMode {
-    fn from(value: ChatModeInput) -> Self {
-        match value {
-            ChatModeInput::DirectChat => Self::DirectChat,
-        }
-    }
 }
 
 impl From<nuka_domain::chat::ChatSessionSummary> for ChatSessionResponse {
@@ -217,24 +164,12 @@ impl From<nuka_domain::provider::ProviderConfig> for ChatProviderResponse {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn chat_mode_input_deserializes_direct_chat_from_payload() {
-        let mode: super::ChatModeInput = serde_json::from_str(r#"{"kind":"direct_chat"}"#)
-            .unwrap();
-
-        assert!(matches!(mode, super::ChatModeInput::DirectChat));
-    }
-
     #[tokio::test]
-    async fn route_world_prompt_requires_default_provider() {
+    async fn send_chat_prompt_requires_default_provider() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
 
-        let error = super::route_world_prompt_inner(
-            "summarize today's notes".to_string(),
-            None,
-            super::ChatModeInput::DirectChat,
-            &state,
-        )
+        let error =
+            super::send_chat_prompt_inner("summarize today's notes".to_string(), None, &state)
         .await
         .unwrap_err();
 
@@ -242,7 +177,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_world_prompt_returns_backend_session_messages_and_provider() {
+    async fn send_chat_prompt_returns_backend_session_messages_and_provider() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
             "Local",
@@ -259,14 +194,10 @@ mod tests {
             .await
             .unwrap();
 
-        let response = super::route_world_prompt_inner(
-            "summarize today's notes".to_string(),
-            None,
-            super::ChatModeInput::DirectChat,
-            &state,
-        )
-        .await
-        .unwrap();
+        let response =
+            super::send_chat_prompt_inner("summarize today's notes".to_string(), None, &state)
+                .await
+                .unwrap();
 
         assert!(!response.session.id.is_empty());
         assert_eq!(response.messages.len(), 2);
@@ -276,7 +207,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_world_prompt_creates_chat_memory_candidate_for_the_session() {
+    async fn send_chat_prompt_creates_chat_memory_candidate_for_the_session() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
             "Local",
@@ -293,10 +224,9 @@ mod tests {
             .await
             .unwrap();
 
-        let response = super::route_world_prompt_inner(
+        let response = super::send_chat_prompt_inner(
             "capture the release checklist".to_string(),
             None,
-            super::ChatModeInput::DirectChat,
             &state,
         )
         .await
@@ -310,7 +240,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_world_prompt_accepts_direct_chat_mode_value() {
+    async fn send_chat_prompt_returns_direct_chat_output() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
             "Local",
@@ -327,20 +257,16 @@ mod tests {
             .await
             .unwrap();
 
-        let response = super::route_world_prompt_inner(
-            "draft a release flow".to_string(),
-            None,
-            super::ChatModeInput::DirectChat,
-            &state,
-        )
-        .await
-        .unwrap();
+        let response =
+            super::send_chat_prompt_inner("draft a release flow".to_string(), None, &state)
+                .await
+                .unwrap();
 
         assert_eq!(response.output, "Seeded assistant response");
     }
 
     #[tokio::test]
-    async fn route_world_prompt_exposes_structured_execution_result_metadata() {
+    async fn send_chat_prompt_exposes_structured_execution_result_metadata() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
             "Local",
@@ -357,14 +283,10 @@ mod tests {
             .await
             .unwrap();
 
-        let response = super::route_world_prompt_inner(
-            "summarize today's notes".to_string(),
-            None,
-            super::ChatModeInput::DirectChat,
-            &state,
-        )
-        .await
-        .unwrap();
+        let response =
+            super::send_chat_prompt_inner("summarize today's notes".to_string(), None, &state)
+                .await
+                .unwrap();
         let response_json = serde_json::to_value(&response).unwrap();
 
         assert_eq!(response_json["sessionId"], response.session.id);
@@ -373,11 +295,11 @@ mod tests {
         assert_eq!(response_json["exitStatus"], "completed");
         assert_eq!(response_json["provider"]["id"], provider_id);
         assert_eq!(response_json["provider"]["model"], "gpt-oss");
-        assert_eq!(response_json["route"]["kind"], "direct_reply");
+        assert!(response_json.get("route").is_none());
     }
 
     #[tokio::test]
-    async fn route_world_prompt_does_not_expose_workflow_ids_in_chat_session_payload() {
+    async fn send_chat_prompt_does_not_expose_workflow_ids_in_chat_session_payload() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
             "Local",
@@ -394,14 +316,10 @@ mod tests {
             .await
             .unwrap();
 
-        let response = super::route_world_prompt_inner(
-            "summarize today's notes".to_string(),
-            None,
-            super::ChatModeInput::DirectChat,
-            &state,
-        )
-        .await
-        .unwrap();
+        let response =
+            super::send_chat_prompt_inner("summarize today's notes".to_string(), None, &state)
+                .await
+                .unwrap();
         let response_json = serde_json::to_value(&response).unwrap();
 
         assert!(

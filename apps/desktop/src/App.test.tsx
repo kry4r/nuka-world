@@ -65,18 +65,14 @@ const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>)
         knowledge: { ...runtimeStatusState.knowledge },
         app: { ...runtimeStatusState.app },
       };
-    case "route_world_prompt": {
+    case "send_chat_prompt": {
       const prompt = String(args?.prompt ?? "");
       return {
         session: {
           id: "chat-session-default",
           title: prompt,
           providerId: "provider-local",
-          workflowId: null,
           messageCount: 1,
-        },
-        route: {
-          kind: "direct_reply",
         },
         messages: [
           {
@@ -428,7 +424,7 @@ describe("App shell", () => {
     cleanups.push(view.cleanup);
 
     expect(view.container.querySelector('.app-shell__page[data-active-page="chat"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Chat landing hero"]')).toBeTruthy();
     expect(findText(view.container, "Direct chat")).toBeFalsy();
     expect(findText(view.container, "Release Team Run")).toBeFalsy();
   });

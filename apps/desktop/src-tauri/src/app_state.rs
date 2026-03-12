@@ -51,13 +51,13 @@ pub struct AppState {
     provider_secret_store: Arc<dyn crate::provider_secrets::ProviderSecretStore>,
     provider_service: nuka_runtime::providers::ProvidersService,
     settings_service: nuka_runtime::settings_service::SettingsService,
+    chat_service: nuka_runtime::chat_service::ChatService,
     team_service: nuka_runtime::team_service::TeamService,
     team_run_service: nuka_runtime::team_run_service::TeamRunService,
     agents_service: nuka_runtime::agents::AgentsService,
     knowledge_service: nuka_runtime::knowledge_service::KnowledgeService,
     memory_service: nuka_runtime::memory_service::MemoryService,
     workspace_sessions_service: nuka_runtime::workspace_sessions::WorkspaceSessionsService,
-    world_runtime: nuka_runtime::world::WorldRuntime,
 }
 
 #[allow(dead_code)]
@@ -68,13 +68,13 @@ impl AppState {
         provider_secret_store: Arc<dyn crate::provider_secrets::ProviderSecretStore>,
         provider_service: nuka_runtime::providers::ProvidersService,
         settings_service: nuka_runtime::settings_service::SettingsService,
+        chat_service: nuka_runtime::chat_service::ChatService,
         team_service: nuka_runtime::team_service::TeamService,
         team_run_service: nuka_runtime::team_run_service::TeamRunService,
         agents_service: nuka_runtime::agents::AgentsService,
         knowledge_service: nuka_runtime::knowledge_service::KnowledgeService,
         memory_service: nuka_runtime::memory_service::MemoryService,
         workspace_sessions_service: nuka_runtime::workspace_sessions::WorkspaceSessionsService,
-        world_runtime: nuka_runtime::world::WorldRuntime,
     ) -> Self {
         Self {
             settings: RwLock::new(settings),
@@ -82,13 +82,13 @@ impl AppState {
             provider_secret_store,
             provider_service,
             settings_service,
+            chat_service,
             team_service,
             team_run_service,
             agents_service,
             knowledge_service,
             memory_service,
             workspace_sessions_service,
-            world_runtime,
         }
     }
 
@@ -118,6 +118,10 @@ impl AppState {
         &self.settings_service
     }
 
+    pub fn chat_service(&self) -> &nuka_runtime::chat_service::ChatService {
+        &self.chat_service
+    }
+
     pub fn agents_service(&self) -> &nuka_runtime::agents::AgentsService {
         &self.agents_service
     }
@@ -142,9 +146,5 @@ impl AppState {
         &self,
     ) -> &nuka_runtime::workspace_sessions::WorkspaceSessionsService {
         &self.workspace_sessions_service
-    }
-
-    pub fn world_runtime(&self) -> &nuka_runtime::world::WorldRuntime {
-        &self.world_runtime
     }
 }

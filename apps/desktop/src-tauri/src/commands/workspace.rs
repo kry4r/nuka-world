@@ -249,11 +249,8 @@ mod tests {
         configure_default_provider(&state).await;
 
         state
-            .world_runtime()
-            .start_session(
-                "Summarize the release",
-                nuka_runtime::world::WorldChatMode::DirectChat,
-            )
+            .chat_service()
+            .send_message("Summarize the release", None)
             .await
             .unwrap();
         let team = crate::commands::team::create_team_from_goal_inner(
@@ -277,18 +274,14 @@ mod tests {
         configure_default_provider(&state).await;
 
         let original = state
-            .world_runtime()
-            .start_session(
-                "Summarize the release blockers",
-                nuka_runtime::world::WorldChatMode::DirectChat,
-            )
-        .await
-        .unwrap();
-        let chat_turn = original.chat_turn.clone().unwrap();
-        let anchor_message_id = chat_turn.messages[1].id.clone();
+            .chat_service()
+            .send_message("Summarize the release blockers", None)
+            .await
+            .unwrap();
+        let anchor_message_id = original.messages[1].id.clone();
 
         let branch = super::create_workspace_session_branch_inner(
-            chat_turn.session.id.clone(),
+            original.session.id.clone(),
             super::WorkspaceSessionKindInput::DirectChat,
             anchor_message_id.clone(),
             "Release blockers / branch".to_string(),
@@ -299,8 +292,8 @@ mod tests {
 
         let branch_json = serde_json::to_value(&branch).unwrap();
         assert_eq!(branch_json["kind"], "direct_chat");
-        assert_eq!(branch_json["lineage"]["rootId"], chat_turn.session.id);
-        assert_eq!(branch_json["lineage"]["parentId"], chat_turn.session.id);
+        assert_eq!(branch_json["lineage"]["rootId"], original.session.id);
+        assert_eq!(branch_json["lineage"]["parentId"], original.session.id);
         assert_eq!(
             branch_json["lineage"]["branchedFromItemId"],
             anchor_message_id
@@ -317,7 +310,7 @@ mod tests {
         assert_eq!(branch_summary_json["lineage"]["branchDepth"], 1);
 
         let original_detail = super::load_workspace_session_inner(
-            chat_turn.session.id.clone(),
+            original.session.id.clone(),
             super::WorkspaceSessionKindInput::DirectChat,
             &state,
         )

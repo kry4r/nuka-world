@@ -130,12 +130,7 @@ const sampleRun: TeamRunRecord = {
   ],
 };
 
-const routeWorldPromptMock = vi.fn(
-  async (
-    prompt: string,
-    sessionId?: string,
-    _mode: { kind: "direct_chat" } = { kind: "direct_chat" },
-  ) => {
+const sendChatPromptMock = vi.fn(async (prompt: string, sessionId?: string) => {
     if (prompt === "Broken provider") {
       throw new Error("default provider is not configured");
     }
@@ -146,9 +141,6 @@ const routeWorldPromptMock = vi.fn(
         title: "Summarize today's notes",
         providerId: "provider-local",
         messageCount: sessionId ? 2 : 1,
-      },
-      route: {
-        kind: "direct_reply" as const,
       },
       messages: [
         {
@@ -168,8 +160,7 @@ const routeWorldPromptMock = vi.fn(
         attachedKnowledgeLibraries: [],
       },
     };
-  },
-);
+  });
 
 const { providerGateState } = vi.hoisted(() => ({
   providerGateState: {
@@ -241,8 +232,8 @@ const {
 }));
 
 vi.mock("@/lib/chat", () => ({
-  routeWorldPrompt: (...args: Parameters<typeof routeWorldPromptMock>) =>
-    routeWorldPromptMock(...args),
+  sendChatPrompt: (...args: Parameters<typeof sendChatPromptMock>) =>
+    sendChatPromptMock(...args),
 }));
 
 vi.mock("@/hooks/useProviderGate", () => ({
@@ -371,47 +362,38 @@ function deferredValue<T>() {
 }
 
 afterEach(async () => {
-  routeWorldPromptMock.mockReset();
-  routeWorldPromptMock.mockImplementation(
-    async (
-      prompt: string,
-      sessionId?: string,
-      _mode: { kind: "direct_chat" } = { kind: "direct_chat" },
-    ) => {
-      if (prompt === "Broken provider") {
-        throw new Error("default provider is not configured");
-      }
+  sendChatPromptMock.mockReset();
+  sendChatPromptMock.mockImplementation(async (prompt: string, sessionId?: string) => {
+    if (prompt === "Broken provider") {
+      throw new Error("default provider is not configured");
+    }
 
-      return {
-        session: {
-          id: sessionId ?? "session-123",
-          title: "Summarize today's notes",
-          providerId: "provider-local",
-          messageCount: sessionId ? 2 : 1,
+    return {
+      session: {
+        id: sessionId ?? "session-123",
+        title: "Summarize today's notes",
+        providerId: "provider-local",
+        messageCount: sessionId ? 2 : 1,
+      },
+      messages: [
+        {
+          id: sessionId ? "message-user-2" : "message-user-1",
+          role: "user" as const,
+          content: prompt,
         },
-        route: {
-          kind: "direct_reply" as const,
-        },
-        messages: [
-          {
-            id: sessionId ? "message-user-2" : "message-user-1",
-            role: "user" as const,
-            content: prompt,
-          },
-        ],
-        provider: {
-          id: "provider-local",
-          name: "Local",
-          model: "gpt-oss",
-          baseUrl: "http://localhost:11434/v1",
-        },
-        context: {
-          attachedAgents: [],
-          attachedKnowledgeLibraries: [],
-        },
-      };
-    },
-  );
+      ],
+      provider: {
+        id: "provider-local",
+        name: "Local",
+        model: "gpt-oss",
+        baseUrl: "http://localhost:11434/v1",
+      },
+      context: {
+        attachedAgents: [],
+        attachedKnowledgeLibraries: [],
+      },
+    };
+  });
   listPendingMemoryCandidatesMock.mockReset();
   reviewMemoryCandidateMock.mockReset();
   listWorkspaceSessionsMock.mockReset();
@@ -471,7 +453,7 @@ describe("ChatPage", () => {
     cleanups.push(view.cleanup);
 
     expect(view.container.querySelector('[data-testid="chat-landing-stack"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Chat landing hero"]')).toBeTruthy();
     expect(view.container.querySelector("textarea")).toBeTruthy();
     expect(view.container.querySelector(".composer__add")).toBeTruthy();
     expect(view.container.querySelector(".composer__icon--plus")).toBeTruthy();
@@ -668,7 +650,6 @@ describe("ChatPage", () => {
             id: "chat-design-review",
             title: "Design Review Chat",
             providerId: "provider-local",
-            workflowId: null,
             messageCount: 2,
           },
           messages: [
@@ -738,7 +719,6 @@ describe("ChatPage", () => {
         id: "release-direct-session",
         title: "Design Review Chat",
         providerId: "provider-local",
-        workflowId: null,
         messageCount: 2,
       },
       messages: [
@@ -764,7 +744,7 @@ describe("ChatPage", () => {
     expect(tabList?.className).toContain("session-tabs--uniform");
     expect(tabs.length).toBeGreaterThan(1);
     expect(tabs.every((tab) => tab.className.includes("session-tab--uniform"))).toBe(true);
-    expect(findText(view.container, "Session release-… · Direct reply")).toBeTruthy();
+    expect(view.container.textContent).toContain("Session release-");
     expect(view.container.textContent?.includes("璺")).toBe(false);
     expect(view.container.textContent?.includes("鈥")).toBe(false);
   });
@@ -823,7 +803,6 @@ describe("ChatPage", () => {
             id: "chat-design-review",
             title: "Design Review Chat",
             providerId: "provider-local",
-            workflowId: null,
             messageCount: 2,
           },
           messages: [
@@ -850,7 +829,6 @@ describe("ChatPage", () => {
             id: "chat-design-review-branch",
             title: "Design Review Chat / branch",
             providerId: "provider-local",
-            workflowId: null,
             messageCount: 2,
           },
           messages: [
@@ -889,7 +867,6 @@ describe("ChatPage", () => {
         id: "chat-design-review-branch",
         title: "Design Review Chat / branch",
         providerId: "provider-local",
-        workflowId: null,
         messageCount: 2,
       },
       messages: [
@@ -1238,12 +1215,8 @@ describe("ChatPage", () => {
     await setComposerValue(view.container, "Summarize today's notes");
     await clickButton(view.container, "Send");
 
-    expect(routeWorldPromptMock).toHaveBeenCalledWith(
-      "Summarize today's notes",
-      undefined,
-      { kind: "direct_chat" },
-    );
-    expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeTruthy();
+    expect(sendChatPromptMock).toHaveBeenCalledWith("Summarize today's notes", undefined);
+    expect(view.container.querySelector('[aria-label="Chat conversation surface"]')).toBeTruthy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
     expect(findText(view.container, "Summarize today's notes")).toBeTruthy();
     expect(view.container.querySelector('[aria-label="Suggested next steps"]')).toBeTruthy();
@@ -1316,10 +1289,8 @@ describe("ChatPage", () => {
         id: "session-123",
         title: "Summarize today's notes",
         providerId: "provider-local",
-        workflowId: null,
         messageCount: 1,
       },
-      route: { kind: "direct_reply" as const },
       messages: [
         {
           id: "message-user-1",
@@ -1340,8 +1311,8 @@ describe("ChatPage", () => {
     };
     const pendingSend = deferredValue<typeof firstResponse>();
 
-    routeWorldPromptMock.mockResolvedValueOnce(firstResponse);
-    routeWorldPromptMock.mockImplementationOnce(() => pendingSend.promise);
+    sendChatPromptMock.mockResolvedValueOnce(firstResponse);
+    sendChatPromptMock.mockImplementationOnce(() => pendingSend.promise);
 
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
@@ -1354,7 +1325,7 @@ describe("ChatPage", () => {
     const suggestionButton = getButtonByText(view.container, "Plan my next team");
     expect(suggestionButton?.hasAttribute("disabled")).toBe(true);
 
-    expect(routeWorldPromptMock).toHaveBeenCalledTimes(2);
+    expect(sendChatPromptMock).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       pendingSend.resolve({

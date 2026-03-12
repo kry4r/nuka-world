@@ -5,23 +5,16 @@ pub mod memory_hooks;
 pub mod memory_service;
 pub mod providers;
 pub mod runtime_events;
-pub mod session;
 pub mod settings_service;
-pub mod team_service;
 pub mod team_run_service;
+pub mod team_service;
 pub mod workspace_sessions;
-pub mod workflow;
-pub mod workflow_world;
-pub mod world;
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        agents::AgentsService,
-        chat_service::ChatService,
-        knowledge_service::KnowledgeService,
-        memory_service::MemoryService,
-        providers::ProvidersService,
+        agents::AgentsService, chat_service::ChatService, knowledge_service::KnowledgeService,
+        memory_service::MemoryService, providers::ProvidersService,
         settings_service::SettingsService,
     };
     use nuka_domain::{
@@ -89,7 +82,10 @@ mod tests {
         provider.secret_ref = Some("provider:provider-local".to_string());
         provider.secret_present = true;
         service.save_provider(provider).await.unwrap();
-        service.set_default_provider("provider-local").await.unwrap();
+        service
+            .set_default_provider("provider-local")
+            .await
+            .unwrap();
 
         let provider = service.resolve_default_provider().await.unwrap();
         assert_eq!(provider.model, "gpt-oss");
@@ -116,13 +112,19 @@ mod tests {
 
         let items = service.list_agents().await.unwrap();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].tool_bindings, vec![AgentToolBinding::allowed("codex")]);
+        assert_eq!(
+            items[0].tool_bindings,
+            vec![AgentToolBinding::allowed("codex")]
+        );
     }
 
     #[tokio::test]
     async fn knowledge_service_reports_engine_health() {
         let service = KnowledgeService::new_for_test_missing_engine();
-        assert!(matches!(service.health().await, EngineHealth::Unavailable { .. }));
+        assert!(matches!(
+            service.health().await,
+            EngineHealth::Unavailable { .. }
+        ));
     }
 
     #[tokio::test]

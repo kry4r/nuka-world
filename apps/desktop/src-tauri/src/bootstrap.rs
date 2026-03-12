@@ -116,13 +116,13 @@ async fn build_app_state_from_pool(
         provider_secret_store,
         provider_service,
         settings_service,
+        chat_service,
         team_service,
         team_run_service,
         agents_service,
         knowledge_service,
         memory_service,
         workspace_sessions_service,
-        nuka_runtime::world::WorldRuntime::new(chat_service.clone()),
     ))
 }
 
