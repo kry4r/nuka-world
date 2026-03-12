@@ -2,6 +2,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "./ChatPage";
 import type { MemoryCandidate } from "@/lib/memory";
+import type { ProviderRecord } from "@/lib/providers";
 import type {
   RuntimeAgentInput,
   TeamRecord,
@@ -90,6 +91,7 @@ const sampleRun: TeamRunRecord = {
   },
   createdAt: "2026-03-11T12:10:00Z",
   updatedAt: "2026-03-11T12:15:00Z",
+  routing: null,
   agents: [
     {
       id: "agent-coordinator",
@@ -130,17 +132,78 @@ const sampleRun: TeamRunRecord = {
   ],
 };
 
-const sendChatPromptMock = vi.fn(async (prompt: string, sessionId?: string) => {
+const sampleProviders: ProviderRecord[] = [
+  {
+    id: "provider-local",
+    name: "Local",
+    baseUrl: "http://localhost:11434/v1",
+    model: "gpt-oss",
+    apiKey: "",
+    hasSecret: false,
+    secretUpdatedAt: null,
+    local: true,
+    enabled: true,
+  },
+  {
+    id: "provider-broken",
+    name: "Broken",
+    baseUrl: "http://127.0.0.1:17882/v1",
+    model: "",
+    apiKey: "",
+    hasSecret: false,
+    secretUpdatedAt: null,
+    local: true,
+    enabled: true,
+  },
+  {
+    id: "provider-fallback",
+    name: "Fallback",
+    baseUrl: "http://127.0.0.1:17882/v1",
+    model: "gpt-oss-fallback",
+    apiKey: "",
+    hasSecret: false,
+    secretUpdatedAt: null,
+    local: true,
+    enabled: true,
+  },
+];
+
+const sendChatPromptMock = vi.fn(
+  async (
+    prompt: string,
+    sessionId?: string,
+    routing?: {
+      requestedProviderId?: string | null;
+      requestedModel?: string | null;
+    },
+  ) => {
     if (prompt === "Broken provider") {
       throw new Error("default provider is not configured");
     }
 
+    const requestedProvider = sampleProviders.find(
+      (provider) => provider.id === routing?.requestedProviderId,
+    );
+    const effectiveProvider = requestedProvider ?? sampleProviders[0];
+
     return {
+      sessionId: sessionId ?? "session-123",
+      runId: null,
       session: {
         id: sessionId ?? "session-123",
         title: "Summarize today's notes",
-        providerId: "provider-local",
+        providerId: effectiveProvider.id,
         messageCount: sessionId ? 2 : 1,
+        routing: routing
+          ? {
+              requestedProviderId: routing.requestedProviderId ?? null,
+              requestedModel: routing.requestedModel ?? null,
+              effectiveProviderId: effectiveProvider.id,
+              effectiveModel: routing.requestedModel ?? effectiveProvider.model,
+              fallbackProviderId: null,
+              failoverReason: null,
+            }
+          : null,
       },
       messages: [
         {
@@ -149,18 +212,31 @@ const sendChatPromptMock = vi.fn(async (prompt: string, sessionId?: string) => {
           content: prompt,
         },
       ],
+      output: prompt,
+      exitStatus: "completed",
       provider: {
-        id: "provider-local",
-        name: "Local",
-        model: "gpt-oss",
-        baseUrl: "http://localhost:11434/v1",
+        id: effectiveProvider.id,
+        name: effectiveProvider.name,
+        model: routing?.requestedModel ?? effectiveProvider.model,
+        baseUrl: effectiveProvider.baseUrl,
       },
+      routing: routing
+        ? {
+            requestedProviderId: routing.requestedProviderId ?? null,
+            requestedModel: routing.requestedModel ?? null,
+            effectiveProviderId: effectiveProvider.id,
+            effectiveModel: routing.requestedModel ?? effectiveProvider.model,
+            fallbackProviderId: null,
+            failoverReason: null,
+          }
+        : null,
       context: {
         attachedAgents: [],
         attachedKnowledgeLibraries: [],
       },
     };
-  });
+  },
+);
 
 const { providerGateState } = vi.hoisted(() => ({
   providerGateState: {
@@ -216,10 +292,21 @@ const {
       goal,
     }),
   ),
-  startTeamRunMock: vi.fn<(teamId: string) => Promise<TeamRunRecord>>(
+  startTeamRunMock: vi.fn<
+    (
+      teamId: string,
+      routing?: { requestedProviderId?: string | null; requestedModel?: string | null },
+    ) => Promise<TeamRunRecord>
+  >(
     async () => sampleRun,
   ),
-  continueTeamRunMock: vi.fn<(runId: string, prompt: string) => Promise<TeamRunRecord>>(
+  continueTeamRunMock: vi.fn<
+    (
+      runId: string,
+      prompt: string,
+      routing?: { requestedProviderId?: string | null; requestedModel?: string | null },
+    ) => Promise<TeamRunRecord>
+  >(
     async () => {
       throw new Error("unexpected continueTeamRun call");
     },
@@ -229,6 +316,10 @@ const {
   >(async () => {
     throw new Error("unexpected addTeamRunAgent call");
   }),
+}));
+
+const { listProvidersMock } = vi.hoisted(() => ({
+  listProvidersMock: vi.fn<() => Promise<ProviderRecord[]>>(async () => sampleProviders),
 }));
 
 vi.mock("@/lib/chat", () => ({
@@ -271,6 +362,11 @@ vi.mock("@/lib/team", () => ({
     continueTeamRunMock(...args),
   addTeamRunAgent: (...args: Parameters<typeof addTeamRunAgentMock>) =>
     addTeamRunAgentMock(...args),
+}));
+
+vi.mock("@/lib/providers", () => ({
+  listProviders: (...args: Parameters<typeof listProvidersMock>) =>
+    listProvidersMock(...args),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -337,6 +433,27 @@ async function setFieldValue(container: HTMLElement, label: string, value: strin
   });
 }
 
+async function setSelectValue(container: HTMLElement, label: string, value: string) {
+  const field = container.querySelector(
+    `select[aria-label="${label}"]`,
+  ) as HTMLSelectElement | null;
+
+  await act(async () => {
+    if (!field) {
+      throw new Error(`select missing: ${label}`);
+    }
+
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLSelectElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await Promise.resolve();
+  });
+}
+
 async function clickTeamOption(container: HTMLElement, teamId: string) {
   const option = container.querySelector(`[data-team-id="${teamId}"]`) as
     | HTMLButtonElement
@@ -363,37 +480,75 @@ function deferredValue<T>() {
 
 afterEach(async () => {
   sendChatPromptMock.mockReset();
-  sendChatPromptMock.mockImplementation(async (prompt: string, sessionId?: string) => {
-    if (prompt === "Broken provider") {
-      throw new Error("default provider is not configured");
-    }
+  sendChatPromptMock.mockImplementation(
+    async (
+      prompt: string,
+      sessionId?: string,
+      routing?: {
+        requestedProviderId?: string | null;
+        requestedModel?: string | null;
+      },
+    ) => {
+      if (prompt === "Broken provider") {
+        throw new Error("default provider is not configured");
+      }
 
-    return {
-      session: {
-        id: sessionId ?? "session-123",
-        title: "Summarize today's notes",
-        providerId: "provider-local",
-        messageCount: sessionId ? 2 : 1,
-      },
-      messages: [
-        {
-          id: sessionId ? "message-user-2" : "message-user-1",
-          role: "user" as const,
-          content: prompt,
+      const requestedProvider = sampleProviders.find(
+        (provider) => provider.id === routing?.requestedProviderId,
+      );
+      const effectiveProvider = requestedProvider ?? sampleProviders[0];
+
+      return {
+        sessionId: sessionId ?? "session-123",
+        runId: null,
+        session: {
+          id: sessionId ?? "session-123",
+          title: "Summarize today's notes",
+          providerId: effectiveProvider.id,
+          messageCount: sessionId ? 2 : 1,
+          routing: routing
+            ? {
+                requestedProviderId: routing.requestedProviderId ?? null,
+                requestedModel: routing.requestedModel ?? null,
+                effectiveProviderId: effectiveProvider.id,
+                effectiveModel: routing.requestedModel ?? effectiveProvider.model,
+                fallbackProviderId: null,
+                failoverReason: null,
+              }
+            : null,
         },
-      ],
-      provider: {
-        id: "provider-local",
-        name: "Local",
-        model: "gpt-oss",
-        baseUrl: "http://localhost:11434/v1",
-      },
-      context: {
-        attachedAgents: [],
-        attachedKnowledgeLibraries: [],
-      },
-    };
-  });
+        messages: [
+          {
+            id: sessionId ? "message-user-2" : "message-user-1",
+            role: "user" as const,
+            content: prompt,
+          },
+        ],
+        output: prompt,
+        exitStatus: "completed",
+        provider: {
+          id: effectiveProvider.id,
+          name: effectiveProvider.name,
+          model: routing?.requestedModel ?? effectiveProvider.model,
+          baseUrl: effectiveProvider.baseUrl,
+        },
+        routing: routing
+          ? {
+              requestedProviderId: routing.requestedProviderId ?? null,
+              requestedModel: routing.requestedModel ?? null,
+              effectiveProviderId: effectiveProvider.id,
+              effectiveModel: routing.requestedModel ?? effectiveProvider.model,
+              fallbackProviderId: null,
+              failoverReason: null,
+            }
+          : null,
+        context: {
+          attachedAgents: [],
+          attachedKnowledgeLibraries: [],
+        },
+      };
+    },
+  );
   listPendingMemoryCandidatesMock.mockReset();
   reviewMemoryCandidateMock.mockReset();
   listWorkspaceSessionsMock.mockReset();
@@ -404,6 +559,7 @@ afterEach(async () => {
   startTeamRunMock.mockReset();
   continueTeamRunMock.mockReset();
   addTeamRunAgentMock.mockReset();
+  listProvidersMock.mockReset();
   invokeMock.mockReset();
 
   listPendingMemoryCandidatesMock.mockImplementation(async () => []);
@@ -425,6 +581,7 @@ afterEach(async () => {
   addTeamRunAgentMock.mockImplementation(async () => {
     throw new Error("unexpected addTeamRunAgent call");
   });
+  listProvidersMock.mockImplementation(async () => sampleProviders);
   invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
     switch (command) {
       case "open_external_prompt_draft":
@@ -616,10 +773,17 @@ describe("ChatPage", () => {
     await setComposerValue(view.container, "Re-check the remaining validation blocker.");
     await clickButton(view.container, "Send");
 
-    expect(startTeamRunMock).toHaveBeenCalledWith("team-release");
+    expect(startTeamRunMock).toHaveBeenCalledWith("team-release", {
+      requestedProviderId: null,
+      requestedModel: null,
+    });
     expect(continueTeamRunMock).toHaveBeenCalledWith(
       "run-release",
       "Re-check the remaining validation blocker.",
+      {
+        requestedProviderId: null,
+        requestedModel: null,
+      },
     );
     expect(findText(view.container, "Coordinator agenda")).toBeTruthy();
   });
@@ -642,7 +806,8 @@ describe("ChatPage", () => {
       },
     ]);
 
-    loadWorkspaceSessionMock.mockImplementation(async (sessionId: string, kind: string) => {
+    loadWorkspaceSessionMock.mockImplementation(
+      async (sessionId: string, kind: WorkspaceSessionSummary["kind"]) => {
       if (sessionId === "chat-design-review" && kind === "direct_chat") {
         return {
           kind: "direct_chat",
@@ -651,6 +816,7 @@ describe("ChatPage", () => {
             title: "Design Review Chat",
             providerId: "provider-local",
             messageCount: 2,
+            routing: null,
           },
           messages: [
             {
@@ -670,7 +836,8 @@ describe("ChatPage", () => {
       }
 
       return null;
-    });
+      },
+    );
 
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
@@ -720,6 +887,7 @@ describe("ChatPage", () => {
         title: "Design Review Chat",
         providerId: "provider-local",
         messageCount: 2,
+        routing: null,
       },
       messages: [
         {
@@ -795,7 +963,8 @@ describe("ChatPage", () => {
         },
       ]);
 
-    loadWorkspaceSessionMock.mockImplementation(async (sessionId: string, kind: string) => {
+    loadWorkspaceSessionMock.mockImplementation(
+      async (sessionId: string, kind: WorkspaceSessionSummary["kind"]) => {
       if (sessionId === "chat-design-review" && kind === "direct_chat") {
         return {
           kind: "direct_chat",
@@ -804,6 +973,7 @@ describe("ChatPage", () => {
             title: "Design Review Chat",
             providerId: "provider-local",
             messageCount: 2,
+            routing: null,
           },
           messages: [
             {
@@ -830,6 +1000,7 @@ describe("ChatPage", () => {
             title: "Design Review Chat / branch",
             providerId: "provider-local",
             messageCount: 2,
+            routing: null,
           },
           messages: [
             {
@@ -859,7 +1030,8 @@ describe("ChatPage", () => {
       }
 
       return null;
-    });
+      },
+    );
 
     createWorkspaceSessionBranchMock.mockResolvedValueOnce({
       kind: "direct_chat",
@@ -868,6 +1040,7 @@ describe("ChatPage", () => {
         title: "Design Review Chat / branch",
         providerId: "provider-local",
         messageCount: 2,
+        routing: null,
       },
       messages: [
         {
@@ -967,7 +1140,8 @@ describe("ChatPage", () => {
         },
       ]);
 
-    loadWorkspaceSessionMock.mockImplementation(async (sessionId: string, kind: string) => {
+    loadWorkspaceSessionMock.mockImplementation(
+      async (sessionId: string, kind: WorkspaceSessionSummary["kind"]) => {
       if (sessionId === "run-release" && kind === "team_run") {
         return {
           kind: "team_run",
@@ -1001,7 +1175,8 @@ describe("ChatPage", () => {
       }
 
       return null;
-    });
+      },
+    );
 
     createWorkspaceSessionBranchMock.mockResolvedValueOnce({
       kind: "team_run",
@@ -1071,6 +1246,8 @@ describe("ChatPage", () => {
           {
             id: "agent-research",
             runId: "run-release",
+            sourceAgentId: null,
+            sourceTeamAssignmentId: null,
             sourceTeamAgentId: "team-agent-research",
             name: "Research",
             role: "Research",
@@ -1148,6 +1325,8 @@ describe("ChatPage", () => {
         {
           id: "agent-scribe",
           runId: "run-release",
+          sourceAgentId: null,
+          sourceTeamAssignmentId: null,
           sourceTeamAgentId: null,
           name: "Scribe",
           role: "Writer",
@@ -1184,6 +1363,10 @@ describe("ChatPage", () => {
     expect(continueTeamRunMock).toHaveBeenCalledWith(
       "run-release",
       "Re-check the remaining validation blocker.",
+      {
+        requestedProviderId: null,
+        requestedModel: null,
+      },
     );
     expect(findText(view.container, "Coordinator agenda")).toBeTruthy();
 
@@ -1215,7 +1398,14 @@ describe("ChatPage", () => {
     await setComposerValue(view.container, "Summarize today's notes");
     await clickButton(view.container, "Send");
 
-    expect(sendChatPromptMock).toHaveBeenCalledWith("Summarize today's notes", undefined);
+    expect(sendChatPromptMock).toHaveBeenCalledWith(
+      "Summarize today's notes",
+      undefined,
+      {
+        requestedProviderId: null,
+        requestedModel: null,
+      },
+    );
     expect(view.container.querySelector('[aria-label="Chat conversation surface"]')).toBeTruthy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
     expect(findText(view.container, "Summarize today's notes")).toBeTruthy();
@@ -1285,11 +1475,14 @@ describe("ChatPage", () => {
 
   it("prevents overlapping sends while routing is active", async () => {
     const firstResponse = {
+      sessionId: "session-123",
+      runId: null,
       session: {
         id: "session-123",
         title: "Summarize today's notes",
         providerId: "provider-local",
         messageCount: 1,
+        routing: null,
       },
       messages: [
         {
@@ -1298,12 +1491,15 @@ describe("ChatPage", () => {
           content: "Start a release review",
         },
       ],
+      output: "Start a release review",
+      exitStatus: "completed",
       provider: {
         id: "provider-local",
         name: "Local",
         model: "gpt-oss",
         baseUrl: "http://localhost:11434/v1",
       },
+      routing: null,
       context: {
         attachedAgents: [],
         attachedKnowledgeLibraries: [],
@@ -1341,8 +1537,147 @@ describe("ChatPage", () => {
             content: "Second turn",
           },
         ],
+        output: "Second turn",
       });
       await pendingSend.promise;
     });
+  });
+
+  it("passes direct chat routing overrides and shows the effective route", async () => {
+    sendChatPromptMock.mockResolvedValueOnce({
+      sessionId: "session-route-direct",
+      runId: null,
+      session: {
+        id: "session-route-direct",
+        title: "Route direct chat",
+        providerId: "provider-fallback",
+        messageCount: 1,
+        routing: {
+          requestedProviderId: "provider-fallback",
+          requestedModel: "gpt-4.1-mini",
+          effectiveProviderId: "provider-fallback",
+          effectiveModel: "gpt-4.1-mini",
+          fallbackProviderId: null,
+          failoverReason: null,
+        },
+      },
+      messages: [
+        {
+          id: "message-user-route",
+          role: "user" as const,
+          content: "Route this directly",
+        },
+      ],
+      output: "Route this directly",
+      exitStatus: "completed",
+      provider: {
+        id: "provider-fallback",
+        name: "Fallback",
+        model: "gpt-4.1-mini",
+        baseUrl: "http://127.0.0.1:17882/v1",
+      },
+      routing: {
+        requestedProviderId: "provider-fallback",
+        requestedModel: "gpt-4.1-mini",
+        effectiveProviderId: "provider-fallback",
+        effectiveModel: "gpt-4.1-mini",
+        fallbackProviderId: null,
+        failoverReason: null,
+      },
+      context: {
+        attachedAgents: [],
+        attachedKnowledgeLibraries: [],
+      },
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await setSelectValue(view.container, "Session provider", "provider-fallback");
+    await setFieldValue(view.container, "Session model", "gpt-4.1-mini");
+    await setComposerValue(view.container, "Route this directly");
+    await clickButton(view.container, "Send");
+
+    expect(sendChatPromptMock).toHaveBeenCalledWith(
+      "Route this directly",
+      undefined,
+      {
+        requestedProviderId: "provider-fallback",
+        requestedModel: "gpt-4.1-mini",
+      },
+    );
+
+    const routingState = view.container.querySelector(
+      '[data-testid="chat-routing-state"]',
+    ) as HTMLElement | null;
+
+    expect(routingState?.textContent).toContain("Fallback");
+    expect(routingState?.textContent).toContain("gpt-4.1-mini");
+  });
+
+  it("passes team run routing overrides and shows failover state in chat", async () => {
+    startTeamRunMock.mockResolvedValueOnce({
+      ...sampleRun,
+      routing: {
+        requestedProviderId: "provider-broken",
+        requestedModel: null,
+        effectiveProviderId: "provider-fallback",
+        effectiveModel: "gpt-oss-fallback",
+        fallbackProviderId: "provider-fallback",
+        failoverReason: "missing_model",
+      },
+    });
+    continueTeamRunMock.mockResolvedValueOnce({
+      ...sampleRun,
+      routing: {
+        requestedProviderId: "provider-broken",
+        requestedModel: null,
+        effectiveProviderId: "provider-fallback",
+        effectiveModel: "gpt-oss-fallback",
+        fallbackProviderId: "provider-fallback",
+        failoverReason: "missing_model",
+      },
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await clickButton(view.container, "+");
+    await clickButton(view.container, "Choose team");
+    await clickTeamOption(view.container, "team-release");
+    await setSelectValue(view.container, "Session provider", "provider-broken");
+    await setComposerValue(view.container, "Kick off the release");
+    await clickButton(view.container, "Send");
+
+    expect(startTeamRunMock).toHaveBeenCalledWith("team-release", {
+      requestedProviderId: "provider-broken",
+      requestedModel: null,
+    });
+    expect(continueTeamRunMock).toHaveBeenCalledWith(
+      "run-release",
+      "Kick off the release",
+      {
+        requestedProviderId: "provider-broken",
+        requestedModel: null,
+      },
+    );
+
+    const routingState = view.container.querySelector(
+      '[data-testid="team-run-routing-state"]',
+    ) as HTMLElement | null;
+
+    expect(routingState?.textContent).toContain("Fallback");
+    expect(routingState?.textContent).toContain("gpt-oss-fallback");
+    expect(routingState?.textContent).toContain("missing model");
   });
 });

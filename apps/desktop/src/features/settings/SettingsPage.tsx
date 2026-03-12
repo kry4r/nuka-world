@@ -183,6 +183,19 @@ export function SettingsPage() {
       JSON.stringify(pickSettingsFields(initialSettings, PROVIDER_SCOPE_FIELDS)),
     [initialSettings, settings],
   );
+  const providerNameById = useMemo(
+    () =>
+      new Map(
+        providers.map((provider) => [provider.id, provider.name || "Untitled Provider"]),
+      ),
+    [providers],
+  );
+  const defaultProviderLabel = settings.defaultProviderId
+    ? providerNameById.get(settings.defaultProviderId) ?? settings.defaultProviderId
+    : "No default";
+  const fallbackProviderLabel = settings.fallbackProviderId
+    ? providerNameById.get(settings.fallbackProviderId) ?? settings.fallbackProviderId
+    : "No fallback";
 
   const updateSetting = <K extends keyof SettingsPayload>(
     key: K,
@@ -380,6 +393,17 @@ export function SettingsPage() {
       )}
 
       <section className="settings-directory__panel">
+        <div
+          className="settings-panel__summary"
+          data-testid="settings-provider-routing-summary"
+        >
+          <StatusBadge tone="soft">{`Default ${defaultProviderLabel}`}</StatusBadge>
+          <StatusBadge tone="soft">{`Fallback ${fallbackProviderLabel}`}</StatusBadge>
+          <StatusBadge tone={settings.connectionChecks ? "accent" : "warning"}>
+            {settings.connectionChecks ? "Checks on" : "Checks off"}
+          </StatusBadge>
+        </div>
+
         <div className="settings-form-grid">
           <label className="settings-form-field">
             <span className="settings-form-field__label">Default Provider</span>

@@ -98,6 +98,7 @@ impl TeamRunRepository {
               current_phase,
               lead_agent_id,
               charter_json,
+              route_json,
               created_at,
               updated_at,
               root_run_id,
@@ -127,6 +128,7 @@ impl TeamRunRepository {
                         current_phase: row.get("current_phase"),
                         lead_agent_id: row.get("lead_agent_id"),
                         charter: decode_json(&row.get::<String, _>("charter_json"))?,
+                        routing: decode_route(&row.get::<String, _>("route_json"))?,
                         created_at: row.get("created_at"),
                         updated_at: row.get("updated_at"),
                         agents: self.load_agents(&id).await?,
@@ -153,7 +155,7 @@ impl TeamRunRepository {
             r#"
             select
               id, team_id, title, goal, status, current_phase, lead_agent_id,
-              charter_json, created_at, updated_at,
+              charter_json, route_json, created_at, updated_at,
               root_run_id, parent_run_id, branch_snapshot_id, branched_from_event_id, branch_depth
             from team_runs
             order by updated_at desc, created_at desc
@@ -175,6 +177,7 @@ impl TeamRunRepository {
                     current_phase: row.get("current_phase"),
                     lead_agent_id: row.get("lead_agent_id"),
                     charter: decode_json(&row.get::<String, _>("charter_json"))?,
+                    routing: decode_route(&row.get::<String, _>("route_json"))?,
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
                     agents: self.load_agents(&id).await?,
@@ -324,6 +327,7 @@ impl TeamRunRepository {
                 .as_ref()
                 .and_then(|agent_id| agent_id_map.get(agent_id).cloned()),
             charter: source.run.charter.clone(),
+            routing: source.run.routing.clone(),
             created_at: String::new(),
             updated_at: String::new(),
             agents: cloned_agents,
@@ -477,14 +481,14 @@ async fn save_run_with_lineage_in_tx(
         r#"
         insert into team_runs (
           id, team_id, title, goal, status, current_phase, lead_agent_id,
-          charter_json, created_at, updated_at, root_run_id, parent_run_id,
+          charter_json, route_json, created_at, updated_at, root_run_id, parent_run_id,
           branch_snapshot_id, branched_from_event_id, branch_depth
         )
         values (
-          ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
-          coalesce(nullif(?9, ''), datetime('now')),
+          ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
           coalesce(nullif(?10, ''), datetime('now')),
-          ?11, ?12, ?13, ?14, ?15
+          coalesce(nullif(?11, ''), datetime('now')),
+          ?12, ?13, ?14, ?15, ?16
         )
         on conflict(id) do update set
           title = excluded.title,
@@ -493,6 +497,7 @@ async fn save_run_with_lineage_in_tx(
           current_phase = excluded.current_phase,
           lead_agent_id = excluded.lead_agent_id,
           charter_json = excluded.charter_json,
+          route_json = excluded.route_json,
           updated_at = coalesce(nullif(excluded.updated_at, ''), datetime('now')),
           root_run_id = excluded.root_run_id,
           parent_run_id = excluded.parent_run_id,
@@ -509,6 +514,7 @@ async fn save_run_with_lineage_in_tx(
     .bind(run.current_phase)
     .bind(run.lead_agent_id.clone())
     .bind(encode_json(&run.charter)?)
+    .bind(encode_route(&run.routing)?)
     .bind(run.created_at)
     .bind(run.updated_at)
     .bind(&lineage.root_run_id)
@@ -690,6 +696,25 @@ fn decode_json<T: DeserializeOwned>(value: &str) -> anyhow::Result<T> {
     Ok(serde_json::from_str(value)?)
 }
 
+fn encode_route(
+    route: &Option<nuka_domain::provider::ProviderRouteState>,
+) -> anyhow::Result<String> {
+    match route {
+        Some(route) => Ok(serde_json::to_string(route)?),
+        None => Ok(String::new()),
+    }
+}
+
+fn decode_route(
+    value: &str,
+) -> anyhow::Result<Option<nuka_domain::provider::ProviderRouteState>> {
+    if value.trim().is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(serde_json::from_str(value)?))
+    }
+}
+
 fn snapshot_title(branch_title: &str, sequence: i64) -> String {
     format!("{branch_title} @ {sequence}")
 }
@@ -757,6 +782,7 @@ mod tests {
             charter: RunCharter::default_for_goal("Ship the release"),
             created_at: "2026-03-12T00:00:00Z".to_string(),
             updated_at: "2026-03-12T00:00:00Z".to_string(),
+            routing: None,
             agents: vec![nuka_domain::team::TeamRunAgent {
                 id: "run-agent-reviewer".to_string(),
                 run_id: "run-root".to_string(),

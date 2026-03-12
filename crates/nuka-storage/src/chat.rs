@@ -66,15 +66,16 @@ impl ChatRepository {
         sqlx::query(
             r#"
             insert into chat_sessions (
-              id, title, provider_id, workflow_id, message_count, created_at,
+              id, title, provider_id, workflow_id, message_count, route_json, created_at,
               root_session_id, parent_session_id, branch_snapshot_id, branched_from_message_id, branch_depth
             )
-            values (?1, ?2, ?3, ?4, ?5, datetime('now'), ?6, ?7, ?8, ?9, ?10)
+            values (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), ?7, ?8, ?9, ?10, ?11)
             on conflict(id) do update set
               title = excluded.title,
               provider_id = excluded.provider_id,
               workflow_id = excluded.workflow_id,
               message_count = excluded.message_count,
+              route_json = excluded.route_json,
               root_session_id = excluded.root_session_id,
               parent_session_id = excluded.parent_session_id,
               branch_snapshot_id = excluded.branch_snapshot_id,
@@ -87,6 +88,7 @@ impl ChatRepository {
         .bind(&session.provider_id)
         .bind(&session.workflow_id)
         .bind(session.message_count as i64)
+        .bind(encode_route(&session.routing)?)
         .bind(&lineage.root_session_id)
         .bind(&lineage.parent_session_id)
         .bind(&lineage.branch_snapshot_id)
@@ -138,6 +140,7 @@ impl ChatRepository {
               provider_id,
               workflow_id,
               message_count,
+              route_json,
               root_session_id,
               parent_session_id,
               branch_snapshot_id,
@@ -176,6 +179,7 @@ impl ChatRepository {
               provider_id,
               workflow_id,
               message_count,
+              route_json,
               root_session_id,
               parent_session_id,
               branch_snapshot_id,
@@ -316,16 +320,17 @@ impl ChatRepository {
         sqlx::query(
             r#"
             insert into chat_sessions (
-              id, title, provider_id, workflow_id, message_count, created_at,
+              id, title, provider_id, workflow_id, message_count, route_json, created_at,
               root_session_id, parent_session_id, branch_snapshot_id, branched_from_message_id, branch_depth
             )
-            values (?1, ?2, ?3, ?4, 0, datetime('now'), ?5, ?6, ?7, ?8, ?9)
+            values (?1, ?2, ?3, ?4, 0, ?5, datetime('now'), ?6, ?7, ?8, ?9, ?10)
             "#,
         )
         .bind(&child_session_id)
         .bind(branch_title)
         .bind(&source.session.provider_id)
         .bind(&source.session.workflow_id)
+        .bind(encode_route(&source.session.routing)?)
         .bind(&lineage.root_session_id)
         .bind(&lineage.parent_session_id)
         .bind(&lineage.branch_snapshot_id)
@@ -398,6 +403,7 @@ fn map_session_record(row: sqlx::sqlite::SqliteRow) -> anyhow::Result<ChatSessio
             provider_id: row.get("provider_id"),
             workflow_id: row.get("workflow_id"),
             message_count: row.get::<i64, _>("message_count") as usize,
+            routing: decode_route(row.try_get::<String, _>("route_json")?.as_str())?,
         },
         lineage: ChatSessionLineageRecord {
             root_session_id,
@@ -458,6 +464,25 @@ fn snapshot_title(branch_title: &str, message_index: usize) -> String {
 
 fn message_excerpt(content: &str) -> String {
     content.chars().take(160).collect()
+}
+
+fn encode_route(
+    route: &Option<nuka_domain::provider::ProviderRouteState>,
+) -> anyhow::Result<String> {
+    match route {
+        Some(route) => Ok(serde_json::to_string(route)?),
+        None => Ok(String::new()),
+    }
+}
+
+fn decode_route(
+    value: &str,
+) -> anyhow::Result<Option<nuka_domain::provider::ProviderRouteState>> {
+    if value.trim().is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(serde_json::from_str(value)?))
+    }
 }
 
 #[cfg(test)]

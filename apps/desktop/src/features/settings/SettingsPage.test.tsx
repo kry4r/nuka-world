@@ -147,6 +147,40 @@ describe("SettingsPage", () => {
     expect(findText(view.container, "Interface Font")).toBeFalsy();
   });
 
+  it("shows a compact provider routing summary for the desktop routing chain", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const summary = view.container.querySelector(
+      '[data-testid="settings-provider-routing-summary"]',
+    ) as HTMLElement | null;
+
+    expect(summary?.textContent).toContain("Default Local");
+    expect(summary?.textContent).toContain("Fallback Local");
+    expect(summary?.textContent).toContain("Checks on");
+
+    const fallbackSelect = view.container.querySelector(
+      'select[aria-label="Fallback Provider"]',
+    ) as HTMLSelectElement | null;
+
+    await act(async () => {
+      if (!fallbackSelect) {
+        throw new Error("Fallback provider select missing");
+      }
+
+      setFormValue(fallbackSelect, "");
+    });
+
+    expect(summary?.textContent).toContain("No fallback");
+  });
+
   it("removes decorative helper copy across the settings surface", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);

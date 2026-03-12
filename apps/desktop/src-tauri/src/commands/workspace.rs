@@ -259,7 +259,7 @@ mod tests {
         )
         .await
         .unwrap();
-        crate::commands::team::start_team_run_inner(team.id, &state)
+        crate::commands::team::start_team_run_inner(team.id, None, &state)
             .await
             .unwrap();
 
@@ -332,7 +332,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let run = crate::commands::team::start_team_run_inner(team.id.clone(), &state)
+        let run = crate::commands::team::start_team_run_inner(team.id.clone(), None, &state)
             .await
             .unwrap();
         let anchor_event_id = run

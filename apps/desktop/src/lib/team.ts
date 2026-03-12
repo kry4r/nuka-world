@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ProviderRoutingRequest, ProviderRoutingState } from "./chat";
 
 export type ToolBindingRecord = {
   toolId: string;
@@ -111,6 +112,7 @@ export type TeamRunRecord = {
   charter: RunCharterRecord;
   createdAt: string;
   updatedAt: string;
+  routing: ProviderRoutingState | null;
   agents: TeamRunAgentRecord[];
   events: TeamRunEventRecord[];
 };
@@ -145,16 +147,23 @@ export async function deleteTeam(teamId: string): Promise<void> {
   return invoke("delete_team", { teamId });
 }
 
-export async function startTeamRun(teamId: string): Promise<TeamRunRecord> {
-  return invoke<TeamRunRecord>("start_team_run", { teamId });
+export async function startTeamRun(
+  teamId: string,
+  routing?: ProviderRoutingRequest,
+): Promise<TeamRunRecord> {
+  return invoke<TeamRunRecord>("start_team_run", { teamId, routing });
 }
 
 export async function loadTeamRun(runId: string): Promise<TeamRunRecord | null> {
   return invoke<TeamRunRecord | null>("load_team_run", { runId });
 }
 
-export async function continueTeamRun(runId: string, prompt: string): Promise<TeamRunRecord> {
-  return invoke<TeamRunRecord>("continue_team_run", { runId, prompt });
+export async function continueTeamRun(
+  runId: string,
+  prompt: string,
+  routing?: ProviderRoutingRequest,
+): Promise<TeamRunRecord> {
+  return invoke<TeamRunRecord>("continue_team_run", { runId, prompt, routing });
 }
 
 export async function addTeamRunAgent(

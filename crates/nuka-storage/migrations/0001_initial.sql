@@ -93,6 +93,7 @@ create table if not exists chat_sessions (
   provider_id text,
   workflow_id text,
   message_count integer not null default 0,
+  route_json text not null default '',
   created_at text not null
 );
 
@@ -217,6 +218,7 @@ create table if not exists team_runs (
   current_phase text not null,
   lead_agent_id text,
   charter_json text not null,
+  route_json text not null default '',
   created_at text not null,
   updated_at text not null
 );

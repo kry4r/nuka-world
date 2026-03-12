@@ -130,6 +130,7 @@ pub struct TeamRunRecord {
     pub charter: RunCharterRecord,
     pub created_at: String,
     pub updated_at: String,
+    pub routing: Option<super::chat::ProviderRoutingResponse>,
     pub agents: Vec<TeamRunAgentRecord>,
     pub events: Vec<TeamRunEventRecord>,
 }
@@ -196,9 +197,10 @@ pub async fn delete_team(
 #[tauri::command]
 pub async fn start_team_run(
     team_id: String,
+    routing: Option<super::chat::ProviderRoutingInput>,
     state: tauri::State<'_, AppState>,
 ) -> Result<TeamRunRecord, String> {
-    start_team_run_inner(team_id, &state)
+    start_team_run_inner(team_id, routing, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -217,9 +219,10 @@ pub async fn load_team_run(
 pub async fn continue_team_run(
     run_id: String,
     prompt: String,
+    routing: Option<super::chat::ProviderRoutingInput>,
     state: tauri::State<'_, AppState>,
 ) -> Result<TeamRunRecord, String> {
-    continue_team_run_inner(run_id, prompt, &state)
+    continue_team_run_inner(run_id, prompt, routing, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -279,10 +282,17 @@ async fn delete_team_inner(team_id: String, state: &AppState) -> anyhow::Result<
 
 pub(crate) async fn start_team_run_inner(
     team_id: String,
+    routing: Option<super::chat::ProviderRoutingInput>,
     state: &AppState,
 ) -> anyhow::Result<TeamRunRecord> {
     Ok(TeamRunRecord::from(
-        state.team_run_service().start_team_run(&team_id).await?,
+        state
+            .team_run_service()
+            .start_team_run_with_route(
+                &team_id,
+                routing.map(nuka_domain::provider::ProviderRouteRequest::from),
+            )
+            .await?,
     ))
 }
 
@@ -300,10 +310,18 @@ async fn load_team_run_inner(
 async fn continue_team_run_inner(
     run_id: String,
     prompt: String,
+    routing: Option<super::chat::ProviderRoutingInput>,
     state: &AppState,
 ) -> anyhow::Result<TeamRunRecord> {
     Ok(TeamRunRecord::from(
-        state.team_run_service().continue_team_run(&run_id, &prompt).await?,
+        state
+            .team_run_service()
+            .continue_team_run_with_route(
+                &run_id,
+                &prompt,
+                routing.map(nuka_domain::provider::ProviderRouteRequest::from),
+            )
+            .await?,
     ))
 }
 
@@ -562,6 +580,7 @@ impl From<nuka_domain::team::TeamRun> for TeamRunRecord {
             charter: RunCharterRecord::from(value.charter),
             created_at: value.created_at,
             updated_at: value.updated_at,
+            routing: value.routing.map(super::chat::ProviderRoutingResponse::from),
             agents: value.agents.into_iter().map(TeamRunAgentRecord::from).collect(),
             events: value.events.into_iter().map(TeamRunEventRecord::from).collect(),
         }
@@ -679,6 +698,36 @@ mod tests {
             .unwrap();
     }
 
+    async fn configure_provider_chain(
+        state: &crate::app_state::AppState,
+        default_provider: nuka_domain::provider::ProviderConfig,
+        fallback_provider: nuka_domain::provider::ProviderConfig,
+    ) {
+        state
+            .provider_service()
+            .save_provider(default_provider)
+            .await
+            .unwrap();
+        state
+            .provider_service()
+            .save_provider(fallback_provider)
+            .await
+            .unwrap();
+        state
+            .provider_service()
+            .set_default_provider("provider-broken")
+            .await
+            .unwrap();
+        state
+            .settings_service()
+            .save_state_value(
+                "settings.providers",
+                r#"{"fallbackProviderId":"provider-fallback","connectionChecks":true}"#,
+            )
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn team_commands_create_and_start_run() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
@@ -687,7 +736,7 @@ mod tests {
         let team = super::create_team_from_goal_inner("Ship the release".to_string(), &state)
             .await
             .unwrap();
-        let run = super::start_team_run_inner(team.id.clone(), &state)
+        let run = super::start_team_run_inner(team.id.clone(), None, &state)
             .await
             .unwrap();
 
@@ -698,5 +747,51 @@ mod tests {
             .agents
             .iter()
             .all(|agent| agent.source_team_assignment_id.is_some()));
+    }
+
+    #[tokio::test]
+    async fn team_commands_expose_effective_routing_metadata_after_fallback() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let broken_provider = nuka_domain::provider::ProviderConfig {
+            id: "provider-broken".to_string(),
+            name: "Broken".to_string(),
+            kind: nuka_domain::provider::ProviderKind::OpenAiCompatible,
+            base_url: "http://127.0.0.1:17882/v1".to_string(),
+            token: String::new(),
+            model: String::new(),
+            enabled: true,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
+        };
+        let fallback_provider = nuka_domain::provider::ProviderConfig {
+            id: "provider-fallback".to_string(),
+            name: "Fallback".to_string(),
+            kind: nuka_domain::provider::ProviderKind::OpenAiCompatible,
+            base_url: "http://127.0.0.1:17882/v1".to_string(),
+            token: String::new(),
+            model: "gpt-oss-fallback".to_string(),
+            enabled: true,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
+        };
+        configure_provider_chain(&state, broken_provider, fallback_provider).await;
+
+        let team = super::create_team_from_goal_inner("Ship the release".to_string(), &state)
+            .await
+            .unwrap();
+        let run = super::start_team_run_inner(team.id.clone(), None, &state)
+            .await
+            .unwrap();
+        let response_json = serde_json::to_value(&run).unwrap();
+
+        assert_eq!(response_json["routing"]["effectiveProviderId"], "provider-fallback");
+        assert_eq!(response_json["routing"]["effectiveModel"], "gpt-oss-fallback");
+        assert_eq!(response_json["routing"]["fallbackProviderId"], "provider-fallback");
+        assert_eq!(
+            response_json["routing"]["failoverReason"],
+            "missing_model"
+        );
     }
 }

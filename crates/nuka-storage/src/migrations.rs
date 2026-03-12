@@ -293,6 +293,18 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
             .await?;
     }
 
+    let has_chat_route_json: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'route_json'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_route_json == 0 {
+        sqlx::query("alter table chat_sessions add column route_json text not null default ''")
+            .execute(pool)
+            .await?;
+    }
+
     sqlx::query(
         r#"
         update chat_sessions
@@ -391,6 +403,18 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     if has_team_branch_depth == 0 {
         sqlx::query("alter table team_runs add column branch_depth integer not null default 0")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_route_json: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'route_json'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_route_json == 0 {
+        sqlx::query("alter table team_runs add column route_json text not null default ''")
             .execute(pool)
             .await?;
     }

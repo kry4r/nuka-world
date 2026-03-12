@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -10,6 +10,7 @@ pub struct SendChatPromptResponse {
     pub output: String,
     pub exit_status: String,
     pub provider: Option<ChatProviderResponse>,
+    pub routing: Option<ProviderRoutingResponse>,
     pub context: ChatContextResponse,
 }
 
@@ -20,6 +21,7 @@ pub struct ChatSessionResponse {
     pub title: String,
     pub provider_id: Option<String>,
     pub message_count: usize,
+    pub routing: Option<ProviderRoutingResponse>,
 }
 
 #[derive(Debug, Serialize)]
@@ -46,13 +48,32 @@ pub struct ChatContextResponse {
     pub attached_knowledge_libraries: Vec<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRoutingInput {
+    pub requested_provider_id: Option<String>,
+    pub requested_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRoutingResponse {
+    pub requested_provider_id: Option<String>,
+    pub requested_model: Option<String>,
+    pub effective_provider_id: String,
+    pub effective_model: String,
+    pub fallback_provider_id: Option<String>,
+    pub failover_reason: Option<String>,
+}
+
 #[tauri::command]
 pub async fn send_chat_prompt(
     prompt: String,
     session_id: Option<String>,
+    routing: Option<ProviderRoutingInput>,
     state: tauri::State<'_, crate::app_state::AppState>,
 ) -> Result<SendChatPromptResponse, String> {
-    send_chat_prompt_inner(prompt, session_id, &state)
+    send_chat_prompt_inner(prompt, session_id, routing, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -61,9 +82,10 @@ pub async fn send_chat_prompt(
 pub async fn execute_prompt_json(
     prompt: String,
     session_id: Option<String>,
+    routing: Option<ProviderRoutingInput>,
     state: tauri::State<'_, crate::app_state::AppState>,
 ) -> Result<SendChatPromptResponse, String> {
-    execute_prompt_json_inner(prompt, session_id, &state)
+    execute_prompt_json_inner(prompt, session_id, routing, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -71,20 +93,26 @@ pub async fn execute_prompt_json(
 async fn execute_prompt_json_inner(
     prompt: String,
     session_id: Option<String>,
+    routing: Option<ProviderRoutingInput>,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<SendChatPromptResponse> {
-    send_chat_prompt_inner(prompt, session_id, state).await
+    send_chat_prompt_inner(prompt, session_id, routing, state).await
 }
 
 async fn send_chat_prompt_inner(
     prompt: String,
     session_id: Option<String>,
+    routing: Option<ProviderRoutingInput>,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<SendChatPromptResponse> {
     let prompt_for_memory = prompt.clone();
     let turn = state
         .chat_service()
-        .send_message(&prompt, session_id.as_deref())
+        .send_message_with_route(
+            &prompt,
+            session_id.as_deref(),
+            routing.map(nuka_domain::provider::ProviderRouteRequest::from),
+        )
         .await?;
     let session = ChatSessionResponse::from(turn.session.clone());
     let messages = turn
@@ -93,6 +121,11 @@ async fn send_chat_prompt_inner(
         .map(ChatMessageResponse::from)
         .collect::<Vec<_>>();
     let provider = Some(ChatProviderResponse::from(turn.provider));
+    let routing = turn
+        .session
+        .routing
+        .clone()
+        .map(ProviderRoutingResponse::from);
     let output = messages
         .iter()
         .rev()
@@ -117,6 +150,7 @@ async fn send_chat_prompt_inner(
         output,
         exit_status: "completed".to_string(),
         provider,
+        routing,
         context: ChatContextResponse {
             attached_agents: Vec::new(),
             attached_knowledge_libraries: Vec::new(),
@@ -131,6 +165,7 @@ impl From<nuka_domain::chat::ChatSessionSummary> for ChatSessionResponse {
             title: value.title,
             provider_id: value.provider_id,
             message_count: value.message_count,
+            routing: value.routing.map(ProviderRoutingResponse::from),
         }
     }
 }
@@ -162,14 +197,71 @@ impl From<nuka_domain::provider::ProviderConfig> for ChatProviderResponse {
     }
 }
 
+impl From<ProviderRoutingInput> for nuka_domain::provider::ProviderRouteRequest {
+    fn from(value: ProviderRoutingInput) -> Self {
+        Self {
+            requested_provider_id: value.requested_provider_id,
+            requested_model: value.requested_model,
+        }
+    }
+}
+
+impl From<nuka_domain::provider::ProviderRouteState> for ProviderRoutingResponse {
+    fn from(value: nuka_domain::provider::ProviderRouteState) -> Self {
+        Self {
+            requested_provider_id: value.requested_provider_id,
+            requested_model: value.requested_model,
+            effective_provider_id: value.effective_provider_id,
+            effective_model: value.effective_model,
+            fallback_provider_id: value.fallback_provider_id,
+            failover_reason: value.failover_reason,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    async fn configure_provider_chain(
+        state: &crate::app_state::AppState,
+        default_provider: nuka_domain::provider::ProviderConfig,
+        fallback_provider: nuka_domain::provider::ProviderConfig,
+    ) {
+        state
+            .provider_service()
+            .save_provider(default_provider)
+            .await
+            .unwrap();
+        state
+            .provider_service()
+            .save_provider(fallback_provider)
+            .await
+            .unwrap();
+        state
+            .provider_service()
+            .set_default_provider("provider-broken")
+            .await
+            .unwrap();
+        state
+            .settings_service()
+            .save_state_value(
+                "settings.providers",
+                r#"{"fallbackProviderId":"provider-fallback","connectionChecks":true}"#,
+            )
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn send_chat_prompt_requires_default_provider() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
 
         let error =
-            super::send_chat_prompt_inner("summarize today's notes".to_string(), None, &state)
+            super::send_chat_prompt_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
         .await
         .unwrap_err();
 
@@ -195,7 +287,12 @@ mod tests {
             .unwrap();
 
         let response =
-            super::send_chat_prompt_inner("summarize today's notes".to_string(), None, &state)
+            super::send_chat_prompt_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
                 .await
                 .unwrap();
 
@@ -226,6 +323,7 @@ mod tests {
 
         let response = super::send_chat_prompt_inner(
             "capture the release checklist".to_string(),
+            None,
             None,
             &state,
         )
@@ -258,7 +356,7 @@ mod tests {
             .unwrap();
 
         let response =
-            super::send_chat_prompt_inner("draft a release flow".to_string(), None, &state)
+            super::send_chat_prompt_inner("draft a release flow".to_string(), None, None, &state)
                 .await
                 .unwrap();
 
@@ -284,7 +382,12 @@ mod tests {
             .unwrap();
 
         let response =
-            super::send_chat_prompt_inner("summarize today's notes".to_string(), None, &state)
+            super::send_chat_prompt_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
                 .await
                 .unwrap();
         let response_json = serde_json::to_value(&response).unwrap();
@@ -317,7 +420,12 @@ mod tests {
             .unwrap();
 
         let response =
-            super::send_chat_prompt_inner("summarize today's notes".to_string(), None, &state)
+            super::send_chat_prompt_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
                 .await
                 .unwrap();
         let response_json = serde_json::to_value(&response).unwrap();
@@ -349,6 +457,7 @@ mod tests {
         let response = super::execute_prompt_json_inner(
             "summarize today's notes".to_string(),
             None,
+            None,
             &state,
         )
         .await
@@ -361,5 +470,55 @@ mod tests {
         assert_eq!(response_json["exitStatus"], "completed");
         assert_eq!(response_json["provider"]["id"], provider_id);
         assert_eq!(response_json["provider"]["model"], "gpt-oss");
+    }
+
+    #[tokio::test]
+    async fn send_chat_prompt_exposes_effective_routing_metadata_after_fallback() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let broken_provider = nuka_domain::provider::ProviderConfig {
+            id: "provider-broken".to_string(),
+            name: "Broken".to_string(),
+            kind: nuka_domain::provider::ProviderKind::OpenAiCompatible,
+            base_url: "http://127.0.0.1:17882/v1".to_string(),
+            token: String::new(),
+            model: String::new(),
+            enabled: true,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
+        };
+        let fallback_provider = nuka_domain::provider::ProviderConfig {
+            id: "provider-fallback".to_string(),
+            name: "Fallback".to_string(),
+            kind: nuka_domain::provider::ProviderKind::OpenAiCompatible,
+            base_url: "http://127.0.0.1:17882/v1".to_string(),
+            token: String::new(),
+            model: "gpt-oss-fallback".to_string(),
+            enabled: true,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
+        };
+        configure_provider_chain(&state, broken_provider, fallback_provider).await;
+
+        let response =
+            super::send_chat_prompt_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
+                .await
+                .unwrap();
+        let response_json = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(response_json["provider"]["id"], "provider-fallback");
+        assert_eq!(response_json["routing"]["effectiveProviderId"], "provider-fallback");
+        assert_eq!(response_json["routing"]["effectiveModel"], "gpt-oss-fallback");
+        assert_eq!(response_json["routing"]["fallbackProviderId"], "provider-fallback");
+        assert_eq!(
+            response_json["routing"]["failoverReason"],
+            "missing_model"
+        );
     }
 }
