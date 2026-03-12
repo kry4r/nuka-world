@@ -155,6 +155,8 @@ impl TeamRunService {
         run.agents.push(nuka_domain::team::TeamRunAgent {
             id: uuid::Uuid::new_v4().to_string(),
             run_id: run.id.clone(),
+            source_agent_id: None,
+            source_team_assignment_id: None,
             source_team_agent_id: None,
             name: spec.name.clone(),
             role: spec.role.clone(),
@@ -375,6 +377,8 @@ fn snapshot_team_into_run(
     team: &nuka_domain::team::Team,
     charter: nuka_domain::team::RunCharter,
 ) -> nuka_domain::team::TeamRun {
+    let uses_assignments = !team.agent_assignments.is_empty();
+
     nuka_domain::team::TeamRun {
         id: uuid::Uuid::new_v4().to_string(),
         team_id: team.id.clone(),
@@ -389,20 +393,36 @@ fn snapshot_team_into_run(
         agents: team
             .agents
             .iter()
-            .map(|agent| nuka_domain::team::TeamRunAgent {
-                id: uuid::Uuid::new_v4().to_string(),
-                run_id: String::new(),
-                source_team_agent_id: Some(agent.id.clone()),
-                name: agent.name.clone(),
-                role: agent.role.clone(),
-                responsibility: agent.responsibility.clone(),
-                system_prompt: agent.system_prompt.clone(),
-                tool_bindings: agent.tool_bindings.clone(),
-                tool_use_policy: agent.tool_use_policy.clone(),
-                status: nuka_domain::team::TeamRunAgentStatus::Waiting,
-                current_work: "Waiting for coordinator".to_string(),
-                last_tool_activity: None,
-                joined_at: String::new(),
+            .filter_map(|agent| {
+                let assignment = team
+                    .agent_assignments
+                    .iter()
+                    .find(|assignment| assignment.order_hint == agent.order_hint);
+
+                if uses_assignments {
+                    match assignment {
+                        Some(assignment) if assignment.enabled => {}
+                        _ => return None,
+                    }
+                }
+
+                Some(nuka_domain::team::TeamRunAgent {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    run_id: String::new(),
+                    source_agent_id: assignment.map(|item| item.agent_id.clone()),
+                    source_team_assignment_id: assignment.map(|item| item.id.clone()),
+                    source_team_agent_id: Some(agent.id.clone()),
+                    name: agent.name.clone(),
+                    role: agent.role.clone(),
+                    responsibility: agent.responsibility.clone(),
+                    system_prompt: agent.system_prompt.clone(),
+                    tool_bindings: agent.tool_bindings.clone(),
+                    tool_use_policy: agent.tool_use_policy.clone(),
+                    status: nuka_domain::team::TeamRunAgentStatus::Waiting,
+                    current_work: "Waiting for coordinator".to_string(),
+                    last_tool_activity: None,
+                    joined_at: String::new(),
+                })
             })
             .collect(),
         events: vec![nuka_domain::team::TeamRunEvent {
@@ -444,6 +464,8 @@ fn sample_seed_team() -> nuka_domain::team::Team {
         name: "Release Team".to_string(),
         goal: "Ship the release cleanly".to_string(),
         summary: "Coordinates release readiness, notes, and final review.".to_string(),
+        prompt_constraints: "Stay concise and keep decisions auditable.".to_string(),
+        permission_policy: "No destructive tools without explicit approval.".to_string(),
         success_criteria: "Release ships with notes and no unresolved blockers.".to_string(),
         coordination_policy: "Coordinator-led bounded rounds.".to_string(),
         created_at: String::new(),
@@ -480,6 +502,30 @@ fn sample_seed_team() -> nuka_domain::team::Team {
                 updated_at: String::new(),
             },
         ],
+        agent_assignments: vec![
+            nuka_domain::team::TeamAgentAssignment {
+                id: "assign-coordinator".to_string(),
+                team_id: "team-release".to_string(),
+                agent_id: "agent-coordinator".to_string(),
+                enabled: true,
+                order_hint: 0,
+                prompt_override: None,
+                permission_override_json: "{}".to_string(),
+                created_at: String::new(),
+                updated_at: String::new(),
+            },
+            nuka_domain::team::TeamAgentAssignment {
+                id: "assign-writer".to_string(),
+                team_id: "team-release".to_string(),
+                agent_id: "agent-writer".to_string(),
+                enabled: true,
+                order_hint: 1,
+                prompt_override: Some("Draft release notes after coordinator summary.".to_string()),
+                permission_override_json: "{\"allowHighCost\":false}".to_string(),
+                created_at: String::new(),
+                updated_at: String::new(),
+            },
+        ],
     }
 }
 
@@ -504,6 +550,14 @@ mod tests {
 
         assert_eq!(run.charter.max_active_agents_per_round, 3);
         assert!(!run.agents.is_empty());
+        assert!(run
+            .agents
+            .iter()
+            .all(|agent| agent.source_agent_id.is_some()));
+        assert!(run
+            .agents
+            .iter()
+            .all(|agent| agent.source_team_assignment_id.is_some()));
         assert!(run.events.iter().any(|event| event.kind == "checkpoint_summary"));
     }
 
@@ -518,5 +572,9 @@ mod tests {
 
         assert_eq!(updated.agents.len(), run.agents.len() + 1);
         assert_eq!(updated.agents[0].responsibility, run.agents[0].responsibility);
+        assert_eq!(
+            updated.agents.last().and_then(|agent| agent.source_agent_id.as_ref()),
+            None
+        );
     }
 }

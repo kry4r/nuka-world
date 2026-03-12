@@ -65,15 +65,17 @@ impl TeamRunRepository {
             sqlx::query(
                 r#"
                 insert into team_run_agents (
-                  id, run_id, source_team_agent_id, name, role, responsibility, system_prompt,
-                  tool_bindings_json, tool_use_policy_json, status, current_work,
-                  last_tool_activity, joined_at
+                  id, run_id, source_agent_id, source_team_assignment_id, source_team_agent_id,
+                  name, role, responsibility, system_prompt, tool_bindings_json,
+                  tool_use_policy_json, status, current_work, last_tool_activity, joined_at
                 )
-                values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                 "#,
             )
             .bind(agent.id)
             .bind(run.id.clone())
+            .bind(agent.source_agent_id)
+            .bind(agent.source_team_assignment_id)
             .bind(agent.source_team_agent_id)
             .bind(agent.name)
             .bind(agent.role)
@@ -195,9 +197,9 @@ impl TeamRunRepository {
         let rows = sqlx::query(
             r#"
             select
-              id, run_id, source_team_agent_id, name, role, responsibility, system_prompt,
-              tool_bindings_json, tool_use_policy_json, status, current_work,
-              last_tool_activity, joined_at
+              id, run_id, source_agent_id, source_team_assignment_id, source_team_agent_id,
+              name, role, responsibility, system_prompt, tool_bindings_json,
+              tool_use_policy_json, status, current_work, last_tool_activity, joined_at
             from team_run_agents
             where run_id = ?1
             order by joined_at asc, rowid asc
@@ -212,6 +214,8 @@ impl TeamRunRepository {
                 Ok(TeamRunAgent {
                     id: row.get("id"),
                     run_id: row.get("run_id"),
+                    source_agent_id: row.get("source_agent_id"),
+                    source_team_assignment_id: row.get("source_team_assignment_id"),
                     source_team_agent_id: row.get("source_team_agent_id"),
                     name: row.get("name"),
                     role: row.get("role"),

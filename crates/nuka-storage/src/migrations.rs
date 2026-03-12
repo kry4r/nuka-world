@@ -91,6 +91,31 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
         .await?;
     }
 
+    let has_team_prompt_constraints: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('teams') where name = 'prompt_constraints'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_prompt_constraints == 0 {
+        sqlx::query("alter table teams add column prompt_constraints text not null default ''")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_permission_policy: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('teams') where name = 'permission_policy'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_permission_policy == 0 {
+        sqlx::query("alter table teams add column permission_policy text not null default ''")
+        )
+        .execute(pool)
+        .await?;
+    }
+
     let has_provider_secret_ref: i64 = sqlx::query_scalar(
         "select count(*) from pragma_table_info('providers') where name = 'secret_ref'",
     )
@@ -125,6 +150,80 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     if has_provider_secret_updated_at == 0 {
         sqlx::query("alter table providers add column secret_updated_at text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_agent_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_agents') where name = 'agent_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_agent_id == 0 {
+        sqlx::query("alter table team_agents add column agent_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_agent_enabled: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_agents') where name = 'enabled'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_agent_enabled == 0 {
+        sqlx::query("alter table team_agents add column enabled integer not null default 1")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_agent_prompt_override: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_agents') where name = 'prompt_override'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_agent_prompt_override == 0 {
+        sqlx::query("alter table team_agents add column prompt_override text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_agent_permission_override: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_agents') where name = 'permission_override_json'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_agent_permission_override == 0 {
+        sqlx::query(
+            "alter table team_agents add column permission_override_json text not null default '{}'",
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    let has_team_run_source_agent_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_run_agents') where name = 'source_agent_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_run_source_agent_id == 0 {
+        sqlx::query("alter table team_run_agents add column source_agent_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_run_source_assignment_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_run_agents') where name = 'source_team_assignment_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_run_source_assignment_id == 0 {
+        sqlx::query("alter table team_run_agents add column source_team_assignment_id text")
             .execute(pool)
             .await?;
     }

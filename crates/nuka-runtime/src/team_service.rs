@@ -16,6 +16,10 @@ pub struct TeamService {
 struct GeneratedTeamDraft {
     name: String,
     summary: String,
+    #[serde(default)]
+    prompt_constraints: String,
+    #[serde(default)]
+    permission_policy: String,
     success_criteria: String,
     coordination_policy: String,
     agents: Vec<GeneratedTeamAgentDraft>,
@@ -129,7 +133,11 @@ impl TeamService {
             }
         };
 
-        let team = hydrate_generated_team(goal, &completion)?;
+        let (team, generated_agents) = hydrate_generated_team(goal, &provider.id, &completion)?;
+        let agents_repo = nuka_storage::agents::AgentRepository::new(self.pool.clone());
+        for agent in generated_agents {
+            agents_repo.upsert(agent).await?;
+        }
         let repo = nuka_storage::teams::TeamRepository::new(self.pool.clone());
         repo.save_team(team.clone()).await?;
         repo.load_team(&team.id)
@@ -188,46 +196,87 @@ impl TeamService {
 
 fn team_generation_prompt(goal: &str) -> String {
     format!(
-        "Generate JSON for a persistent Team that can execute this goal: {goal}. Include name, summary, successCriteria, coordinationPolicy, and at least two agents with explicit toolBindings."
+        "Generate JSON for a persistent Team that can execute this goal: {goal}. Include name, summary, promptConstraints, permissionPolicy, successCriteria, coordinationPolicy, and at least two agents with explicit toolBindings."
     )
 }
 
 fn hydrate_generated_team(
     goal: &str,
+    provider_id: &str,
     payload: &str,
-) -> anyhow::Result<nuka_domain::team::Team> {
+) -> anyhow::Result<(
+    nuka_domain::team::Team,
+    Vec<nuka_domain::agent::AgentPreset>,
+)> {
     let draft: GeneratedTeamDraft = serde_json::from_str(payload)?;
     let team_id = uuid::Uuid::new_v4().to_string();
+    let mut agents = Vec::new();
+    let mut agent_assignments = Vec::new();
+    let mut generated_agents = Vec::new();
 
-    Ok(nuka_domain::team::Team {
+    for (index, agent) in draft.agents.into_iter().enumerate() {
+        let agent_id = uuid::Uuid::new_v4().to_string();
+        let team_agent_id = uuid::Uuid::new_v4().to_string();
+        let assignment_id = uuid::Uuid::new_v4().to_string();
+        let order_hint = index as i64;
+        let tool_use_policy = agent.tool_use_policy.unwrap_or_default();
+
+        generated_agents.push(nuka_domain::agent::AgentPreset {
+            id: agent_id.clone(),
+            name: agent.name.clone(),
+            description: format!("{}: {}", agent.role, agent.responsibility),
+            system_prompt: agent.system_prompt.clone(),
+            provider_id: Some(provider_id.to_string()),
+            knowledge_collection_ids: Vec::new(),
+            memory_scope_ids: Vec::new(),
+            tool_bindings: agent.tool_bindings.clone(),
+        });
+
+        agents.push(nuka_domain::team::TeamAgent {
+            id: team_agent_id,
+            team_id: team_id.clone(),
+            name: agent.name,
+            role: agent.role,
+            responsibility: agent.responsibility,
+            system_prompt: agent.system_prompt,
+            tool_bindings: agent.tool_bindings,
+            tool_use_policy: tool_use_policy.clone(),
+            order_hint,
+            created_at: String::new(),
+            updated_at: String::new(),
+        });
+
+        agent_assignments.push(nuka_domain::team::TeamAgentAssignment {
+            id: assignment_id,
+            team_id: team_id.clone(),
+            agent_id,
+            enabled: true,
+            order_hint,
+            prompt_override: None,
+            permission_override_json: "{}".to_string(),
+            created_at: String::new(),
+            updated_at: String::new(),
+        });
+    }
+
+    Ok((
+        nuka_domain::team::Team {
         id: team_id.clone(),
         name: draft.name,
         goal: goal.to_string(),
         summary: draft.summary,
+        prompt_constraints: draft.prompt_constraints,
+        permission_policy: draft.permission_policy,
         success_criteria: draft.success_criteria,
         coordination_policy: draft.coordination_policy,
         created_at: String::new(),
         updated_at: String::new(),
         status: nuka_domain::team::TeamStatus::Ready,
-        agents: draft
-            .agents
-            .into_iter()
-            .enumerate()
-            .map(|(index, agent)| nuka_domain::team::TeamAgent {
-                id: uuid::Uuid::new_v4().to_string(),
-                team_id: team_id.clone(),
-                name: agent.name,
-                role: agent.role,
-                responsibility: agent.responsibility,
-                system_prompt: agent.system_prompt,
-                tool_bindings: agent.tool_bindings,
-                tool_use_policy: agent.tool_use_policy.unwrap_or_default(),
-                order_hint: index as i64,
-                created_at: String::new(),
-                updated_at: String::new(),
-            })
-            .collect(),
-    })
+        agents,
+        agent_assignments,
+    },
+        generated_agents,
+    ))
 }
 
 #[cfg(test)]
@@ -242,6 +291,16 @@ mod tests {
 
         assert!(!team.id.is_empty());
         assert!(team.agents.len() >= 2);
+        assert_eq!(team.agent_assignments.len(), team.agents.len());
         assert!(team.agents.iter().any(|agent| !agent.tool_bindings.is_empty()));
+
+        let saved_agents = nuka_storage::agents::AgentRepository::new(service.pool.clone())
+            .list()
+            .await
+            .unwrap();
+
+        assert!(team.agent_assignments.iter().all(|assignment| saved_agents
+            .iter()
+            .any(|agent| agent.id == assignment.agent_id)));
     }
 }

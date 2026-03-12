@@ -76,17 +76,33 @@ pub struct TeamAgent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TeamAgentAssignment {
+    pub id: String,
+    pub team_id: String,
+    pub agent_id: String,
+    pub enabled: bool,
+    pub order_hint: i64,
+    pub prompt_override: Option<String>,
+    pub permission_override_json: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Team {
     pub id: String,
     pub name: String,
     pub goal: String,
     pub summary: String,
+    pub prompt_constraints: String,
+    pub permission_policy: String,
     pub success_criteria: String,
     pub coordination_policy: String,
     pub created_at: String,
     pub updated_at: String,
     pub status: TeamStatus,
     pub agents: Vec<TeamAgent>,
+    pub agent_assignments: Vec<TeamAgentAssignment>,
 }
 
 impl Team {
@@ -100,12 +116,15 @@ impl Team {
             name: name.into(),
             goal: goal.into(),
             summary: String::new(),
+            prompt_constraints: String::new(),
+            permission_policy: String::new(),
             success_criteria: String::new(),
             coordination_policy: String::new(),
             created_at: String::new(),
             updated_at: String::new(),
             status: TeamStatus::Ready,
             agents: Vec::new(),
+            agent_assignments: Vec::new(),
         }
     }
 }
@@ -114,6 +133,8 @@ impl Team {
 pub struct TeamRunAgent {
     pub id: String,
     pub run_id: String,
+    pub source_agent_id: Option<String>,
+    pub source_team_assignment_id: Option<String>,
     pub source_team_agent_id: Option<String>,
     pub name: String,
     pub role: String,

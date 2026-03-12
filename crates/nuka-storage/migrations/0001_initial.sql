@@ -181,6 +181,8 @@ create table if not exists teams (
   name text not null,
   goal text not null,
   summary text not null,
+  prompt_constraints text not null default '',
+  permission_policy text not null default '',
   success_criteria text not null,
   coordination_policy text not null,
   status text not null,
@@ -191,6 +193,8 @@ create table if not exists teams (
 create table if not exists team_agents (
   id text primary key,
   team_id text not null,
+  agent_id text,
+  enabled integer not null default 1,
   name text not null,
   role text not null,
   responsibility text not null,
@@ -198,6 +202,8 @@ create table if not exists team_agents (
   tool_bindings_json text not null,
   tool_use_policy_json text not null,
   order_hint integer not null,
+  prompt_override text,
+  permission_override_json text not null default '{}',
   created_at text not null,
   updated_at text not null
 );
@@ -218,6 +224,8 @@ create table if not exists team_runs (
 create table if not exists team_run_agents (
   id text primary key,
   run_id text not null,
+  source_agent_id text,
+  source_team_assignment_id text,
   source_team_agent_id text,
   name text not null,
   role text not null,

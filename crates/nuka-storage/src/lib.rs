@@ -22,8 +22,8 @@ mod tests {
         memory::MemoryScope,
         provider::{ProviderConfig, ProviderKind},
         team::{
-            RunCharter, Team, TeamAgent, TeamRun, TeamRunAgent, TeamRunAgentStatus, TeamRunEvent,
-            TeamRunStatus, TeamStatus,
+            RunCharter, Team, TeamAgent, TeamAgentAssignment, TeamRun, TeamRunAgent,
+            TeamRunAgentStatus, TeamRunEvent, TeamRunStatus, TeamStatus,
         },
         tool::AgentToolBinding,
         workflow::WorkflowVisibility,
@@ -90,6 +90,8 @@ mod tests {
             name: "Release Team".to_string(),
             goal: "Ship the release cleanly".to_string(),
             summary: "Coordinates release readiness and notes.".to_string(),
+            prompt_constraints: "Stay concise.".to_string(),
+            permission_policy: "No destructive tools.".to_string(),
             success_criteria: "Release ships without regressions.".to_string(),
             coordination_policy: "Coordinator runs bounded review rounds.".to_string(),
             created_at: "2026-03-11T00:00:00Z".to_string(),
@@ -126,6 +128,30 @@ mod tests {
                     updated_at: "2026-03-11T00:00:00Z".to_string(),
                 },
             ],
+            agent_assignments: vec![
+                TeamAgentAssignment {
+                    id: "assign-coordinator".to_string(),
+                    team_id: "team-release".to_string(),
+                    agent_id: "agent-coordinator".to_string(),
+                    enabled: true,
+                    order_hint: 0,
+                    prompt_override: Some("Lead the round".to_string()),
+                    permission_override_json: "{\"allowHighCost\":false}".to_string(),
+                    created_at: "2026-03-11T00:00:00Z".to_string(),
+                    updated_at: "2026-03-11T00:00:00Z".to_string(),
+                },
+                TeamAgentAssignment {
+                    id: "assign-writer".to_string(),
+                    team_id: "team-release".to_string(),
+                    agent_id: "agent-writer".to_string(),
+                    enabled: true,
+                    order_hint: 1,
+                    prompt_override: None,
+                    permission_override_json: "{}".to_string(),
+                    created_at: "2026-03-11T00:00:00Z".to_string(),
+                    updated_at: "2026-03-11T00:00:00Z".to_string(),
+                },
+            ],
         }
     }
 
@@ -145,6 +171,8 @@ mod tests {
                 TeamRunAgent {
                     id: "run-agent-coordinator".to_string(),
                     run_id: "run-release".to_string(),
+                    source_agent_id: Some("agent-coordinator".to_string()),
+                    source_team_assignment_id: Some("assign-coordinator".to_string()),
                     source_team_agent_id: Some("team-agent-coordinator".to_string()),
                     name: "Coordinator".to_string(),
                     role: "Coordinator".to_string(),
@@ -163,6 +191,8 @@ mod tests {
                 TeamRunAgent {
                     id: "run-agent-writer".to_string(),
                     run_id: "run-release".to_string(),
+                    source_agent_id: Some("agent-writer".to_string()),
+                    source_team_assignment_id: Some("assign-writer".to_string()),
                     source_team_agent_id: Some("team-agent-writer".to_string()),
                     name: "Release Writer".to_string(),
                     role: "Writer".to_string(),
@@ -402,6 +432,52 @@ mod tests {
         let teams = repo.list_teams().await.unwrap();
         assert_eq!(teams.len(), 1);
         assert_eq!(teams[0].agents.len(), 2);
+        assert_eq!(teams[0].agent_assignments.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn team_repository_persists_agent_assignments_and_team_constraints() {
+        let db = crate::db::open_in_memory().await.unwrap();
+        crate::migrations::run(&db).await.unwrap();
+
+        let team = nuka_domain::team::Team {
+            id: "team-release".to_string(),
+            name: "Release Team".to_string(),
+            goal: "Ship the release".to_string(),
+            summary: "Coordinates release readiness".to_string(),
+            prompt_constraints: "Stay concise".to_string(),
+            permission_policy: "No high-cost tools without approval".to_string(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            status: nuka_domain::team::TeamStatus::Ready,
+            success_criteria: String::new(),
+            coordination_policy: String::new(),
+            agents: Vec::new(),
+            agent_assignments: vec![nuka_domain::team::TeamAgentAssignment {
+                id: "assign-coordinator".to_string(),
+                team_id: "team-release".to_string(),
+                agent_id: "agent-coordinator".to_string(),
+                enabled: true,
+                order_hint: 0,
+                prompt_override: Some("Lead the round".to_string()),
+                permission_override_json: "{\"allowHighCost\":false}".to_string(),
+                created_at: String::new(),
+                updated_at: String::new(),
+            }],
+        };
+
+        crate::teams::TeamRepository::new(db.clone())
+            .save_team(team)
+            .await
+            .unwrap();
+        let loaded = crate::teams::TeamRepository::new(db.clone())
+            .load_team("team-release")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(loaded.agent_assignments.len(), 1);
+        assert_eq!(loaded.agent_assignments[0].agent_id, "agent-coordinator");
     }
 
     #[tokio::test]

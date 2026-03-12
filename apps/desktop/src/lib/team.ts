@@ -27,17 +27,32 @@ export type TeamAgentRecord = {
   updatedAt: string;
 };
 
+export type TeamAgentAssignmentRecord = {
+  id: string;
+  teamId: string;
+  agentId: string;
+  enabled: boolean;
+  orderHint: number;
+  promptOverride: string | null;
+  permissionOverrideJson: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type TeamRecord = {
   id: string;
   name: string;
   goal: string;
   summary: string;
+  promptConstraints: string;
+  permissionPolicy: string;
   successCriteria: string;
   coordinationPolicy: string;
   createdAt: string;
   updatedAt: string;
   status: string;
   agents: TeamAgentRecord[];
+  agentAssignments: TeamAgentAssignmentRecord[];
 };
 
 export type RunCharterRecord = {
@@ -55,6 +70,8 @@ export type RunCharterRecord = {
 export type TeamRunAgentRecord = {
   id: string;
   runId: string;
+  sourceAgentId: string | null;
+  sourceTeamAssignmentId: string | null;
   sourceTeamAgentId: string | null;
   name: string;
   role: string;

@@ -36,17 +36,34 @@ pub struct TeamAgentRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TeamAgentAssignmentRecord {
+    pub id: String,
+    pub team_id: String,
+    pub agent_id: String,
+    pub enabled: bool,
+    pub order_hint: i64,
+    pub prompt_override: Option<String>,
+    pub permission_override_json: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TeamRecord {
     pub id: String,
     pub name: String,
     pub goal: String,
     pub summary: String,
+    pub prompt_constraints: String,
+    pub permission_policy: String,
     pub success_criteria: String,
     pub coordination_policy: String,
     pub created_at: String,
     pub updated_at: String,
     pub status: String,
     pub agents: Vec<TeamAgentRecord>,
+    pub agent_assignments: Vec<TeamAgentAssignmentRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +85,8 @@ pub struct RunCharterRecord {
 pub struct TeamRunAgentRecord {
     pub id: String,
     pub run_id: String,
+    pub source_agent_id: Option<String>,
+    pub source_team_assignment_id: Option<String>,
     pub source_team_agent_id: Option<String>,
     pub name: String,
     pub role: String,
@@ -387,6 +406,38 @@ impl TryFrom<TeamAgentRecord> for nuka_domain::team::TeamAgent {
     }
 }
 
+impl From<nuka_domain::team::TeamAgentAssignment> for TeamAgentAssignmentRecord {
+    fn from(value: nuka_domain::team::TeamAgentAssignment) -> Self {
+        Self {
+            id: value.id,
+            team_id: value.team_id,
+            agent_id: value.agent_id,
+            enabled: value.enabled,
+            order_hint: value.order_hint,
+            prompt_override: value.prompt_override,
+            permission_override_json: value.permission_override_json,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<TeamAgentAssignmentRecord> for nuka_domain::team::TeamAgentAssignment {
+    fn from(value: TeamAgentAssignmentRecord) -> Self {
+        Self {
+            id: value.id,
+            team_id: value.team_id,
+            agent_id: value.agent_id,
+            enabled: value.enabled,
+            order_hint: value.order_hint,
+            prompt_override: value.prompt_override,
+            permission_override_json: value.permission_override_json,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
 impl From<nuka_domain::team::Team> for TeamRecord {
     fn from(value: nuka_domain::team::Team) -> Self {
         Self {
@@ -394,12 +445,19 @@ impl From<nuka_domain::team::Team> for TeamRecord {
             name: value.name,
             goal: value.goal,
             summary: value.summary,
+            prompt_constraints: value.prompt_constraints,
+            permission_policy: value.permission_policy,
             success_criteria: value.success_criteria,
             coordination_policy: value.coordination_policy,
             created_at: value.created_at,
             updated_at: value.updated_at,
             status: team_status_as_str(&value.status).to_string(),
             agents: value.agents.into_iter().map(TeamAgentRecord::from).collect(),
+            agent_assignments: value
+                .agent_assignments
+                .into_iter()
+                .map(TeamAgentAssignmentRecord::from)
+                .collect(),
         }
     }
 }
@@ -413,6 +471,8 @@ impl TryFrom<TeamRecord> for nuka_domain::team::Team {
             name: value.name,
             goal: value.goal,
             summary: value.summary,
+            prompt_constraints: value.prompt_constraints,
+            permission_policy: value.permission_policy,
             success_criteria: value.success_criteria,
             coordination_policy: value.coordination_policy,
             created_at: value.created_at,
@@ -423,6 +483,11 @@ impl TryFrom<TeamRecord> for nuka_domain::team::Team {
                 .into_iter()
                 .map(nuka_domain::team::TeamAgent::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
+            agent_assignments: value
+                .agent_assignments
+                .into_iter()
+                .map(nuka_domain::team::TeamAgentAssignment::from)
+                .collect(),
         })
     }
 }
@@ -448,6 +513,8 @@ impl From<nuka_domain::team::TeamRunAgent> for TeamRunAgentRecord {
         Self {
             id: value.id,
             run_id: value.run_id,
+            source_agent_id: value.source_agent_id,
+            source_team_assignment_id: value.source_team_assignment_id,
             source_team_agent_id: value.source_team_agent_id,
             name: value.name,
             role: value.role,
@@ -625,5 +692,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(run.team_id, team.id);
+        assert!(team.agent_assignments.len() >= 2);
+        assert!(run.agents.iter().all(|agent| agent.source_agent_id.is_some()));
+        assert!(run
+            .agents
+            .iter()
+            .all(|agent| agent.source_team_assignment_id.is_some()));
     }
 }
