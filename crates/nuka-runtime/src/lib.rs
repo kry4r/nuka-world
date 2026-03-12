@@ -74,12 +74,26 @@ mod tests {
 
     #[tokio::test]
     async fn providers_service_resolves_default_provider() {
-        let service = ProvidersService::new_for_test();
-        service.save_provider(sample_provider()).await.unwrap();
+        let secret_loader: std::sync::Arc<crate::providers::ProviderSecretLoader> =
+            std::sync::Arc::new(|provider_id| {
+                let provider_id = provider_id.to_string();
+                Box::pin(async move {
+                    Ok((provider_id == "provider-local").then(|| "sk-live".to_string()))
+                })
+            });
+        let service = ProvidersService::new_with_secret_loader(
+            crate::settings_service::test_pool(),
+            secret_loader,
+        );
+        let mut provider = sample_provider();
+        provider.secret_ref = Some("provider:provider-local".to_string());
+        provider.secret_present = true;
+        service.save_provider(provider).await.unwrap();
         service.set_default_provider("provider-local").await.unwrap();
 
         let provider = service.resolve_default_provider().await.unwrap();
         assert_eq!(provider.model, "gpt-oss");
+        assert_eq!(provider.token, "sk-live");
     }
 
     #[tokio::test]

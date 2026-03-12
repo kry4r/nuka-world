@@ -17,6 +17,8 @@ pub struct ProviderRecord {
     pub base_url: String,
     pub model: String,
     pub api_key: String,
+    pub has_secret: bool,
+    pub secret_updated_at: Option<String>,
     pub local: bool,
     pub enabled: bool,
 }
@@ -109,7 +111,24 @@ async fn save_provider_inner(
     state: &AppState,
     provider: ProviderInput,
 ) -> anyhow::Result<ProviderRecord> {
-    let provider = provider.into_config();
+    let provider_id = normalize_provider_id(&provider.id, &provider.name);
+    let existing = state
+        .provider_service()
+        .list_providers()
+        .await?
+        .into_iter()
+        .find(|saved| saved.id == provider_id);
+    let mut provider = provider.into_config(existing.as_ref());
+
+    if !provider.token.trim().is_empty() {
+        let secret_store = state.provider_secret_store();
+        secret_store.write(&provider.id, &provider.token).await?;
+        provider.token = String::new();
+        provider.secret_ref = Some(secret_store.secret_ref(&provider.id));
+        provider.secret_present = true;
+        provider.secret_updated_at = Some(state.provider_service().current_timestamp().await?);
+    }
+
     state
         .provider_service()
         .save_provider(provider.clone())
@@ -118,6 +137,7 @@ async fn save_provider_inner(
 }
 
 async fn delete_provider_inner(state: &AppState, provider_id: &str) -> anyhow::Result<()> {
+    state.provider_secret_store().delete(provider_id).await?;
     state.provider_service().delete_provider(provider_id).await
 }
 
@@ -125,9 +145,16 @@ async fn test_provider_connection_inner(
     state: &AppState,
     provider: ProviderInput,
 ) -> anyhow::Result<ProviderConnectionResponse> {
+    let provider_id = normalize_provider_id(&provider.id, &provider.name);
+    let existing = state
+        .provider_service()
+        .list_providers()
+        .await?
+        .into_iter()
+        .find(|saved| saved.id == provider_id);
     let status = state
         .provider_service()
-        .test_provider_connection(&provider.into_config())
+        .test_provider_connection(&provider.into_config(existing.as_ref()))
         .await?;
 
     Ok(ProviderConnectionResponse {
@@ -136,26 +163,22 @@ async fn test_provider_connection_inner(
 }
 
 async fn import_provider_from_env_inner(state: &AppState) -> anyhow::Result<ProviderRecord> {
-    let provider = ProviderInput {
+    save_provider_inner(
+        state,
+        ProviderInput {
         id: String::new(),
         name: required_env("NUKA_PROVIDER_NAME")?,
         base_url: required_env("NUKA_PROVIDER_BASE_URL")?,
         api_key: std::env::var("NUKA_PROVIDER_API_KEY").unwrap_or_default(),
         model: required_env("NUKA_PROVIDER_MODEL")?,
         enabled: true,
-    }
-    .into_config();
-
-    state
-        .provider_service()
-        .save_provider(provider.clone())
-        .await?;
-
-    Ok(ProviderRecord::from(provider))
+    },
+    )
+    .await
 }
 
 impl ProviderInput {
-    fn into_config(self) -> ProviderConfig {
+    fn into_config(self, existing: Option<&ProviderConfig>) -> ProviderConfig {
         ProviderConfig {
             id: normalize_provider_id(&self.id, &self.name),
             name: self.name,
@@ -164,9 +187,9 @@ impl ProviderInput {
             token: self.api_key,
             model: self.model,
             enabled: self.enabled,
-            secret_ref: None,
-            secret_present: false,
-            secret_updated_at: None,
+            secret_ref: existing.and_then(|provider| provider.secret_ref.clone()),
+            secret_present: existing.map(|provider| provider.secret_present).unwrap_or(false),
+            secret_updated_at: existing.and_then(|provider| provider.secret_updated_at.clone()),
         }
     }
 }
@@ -179,7 +202,9 @@ impl From<ProviderConfig> for ProviderRecord {
             id: value.id,
             name: value.name,
             model: value.model,
-            api_key: value.token,
+            api_key: String::new(),
+            has_secret: value.secret_present,
+            secret_updated_at: value.secret_updated_at,
             local: is_local_provider(&base_url),
             enabled: value.enabled,
             base_url,
@@ -229,6 +254,37 @@ fn provider_connection_status_kind(status: &ProviderConnectionStatus) -> &'stati
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn provider_commands_hide_secret_but_runtime_resolution_keeps_it() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+
+        super::save_provider_inner(
+            &state,
+            super::ProviderInput {
+                id: "provider-live".to_string(),
+                name: "Live".to_string(),
+                base_url: "https://api.example.com/v1".to_string(),
+                api_key: "sk-live".to_string(),
+                model: "MiniMax-M2.5".to_string(),
+                enabled: true,
+            },
+        )
+        .await
+        .unwrap();
+
+        let listed = super::list_providers_inner(&state).await.unwrap();
+        assert_eq!(listed[0].api_key, "");
+        assert!(listed[0].has_secret);
+
+        state
+            .provider_service()
+            .set_default_provider("provider-live")
+            .await
+            .unwrap();
+        let resolved = state.provider_service().resolve_default_provider().await.unwrap();
+        assert_eq!(resolved.token, "sk-live");
+    }
+
     #[tokio::test]
     async fn provider_list_returns_saved_providers() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();

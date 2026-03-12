@@ -47,17 +47,39 @@ async fn build_app_state_from_pool(
     migrate_provider_tokens_to_secret_store(&pool, provider_secret_store.as_ref()).await?;
 
     let settings_service = nuka_runtime::settings_service::SettingsService::new(pool.clone());
-    let provider_service = nuka_runtime::providers::ProvidersService::new(pool.clone());
+    let provider_secret_loader: std::sync::Arc<nuka_runtime::providers::ProviderSecretLoader> =
+        std::sync::Arc::new({
+            let provider_secret_store = provider_secret_store.clone();
+            move |provider_id: &str| {
+                let provider_secret_store = provider_secret_store.clone();
+                let provider_id = provider_id.to_string();
+                Box::pin(async move { provider_secret_store.read(&provider_id).await })
+            }
+        });
+    let provider_service = nuka_runtime::providers::ProvidersService::new_with_secret_loader(
+        pool.clone(),
+        provider_secret_loader,
+    );
     #[cfg(test)]
-    let team_service =
-        nuka_runtime::team_service::TeamService::new_for_test_with_seeded_completion(pool.clone());
+    let team_service = nuka_runtime::team_service::TeamService::new_for_test_with_seeded_completion_and_provider_service(
+        pool.clone(),
+        provider_service.clone(),
+    );
     #[cfg(not(test))]
-    let team_service = nuka_runtime::team_service::TeamService::new(pool.clone());
+    let team_service = nuka_runtime::team_service::TeamService::new_with_provider_service(
+        pool.clone(),
+        provider_service.clone(),
+    );
     #[cfg(test)]
-    let team_run_service = nuka_runtime::team_run_service::TeamRunService::
-        new_for_test_with_seeded_completion(pool.clone());
+    let team_run_service = nuka_runtime::team_run_service::TeamRunService::new_for_test_with_seeded_completion_and_provider_service(
+        pool.clone(),
+        provider_service.clone(),
+    );
     #[cfg(not(test))]
-    let team_run_service = nuka_runtime::team_run_service::TeamRunService::new(pool.clone());
+    let team_run_service = nuka_runtime::team_run_service::TeamRunService::new_with_provider_service(
+        pool.clone(),
+        provider_service.clone(),
+    );
     let agents_service = nuka_runtime::agents::AgentsService::new(pool.clone());
     let knowledge_service = nuka_runtime::knowledge_service::KnowledgeService::new(
         pool.clone(),
@@ -67,10 +89,15 @@ async fn build_app_state_from_pool(
         )),
     );
     #[cfg(test)]
-    let chat_service =
-        nuka_runtime::chat_service::ChatService::new_for_test_with_seeded_completion(pool.clone());
+    let chat_service = nuka_runtime::chat_service::ChatService::new_for_test_with_seeded_completion_and_provider_service(
+        pool.clone(),
+        provider_service.clone(),
+    );
     #[cfg(not(test))]
-    let chat_service = nuka_runtime::chat_service::ChatService::new(pool.clone());
+    let chat_service = nuka_runtime::chat_service::ChatService::new_with_provider_service(
+        pool.clone(),
+        provider_service.clone(),
+    );
     let workspace_sessions_service =
         nuka_runtime::workspace_sessions::WorkspaceSessionsService::new(pool.clone());
     let memory_service = nuka_runtime::memory_service::MemoryService::new(pool);

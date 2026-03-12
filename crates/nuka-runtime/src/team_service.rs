@@ -6,6 +6,7 @@ use nuka_integrations::providers::{
 #[derive(Debug, Clone)]
 pub struct TeamService {
     pool: sqlx::SqlitePool,
+    provider_service: crate::providers::ProvidersService,
     provider_client: OpenAiCompatibleProvider,
     seed_provider: Option<nuka_domain::provider::ProviderConfig>,
     seed_completion: Option<String>,
@@ -39,8 +40,17 @@ struct GeneratedTeamAgentDraft {
 
 impl TeamService {
     pub fn new(pool: sqlx::SqlitePool) -> Self {
+        let provider_service = crate::providers::ProvidersService::new(pool.clone());
+        Self::new_with_provider_service(pool, provider_service)
+    }
+
+    pub fn new_with_provider_service(
+        pool: sqlx::SqlitePool,
+        provider_service: crate::providers::ProvidersService,
+    ) -> Self {
         Self {
             pool,
+            provider_service,
             provider_client: OpenAiCompatibleProvider::default(),
             seed_provider: None,
             seed_completion: None,
@@ -60,12 +70,19 @@ impl TeamService {
     }
 
     pub fn new_for_test_with_seeded_completion(pool: sqlx::SqlitePool) -> Self {
-        Self {
-            pool,
-            provider_client: OpenAiCompatibleProvider::default(),
-            seed_provider: None,
-            seed_completion: Some(
-                r#"{
+        Self::new_for_test_with_seeded_completion_and_provider_service(
+            pool.clone(),
+            crate::providers::ProvidersService::new(pool),
+        )
+    }
+
+    pub fn new_for_test_with_seeded_completion_and_provider_service(
+        pool: sqlx::SqlitePool,
+        provider_service: crate::providers::ProvidersService,
+    ) -> Self {
+        let mut service = Self::new_with_provider_service(pool, provider_service);
+        service.seed_completion = Some(
+            r#"{
                   "name": "Release Team",
                   "summary": "Coordinates release readiness, notes, and final sign-off.",
                   "successCriteria": "Release ships with clear notes and no unresolved blockers.",
@@ -104,8 +121,8 @@ impl TeamService {
                   ]
                 }"#
                 .to_string(),
-            ),
-        }
+        );
+        service
     }
 
     pub async fn create_team_from_goal(
@@ -115,9 +132,7 @@ impl TeamService {
         nuka_storage::migrations::run(&self.pool).await?;
         self.ensure_seed_provider().await?;
 
-        let provider = crate::providers::ProvidersService::new(self.pool.clone())
-            .resolve_default_provider()
-            .await?;
+        let provider = self.provider_service.resolve_default_provider().await?;
         let completion = match &self.seed_completion {
             Some(payload) => payload.clone(),
             None => {
@@ -181,13 +196,11 @@ impl TeamService {
             return Ok(());
         };
 
-        let provider_repo = nuka_storage::providers::ProviderRepository::new(self.pool.clone());
-        if provider_repo.list().await?.is_empty() {
-            provider_repo.upsert(provider.clone()).await?;
-            let settings_repo = nuka_storage::settings::SettingsRepository::new(self.pool.clone());
-            let mut settings = settings_repo.load().await?;
-            settings.default_provider_id = Some(provider.id.clone());
-            settings_repo.save(&settings).await?;
+        if self.provider_service.list_providers().await?.is_empty() {
+            self.provider_service.save_provider(provider.clone()).await?;
+            self.provider_service
+                .set_default_provider(&provider.id)
+                .await?;
         }
 
         Ok(())

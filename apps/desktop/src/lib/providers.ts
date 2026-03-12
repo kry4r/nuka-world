@@ -6,6 +6,8 @@ export type ProviderRecord = {
   baseUrl: string;
   model: string;
   apiKey: string;
+  hasSecret: boolean;
+  secretUpdatedAt: string | null;
   local: boolean;
   enabled: boolean;
 };
