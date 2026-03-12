@@ -28,9 +28,12 @@ create table if not exists providers (
   name text not null,
   kind text not null,
   base_url text not null,
-  token text not null,
+  token text not null default '',
   model text not null,
   enabled integer not null,
+  secret_ref text,
+  secret_present integer not null default 0,
+  secret_updated_at text,
   created_at text not null,
   updated_at text not null
 );

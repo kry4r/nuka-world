@@ -32,6 +32,9 @@ pub struct ProviderConfig {
     pub token: String,
     pub model: String,
     pub enabled: bool,
+    pub secret_ref: Option<String>,
+    pub secret_present: bool,
+    pub secret_updated_at: Option<String>,
 }
 
 impl ProviderConfig {
@@ -49,6 +52,9 @@ impl ProviderConfig {
             token: token.into(),
             model: model.into(),
             enabled: true,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
         }
     }
 

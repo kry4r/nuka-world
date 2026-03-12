@@ -91,6 +91,44 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
         .await?;
     }
 
+    let has_provider_secret_ref: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('providers') where name = 'secret_ref'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_provider_secret_ref == 0 {
+        sqlx::query("alter table providers add column secret_ref text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_provider_secret_present: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('providers') where name = 'secret_present'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_provider_secret_present == 0 {
+        sqlx::query(
+            "alter table providers add column secret_present integer not null default 0",
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    let has_provider_secret_updated_at: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('providers') where name = 'secret_updated_at'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_provider_secret_updated_at == 0 {
+        sqlx::query("alter table providers add column secret_updated_at text")
+            .execute(pool)
+            .await?;
+    }
+
     sqlx::query(
         r#"
         insert or ignore into memory_scopes (id, name, workflow_id, session_id, agent_id, created_at)

@@ -38,6 +38,9 @@ mod tests {
             token: String::new(),
             model: "gpt-oss".to_string(),
             enabled: true,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
         }
     }
 
@@ -202,6 +205,42 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].name, "Local");
         assert_eq!(items[0].model, "gpt-oss");
+    }
+
+    #[tokio::test]
+    async fn saves_provider_secret_metadata_without_plaintext_token() {
+        let db = crate::db::open_in_memory().await.unwrap();
+        crate::migrations::run(&db).await.unwrap();
+
+        let repo = crate::providers::ProviderRepository::new(db.clone());
+        repo.upsert(ProviderConfig {
+            id: "provider-live".to_string(),
+            name: "Live".to_string(),
+            kind: ProviderKind::OpenAiCompatible,
+            base_url: "https://api.example.com/v1".to_string(),
+            token: String::new(),
+            model: "MiniMax-M2.5".to_string(),
+            enabled: true,
+            secret_ref: Some("provider:provider-live".to_string()),
+            secret_present: true,
+            secret_updated_at: Some("2026-03-12T00:00:00Z".to_string()),
+        })
+        .await
+        .unwrap();
+
+        let providers = repo.list().await.unwrap();
+        assert_eq!(providers[0].token, "");
+        assert_eq!(
+            providers[0].secret_ref.as_deref(),
+            Some("provider:provider-live")
+        );
+        assert!(providers[0].secret_present);
+
+        let token: String = sqlx::query_scalar("select token from providers where id = 'provider-live'")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(token, "");
     }
 
     #[tokio::test]

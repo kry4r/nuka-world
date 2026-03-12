@@ -13,8 +13,11 @@ impl ProviderRepository {
     pub async fn upsert(&self, provider: ProviderConfig) -> anyhow::Result<()> {
         sqlx::query(
             r#"
-            insert into providers (id, name, kind, base_url, token, model, enabled, created_at, updated_at)
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'), datetime('now'))
+            insert into providers (
+              id, name, kind, base_url, token, model, enabled,
+              secret_ref, secret_present, secret_updated_at, created_at, updated_at
+            )
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now'), datetime('now'))
             on conflict(id) do update set
               name = excluded.name,
               kind = excluded.kind,
@@ -22,6 +25,9 @@ impl ProviderRepository {
               token = excluded.token,
               model = excluded.model,
               enabled = excluded.enabled,
+              secret_ref = excluded.secret_ref,
+              secret_present = excluded.secret_present,
+              secret_updated_at = excluded.secret_updated_at,
               updated_at = datetime('now')
             "#,
         )
@@ -32,6 +38,9 @@ impl ProviderRepository {
         .bind(provider.token)
         .bind(provider.model)
         .bind(provider.enabled as i64)
+        .bind(provider.secret_ref)
+        .bind(provider.secret_present as i64)
+        .bind(provider.secret_updated_at)
         .execute(&self.pool)
         .await?;
 
@@ -40,7 +49,7 @@ impl ProviderRepository {
 
     pub async fn list(&self) -> anyhow::Result<Vec<ProviderConfig>> {
         let rows = sqlx::query(
-            "select id, name, kind, base_url, token, model, enabled from providers order by created_at asc",
+            "select id, name, kind, base_url, token, model, enabled, secret_ref, secret_present, secret_updated_at from providers order by created_at asc",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -67,6 +76,9 @@ fn map_provider(row: sqlx::sqlite::SqliteRow) -> anyhow::Result<ProviderConfig> 
         token: row.get("token"),
         model: row.get("model"),
         enabled: row.get::<i64, _>("enabled") != 0,
+        secret_ref: row.get("secret_ref"),
+        secret_present: row.get::<i64, _>("secret_present") != 0,
+        secret_updated_at: row.get("secret_updated_at"),
     })
 }
 
