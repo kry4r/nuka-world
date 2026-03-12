@@ -17,6 +17,8 @@ const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
             baseUrl: "http://localhost:11434/v1",
             model: "gpt-oss",
             apiKey: "",
+            hasSecret: true,
+            secretUpdatedAt: "2026-03-12T00:00:00Z",
             local: true,
             enabled: true,
           },
@@ -54,6 +56,20 @@ const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
           baseUrl: "http://localhost:11434/v1",
           model: "gpt-oss",
           apiKey: "",
+          hasSecret: true,
+          secretUpdatedAt: "2026-03-12T00:00:00Z",
+          local: true,
+          enabled: true,
+        };
+      case "clear_provider_secret":
+        return {
+          id: "provider-local",
+          name: "Local",
+          baseUrl: "http://localhost:11434/v1",
+          model: "gpt-oss",
+          apiKey: "",
+          hasSecret: false,
+          secretUpdatedAt: null,
           local: true,
           enabled: true,
         };
@@ -139,6 +155,52 @@ describe("SettingsPage", () => {
     expect(findText(view.container, "Local runtime")).toBeTruthy();
     expect(findText(view.container, "Enabled")).toBeTruthy();
     expect(view.container.querySelector('[data-testid="provider-status-badge"]')).toBeTruthy();
+  });
+
+  it("shows secret presence without echoing saved api keys", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const apiKeyInput = view.container.querySelector(
+      'input[aria-label="Provider API Key"]',
+    ) as HTMLInputElement | null;
+
+    expect(apiKeyInput?.value).toBe("");
+    expect(findText(view.container, "Secret saved")).toBeTruthy();
+    expect(findText(view.container, "Replace secret")).toBeTruthy();
+  });
+
+  it("clears a saved provider secret explicitly", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const clearSecretButton = findButton(view.container, "Clear secret");
+    expect(clearSecretButton).toBeTruthy();
+
+    await act(async () => {
+      clearSecretButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "clear_provider_secret",
+      expect.objectContaining({ providerId: "provider-local" }),
+    );
+    expect(findText(view.container, "No secret saved")).toBeTruthy();
   });
 
   it("renders a minimal shortcuts section without a keyboard editor", async () => {
@@ -331,6 +393,8 @@ describe("SettingsPage", () => {
             baseUrl: "http://localhost:11434/v1",
             model: "gpt-oss",
             apiKey: "",
+            hasSecret: true,
+            secretUpdatedAt: "2026-03-12T00:00:00Z",
             local: true,
             enabled: provider.enabled,
           };
@@ -349,6 +413,8 @@ describe("SettingsPage", () => {
             baseUrl: "",
             model: "",
             apiKey: "",
+            hasSecret: false,
+            secretUpdatedAt: null,
             local: false,
             enabled: provider.enabled,
           };

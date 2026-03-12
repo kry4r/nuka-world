@@ -69,6 +69,16 @@ pub async fn save_provider(
 }
 
 #[tauri::command]
+pub async fn clear_provider_secret(
+    provider_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<ProviderRecord, String> {
+    clear_provider_secret_inner(&state, &provider_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn delete_provider(
     provider_id: String,
     state: tauri::State<'_, AppState>,
@@ -139,6 +149,28 @@ async fn save_provider_inner(
 async fn delete_provider_inner(state: &AppState, provider_id: &str) -> anyhow::Result<()> {
     state.provider_secret_store().delete(provider_id).await?;
     state.provider_service().delete_provider(provider_id).await
+}
+
+async fn clear_provider_secret_inner(
+    state: &AppState,
+    provider_id: &str,
+) -> anyhow::Result<ProviderRecord> {
+    let mut provider = state
+        .provider_service()
+        .list_providers()
+        .await?
+        .into_iter()
+        .find(|saved| saved.id == provider_id)
+        .ok_or_else(|| anyhow::anyhow!("provider not found: {provider_id}"))?;
+
+    state.provider_secret_store().delete(provider_id).await?;
+    provider.token = String::new();
+    provider.secret_ref = None;
+    provider.secret_present = false;
+    provider.secret_updated_at = None;
+    state.provider_service().save_provider(provider.clone()).await?;
+
+    Ok(ProviderRecord::from(provider))
 }
 
 async fn test_provider_connection_inner(
@@ -283,6 +315,42 @@ mod tests {
             .unwrap();
         let resolved = state.provider_service().resolve_default_provider().await.unwrap();
         assert_eq!(resolved.token, "sk-live");
+    }
+
+    #[tokio::test]
+    async fn clear_provider_secret_removes_stored_secret_metadata() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+
+        super::save_provider_inner(
+            &state,
+            super::ProviderInput {
+                id: "provider-live".to_string(),
+                name: "Live".to_string(),
+                base_url: "https://api.example.com/v1".to_string(),
+                api_key: "sk-live".to_string(),
+                model: "MiniMax-M2.5".to_string(),
+                enabled: true,
+            },
+        )
+        .await
+        .unwrap();
+
+        let cleared = super::clear_provider_secret_inner(&state, "provider-live")
+            .await
+            .unwrap();
+
+        assert!(!cleared.has_secret);
+        assert_eq!(cleared.secret_updated_at, None);
+        assert_eq!(
+            state
+                .provider_secret_store()
+                .read("provider-live")
+                .await
+                .unwrap(),
+            None
+        );
+        let listed = super::list_providers_inner(&state).await.unwrap();
+        assert!(!listed[0].has_secret);
     }
 
     #[tokio::test]

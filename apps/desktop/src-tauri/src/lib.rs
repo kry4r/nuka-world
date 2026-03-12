@@ -43,6 +43,7 @@ pub fn run() {
             commands::memory::review_memory_candidate,
             commands::memory::update_memory_node,
             commands::providers::delete_provider,
+            commands::providers::clear_provider_secret,
             commands::providers::import_provider_from_env,
             commands::providers::list_providers,
             commands::providers::provider_registry,

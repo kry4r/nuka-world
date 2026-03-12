@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
+  clearProviderSecret,
   importProviderFromEnv,
   listProviders,
   saveProvider,
@@ -153,6 +154,8 @@ function createProviderDraft(index: number): ProviderRecord {
     baseUrl: "",
     model: "",
     apiKey: "",
+    hasSecret: false,
+    secretUpdatedAt: null,
     local: false,
     enabled: false,
   };
@@ -176,6 +179,8 @@ function sameProviderRecord(
     left.baseUrl === right.baseUrl &&
     left.model === right.model &&
     left.apiKey === right.apiKey &&
+    left.hasSecret === right.hasSecret &&
+    left.secretUpdatedAt === right.secretUpdatedAt &&
     left.local === right.local &&
     left.enabled === right.enabled
   );
@@ -395,6 +400,32 @@ export function SettingsPage() {
         );
       });
       setActiveSection("providers");
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(message);
+    } finally {
+      setIsSavingProviders(false);
+    }
+  };
+
+  const handleClearProviderSecret = async (index: number) => {
+    const provider = providers[index];
+    if (!provider) {
+      return;
+    }
+
+    setIsSavingProviders(true);
+    setError(null);
+
+    try {
+      const clearedProvider = await clearProviderSecret(provider.id);
+      setProviders((current) =>
+        current.map((item, itemIndex) => (itemIndex === index ? clearedProvider : item)),
+      );
+      setInitialProviders((current) =>
+        current.map((item, itemIndex) => (itemIndex === index ? clearedProvider : item)),
+      );
     } catch (caughtError) {
       const message =
         caughtError instanceof Error ? caughtError.message : String(caughtError);
@@ -739,9 +770,24 @@ export function SettingsPage() {
                     aria-label="Provider API Key"
                     className="settings-input"
                     onChange={(event) => updateProvider(index, "apiKey", event.target.value)}
+                    placeholder={provider.hasSecret ? "Replace secret" : "Paste API key"}
                     type="password"
                     value={provider.apiKey}
                   />
+                  <div className="settings-form-field__meta">
+                    <span>{provider.hasSecret ? "Secret saved" : "No secret saved"}</span>
+                    {provider.hasSecret ? <span>Replace secret</span> : null}
+                    {provider.hasSecret ? (
+                      <button
+                        className="settings-button"
+                        disabled={isSavingProviders}
+                        onClick={() => void handleClearProviderSecret(index)}
+                        type="button"
+                      >
+                        Clear secret
+                      </button>
+                    ) : null}
+                  </div>
                 </label>
               </div>
 

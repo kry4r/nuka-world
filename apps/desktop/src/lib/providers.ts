@@ -20,6 +20,10 @@ export async function saveProvider(provider: ProviderRecord): Promise<ProviderRe
   return invoke<ProviderRecord>("save_provider", { provider });
 }
 
+export async function clearProviderSecret(providerId: string): Promise<ProviderRecord> {
+  return invoke<ProviderRecord>("clear_provider_secret", { providerId });
+}
+
 export async function importProviderFromEnv(): Promise<ProviderRecord> {
   return invoke<ProviderRecord>("import_provider_from_env");
 }
