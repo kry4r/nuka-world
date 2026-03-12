@@ -1,5 +1,5 @@
 use nuka_domain::{
-    agent::AgentPreset,
+    agent::{AgentArchetype, AgentPreset},
     tool::{AgentToolBinding, ToolAdapterKind, ToolCostClass},
 };
 use sqlx::Row;
@@ -15,19 +15,21 @@ impl AgentRepository {
 
     pub async fn upsert(&self, agent: AgentPreset) -> anyhow::Result<()> {
         let mut tx = self.pool.begin().await?;
+        let archetype_json = encode_archetype(&agent.archetype)?;
 
         sqlx::query(
             r#"
             insert into agents (
-              id, name, description, system_prompt, provider_id,
+              id, name, description, system_prompt, provider_id, archetype_json,
               knowledge_collection_ids, memory_scope_ids, created_at, updated_at
             )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'), datetime('now'))
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'), datetime('now'))
             on conflict(id) do update set
               name = excluded.name,
               description = excluded.description,
               system_prompt = excluded.system_prompt,
               provider_id = excluded.provider_id,
+              archetype_json = excluded.archetype_json,
               knowledge_collection_ids = excluded.knowledge_collection_ids,
               memory_scope_ids = excluded.memory_scope_ids,
               updated_at = datetime('now')
@@ -38,6 +40,7 @@ impl AgentRepository {
         .bind(agent.description)
         .bind(agent.system_prompt)
         .bind(agent.provider_id)
+        .bind(archetype_json)
         .bind(encode_list(&agent.knowledge_collection_ids))
         .bind(encode_list(&agent.memory_scope_ids))
         .execute(&mut *tx)
@@ -73,7 +76,7 @@ impl AgentRepository {
 
     pub async fn list(&self) -> anyhow::Result<Vec<AgentPreset>> {
         let rows = sqlx::query(
-            "select id, name, description, system_prompt, provider_id, knowledge_collection_ids, memory_scope_ids from agents order by created_at asc",
+            "select id, name, description, system_prompt, provider_id, archetype_json, knowledge_collection_ids, memory_scope_ids from agents order by created_at asc",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -81,6 +84,8 @@ impl AgentRepository {
         let mut agents = Vec::with_capacity(rows.len());
         for row in rows {
             let id: String = row.get("id");
+            let name: String = row.get("name");
+            let description: String = row.get("description");
             let bindings = sqlx::query(
                 r#"
                 select tool_id, allowed, adapter_kind, purpose, cost_class
@@ -98,10 +103,15 @@ impl AgentRepository {
 
             agents.push(AgentPreset {
                 id,
-                name: row.get("name"),
-                description: row.get("description"),
+                name: name.clone(),
+                description: description.clone(),
                 system_prompt: row.get("system_prompt"),
                 provider_id: row.get("provider_id"),
+                archetype: decode_archetype(
+                    &row.get::<String, _>("archetype_json"),
+                    &name,
+                    &description,
+                )?,
                 knowledge_collection_ids: decode_list(&row.get::<String, _>("knowledge_collection_ids")),
                 memory_scope_ids: decode_list(&row.get::<String, _>("memory_scope_ids")),
                 tool_bindings: bindings,
@@ -147,6 +157,22 @@ fn decode_list(items: &str) -> Vec<String> {
         Vec::new()
     } else {
         items.split('\n').map(str::to_string).collect()
+    }
+}
+
+fn encode_archetype(archetype: &AgentArchetype) -> anyhow::Result<String> {
+    Ok(serde_json::to_string(archetype)?)
+}
+
+fn decode_archetype(
+    value: &str,
+    name: &str,
+    description: &str,
+) -> anyhow::Result<AgentArchetype> {
+    if value.trim().is_empty() {
+        Ok(AgentArchetype::inferred_from_agent(name, description))
+    } else {
+        Ok(serde_json::from_str(value)?)
     }
 }
 

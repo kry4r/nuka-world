@@ -16,7 +16,7 @@ pub mod knowledge;
 #[cfg(test)]
 mod tests {
     use nuka_domain::{
-        agent::AgentPreset,
+        agent::{AgentArchetype, AgentPreset},
         chat::{ChatMessage, ChatMessageRole, ChatSessionSummary},
         knowledge::{KnowledgeCollection, KnowledgeConnector, KnowledgeConnectorKind},
         memory::MemoryScope,
@@ -51,6 +51,7 @@ mod tests {
             description: "Checks plans and code".to_string(),
             system_prompt: "Review changes carefully.".to_string(),
             provider_id: Some("provider-local".to_string()),
+            archetype: AgentArchetype::custom("Engineering Review", "Checks plans and code"),
             knowledge_collection_ids: vec!["knowledge-rust".to_string()],
             memory_scope_ids: vec!["memory-review".to_string()],
             tool_bindings: vec![AgentToolBinding::allowed("codex")],

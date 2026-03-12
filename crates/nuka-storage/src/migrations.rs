@@ -35,6 +35,18 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
         .await?;
     }
 
+    let has_agent_archetype_json: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('agents') where name = 'archetype_json'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_agent_archetype_json == 0 {
+        sqlx::query("alter table agents add column archetype_json text not null default ''")
+            .execute(pool)
+            .await?;
+    }
+
     let has_agent_binding_purpose: i64 = sqlx::query_scalar(
         "select count(*) from pragma_table_info('agent_tool_bindings') where name = 'purpose'",
     )
@@ -227,6 +239,180 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
             .await?;
     }
 
+    let has_chat_root_session_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'root_session_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_root_session_id == 0 {
+        sqlx::query("alter table chat_sessions add column root_session_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_chat_parent_session_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'parent_session_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_parent_session_id == 0 {
+        sqlx::query("alter table chat_sessions add column parent_session_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_chat_branch_snapshot_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'branch_snapshot_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_branch_snapshot_id == 0 {
+        sqlx::query("alter table chat_sessions add column branch_snapshot_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_chat_branched_from_message_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'branched_from_message_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_branched_from_message_id == 0 {
+        sqlx::query("alter table chat_sessions add column branched_from_message_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_chat_branch_depth: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'branch_depth'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_branch_depth == 0 {
+        sqlx::query("alter table chat_sessions add column branch_depth integer not null default 0")
+            .execute(pool)
+            .await?;
+    }
+
+    sqlx::query(
+        r#"
+        update chat_sessions
+        set root_session_id = id
+        where root_session_id is null or root_session_id = ''
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        create table if not exists chat_session_snapshots (
+          id text primary key,
+          session_id text not null,
+          message_id text not null,
+          message_index integer not null,
+          title text not null,
+          message_role text not null,
+          message_excerpt text not null,
+          created_at text not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    let has_team_root_run_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'root_run_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_root_run_id == 0 {
+        sqlx::query("alter table team_runs add column root_run_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_parent_run_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'parent_run_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_parent_run_id == 0 {
+        sqlx::query("alter table team_runs add column parent_run_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_branch_snapshot_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'branch_snapshot_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_branch_snapshot_id == 0 {
+        sqlx::query("alter table team_runs add column branch_snapshot_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_branched_from_event_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'branched_from_event_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_branched_from_event_id == 0 {
+        sqlx::query("alter table team_runs add column branched_from_event_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_branch_depth: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'branch_depth'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_branch_depth == 0 {
+        sqlx::query("alter table team_runs add column branch_depth integer not null default 0")
+            .execute(pool)
+            .await?;
+    }
+
+    sqlx::query(
+        r#"
+        update team_runs
+        set root_run_id = id
+        where root_run_id is null or root_run_id = ''
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        create table if not exists team_run_snapshots (
+          id text primary key,
+          run_id text not null,
+          event_id text not null,
+          event_sequence integer not null,
+          title text not null,
+          event_kind text not null,
+          event_excerpt text not null,
+          created_at text not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
     sqlx::query(
         r#"
         insert or ignore into memory_scopes (id, name, workflow_id, session_id, agent_id, created_at)
@@ -271,6 +457,30 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     sqlx::query(
         "create index if not exists memory_node_scopes_scope_idx on memory_node_scopes(scope_id, node_id)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "create index if not exists chat_sessions_root_updated_idx on chat_sessions(root_session_id, created_at)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "create index if not exists chat_session_snapshots_session_message_idx on chat_session_snapshots(session_id, message_index)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "create index if not exists team_runs_root_updated_idx on team_runs(root_run_id, updated_at)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "create index if not exists team_run_snapshots_run_sequence_idx on team_run_snapshots(run_id, event_sequence)",
     )
     .execute(pool)
     .await?;

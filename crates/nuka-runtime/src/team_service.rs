@@ -281,6 +281,10 @@ fn hydrate_generated_team(
             description: format!("{}: {}", agent.role, responsibility),
             system_prompt: system_prompt.clone(),
             provider_id: Some(provider_id.to_string()),
+            archetype: nuka_domain::agent::AgentArchetype::custom(
+                agent.role.clone(),
+                format!("{}: {}", agent.role, responsibility),
+            ),
             knowledge_collection_ids: Vec::new(),
             memory_scope_ids: Vec::new(),
             tool_bindings: tool_bindings.clone(),

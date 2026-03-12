@@ -2,10 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useProviderGate } from "@/hooks/useProviderGate";
 import {
+  BUILT_IN_AGENT_ARCHETYPES,
+  cloneAgentArchetype,
+  createCustomAgentArchetype,
+  defaultAgentArchetype,
   deleteAgent,
+  findBuiltInAgentArchetype,
   generateAgentDraft,
   listAgents,
   saveAgent,
+  type AgentArchetypeRecord,
   type AgentRecord,
 } from "@/lib/agents";
 import { ToolBindingsPanel } from "./ToolBindingsPanel";
@@ -15,6 +21,7 @@ const DEFAULT_REQUEST = "Create an agent that researches release notes and write
 function cloneAgent(agent: AgentRecord): AgentRecord {
   return {
     ...agent,
+    archetype: cloneAgentArchetype(agent.archetype),
     toolNames: [...agent.toolNames],
   };
 }
@@ -26,6 +33,25 @@ function parseToolNames(value: string) {
     .filter(Boolean);
 }
 
+function nextArchetypeForFamily(family: string): AgentArchetypeRecord {
+  if (family === "custom") {
+    return createCustomAgentArchetype();
+  }
+
+  return cloneAgentArchetype(findBuiltInAgentArchetype(family) ?? defaultAgentArchetype());
+}
+
+function updateArchetypeValue(
+  archetype: AgentArchetypeRecord,
+  field: keyof AgentArchetypeRecord,
+  value: string,
+): AgentArchetypeRecord {
+  return {
+    ...archetype,
+    [field]: value,
+  };
+}
+
 export function AgentsPage() {
   const providerGate = useProviderGate();
   const [agents, setAgents] = useState<AgentRecord[]>([]);
@@ -33,6 +59,9 @@ export function AgentsPage() {
   const [draftAgent, setDraftAgent] = useState<AgentRecord | null>(null);
   const [editorAgent, setEditorAgent] = useState<AgentRecord | null>(null);
   const [request, setRequest] = useState(DEFAULT_REQUEST);
+  const [createArchetype, setCreateArchetype] = useState<AgentArchetypeRecord>(
+    defaultAgentArchetype(),
+  );
   const [toolNamesInput, setToolNamesInput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorTitle, setErrorTitle] = useState<string | null>(null);
@@ -93,7 +122,10 @@ export function AgentsPage() {
     setIsGenerating(true);
 
     try {
-      const draft = await generateAgentDraft(request);
+      const draft = await generateAgentDraft({
+        prompt: request,
+        archetype: createArchetype,
+      });
       setDraftAgent(draft);
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
@@ -115,6 +147,7 @@ export function AgentsPage() {
     try {
       const payload = {
         ...editorAgent,
+        archetype: cloneAgentArchetype(editorAgent.archetype),
         toolNames: parseToolNames(toolNamesInput),
       };
       const saved = await saveAgent(payload);
@@ -197,11 +230,14 @@ export function AgentsPage() {
         ) : null}
 
         <div className="agents-page__main">
-          <section className={`agents-create${showStandaloneCreate ? " agents-create--standalone" : ""}`} data-testid="agents-create">
+          <section
+            className={`agents-create${showStandaloneCreate ? " agents-create--standalone" : ""}`}
+            data-testid="agents-create"
+          >
             <div className="agents-create__header">
               <span className="agents-section__eyebrow">Agents</span>
-              <h1>Generate an agent</h1>
-              <p>Describe the role in one sentence, then refine the draft before saving it.</p>
+              <h1>Create an agent</h1>
+              <p>Start from an archetype, then shape the draft before saving it.</p>
             </div>
 
             {providerGate.blocked ? (
@@ -219,6 +255,51 @@ export function AgentsPage() {
 
             <div className="agents-create__form">
               <label className="agents-field">
+                <span className="agents-field__label">Archetype family</span>
+                <select
+                  aria-label="Archetype family"
+                  className="field-input"
+                  onChange={(event) => setCreateArchetype(nextArchetypeForFamily(event.target.value))}
+                  value={createArchetype.family}
+                >
+                  {BUILT_IN_AGENT_ARCHETYPES.map((archetype) => (
+                    <option key={archetype.family} value={archetype.family}>
+                      {archetype.title}
+                    </option>
+                  ))}
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
+
+              <label className="agents-field">
+                <span className="agents-field__label">Archetype title</span>
+                <input
+                  aria-label="Archetype title"
+                  className="field-input"
+                  onChange={(event) =>
+                    setCreateArchetype((current) =>
+                      updateArchetypeValue(current, "title", event.target.value),
+                    )
+                  }
+                  value={createArchetype.title}
+                />
+              </label>
+
+              <label className="agents-field agents-field--full">
+                <span className="agents-field__label">Archetype domain focus</span>
+                <input
+                  aria-label="Archetype domain focus"
+                  className="field-input"
+                  onChange={(event) =>
+                    setCreateArchetype((current) =>
+                      updateArchetypeValue(current, "domainFocus", event.target.value),
+                    )
+                  }
+                  value={createArchetype.domainFocus}
+                />
+              </label>
+
+              <label className="agents-field agents-field--full">
                 <span className="agents-field__label">Request</span>
                 <input
                   aria-label="Agent request"
@@ -227,6 +308,7 @@ export function AgentsPage() {
                   value={request}
                 />
               </label>
+
               <button
                 className="composer__send"
                 disabled={!providerGate.ready || isGenerating}
@@ -251,6 +333,7 @@ export function AgentsPage() {
                 <div className="agents-detail__copy">
                   <div className="agents-detail__badges">
                     <StatusBadge tone={detailTone}>{draftAgent ? "Draft" : "Saved"}</StatusBadge>
+                    <StatusBadge tone="soft">{editorAgent.archetype.title}</StatusBadge>
                     <StatusBadge tone="soft">
                       {editorAgent.providerId ? "Provider attached" : "Provider pending"}
                     </StatusBadge>
@@ -312,6 +395,229 @@ export function AgentsPage() {
                       )
                     }
                     value={editorAgent.description}
+                  />
+                </label>
+
+                <label className="agents-field">
+                  <span className="agents-field__label">Archetype family</span>
+                  <select
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: nextArchetypeForFamily(event.target.value),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.family}
+                  >
+                    {BUILT_IN_AGENT_ARCHETYPES.map((archetype) => (
+                      <option key={archetype.family} value={archetype.family}>
+                        {archetype.title}
+                      </option>
+                    ))}
+                    <option value="custom">Custom</option>
+                  </select>
+                </label>
+
+                <label className="agents-field">
+                  <span className="agents-field__label">Archetype title</span>
+                  <input
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: updateArchetypeValue(
+                                current.archetype,
+                                "title",
+                                event.target.value,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.title}
+                  />
+                </label>
+
+                <label className="agents-field agents-field--full">
+                  <span className="agents-field__label">Archetype domain focus</span>
+                  <input
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: updateArchetypeValue(
+                                current.archetype,
+                                "domainFocus",
+                                event.target.value,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.domainFocus}
+                  />
+                </label>
+
+                <label className="agents-field agents-field--full">
+                  <span className="agents-field__label">Objective pattern</span>
+                  <textarea
+                    className="agents-field__textarea"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: updateArchetypeValue(
+                                current.archetype,
+                                "objectivePattern",
+                                event.target.value,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.objectivePattern}
+                  />
+                </label>
+
+                <label className="agents-field">
+                  <span className="agents-field__label">Communication style</span>
+                  <input
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: updateArchetypeValue(
+                                current.archetype,
+                                "communicationStyle",
+                                event.target.value,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.communicationStyle}
+                  />
+                </label>
+
+                <label className="agents-field">
+                  <span className="agents-field__label">Tool posture</span>
+                  <input
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: updateArchetypeValue(
+                                current.archetype,
+                                "defaultToolPosture",
+                                event.target.value,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.defaultToolPosture}
+                  />
+                </label>
+
+                <label className="agents-field">
+                  <span className="agents-field__label">Memory posture</span>
+                  <input
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: updateArchetypeValue(
+                                current.archetype,
+                                "memoryPosture",
+                                event.target.value,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.memoryPosture}
+                  />
+                </label>
+
+                <label className="agents-field">
+                  <span className="agents-field__label">Escalation posture</span>
+                  <input
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: updateArchetypeValue(
+                                current.archetype,
+                                "escalationPosture",
+                                event.target.value,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.escalationPosture}
+                  />
+                </label>
+
+                <label className="agents-field">
+                  <span className="agents-field__label">Safety posture</span>
+                  <input
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: updateArchetypeValue(
+                                current.archetype,
+                                "safetyPosture",
+                                event.target.value,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.safetyPosture}
+                  />
+                </label>
+
+                <label className="agents-field agents-field--full">
+                  <span className="agents-field__label">Output contract</span>
+                  <textarea
+                    className="agents-field__textarea"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: updateArchetypeValue(
+                                current.archetype,
+                                "outputContract",
+                                event.target.value,
+                              ),
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorAgent.archetype.outputContract}
                   />
                 </label>
 
