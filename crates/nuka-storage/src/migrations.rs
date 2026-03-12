@@ -111,7 +111,6 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     if has_team_permission_policy == 0 {
         sqlx::query("alter table teams add column permission_policy text not null default ''")
-        )
         .execute(pool)
         .await?;
     }
