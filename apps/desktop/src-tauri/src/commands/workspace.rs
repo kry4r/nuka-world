@@ -9,6 +9,29 @@ pub struct WorkspaceSessionResponse {
     pub title: String,
     pub status: String,
     pub updated_at: String,
+    pub lineage: WorkspaceSessionLineageResponse,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSessionLineageResponse {
+    pub root_id: String,
+    pub parent_id: Option<String>,
+    pub branch_snapshot_id: Option<String>,
+    pub branched_from_item_id: Option<String>,
+    pub branch_depth: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSessionSnapshotResponse {
+    pub id: String,
+    pub anchor_id: String,
+    pub anchor_kind: String,
+    pub anchor_index: i64,
+    pub title: String,
+    pub excerpt: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -24,9 +47,13 @@ pub enum WorkspaceSessionDetailResponse {
     DirectChat {
         session: super::chat::ChatSessionResponse,
         messages: Vec<super::chat::ChatMessageResponse>,
+        lineage: WorkspaceSessionLineageResponse,
+        snapshots: Vec<WorkspaceSessionSnapshotResponse>,
     },
     TeamRun {
         run: super::team::TeamRunRecord,
+        lineage: WorkspaceSessionLineageResponse,
+        snapshots: Vec<WorkspaceSessionSnapshotResponse>,
     },
 }
 
@@ -46,6 +73,19 @@ pub async fn load_workspace_session(
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<WorkspaceSessionDetailResponse>, String> {
     load_workspace_session_inner(session_id, kind, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn create_workspace_session_branch(
+    session_id: String,
+    kind: WorkspaceSessionKindInput,
+    anchor_id: String,
+    branch_title: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<WorkspaceSessionDetailResponse, String> {
+    create_workspace_session_branch_inner(session_id, kind, anchor_id, branch_title, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -74,6 +114,21 @@ async fn load_workspace_session_inner(
         .map(WorkspaceSessionDetailResponse::from))
 }
 
+pub(crate) async fn create_workspace_session_branch_inner(
+    session_id: String,
+    kind: WorkspaceSessionKindInput,
+    anchor_id: String,
+    branch_title: String,
+    state: &AppState,
+) -> anyhow::Result<WorkspaceSessionDetailResponse> {
+    Ok(WorkspaceSessionDetailResponse::from(
+        state
+            .workspace_sessions_service()
+            .create_branch(&session_id, kind.into(), &anchor_id, &branch_title)
+            .await?,
+    ))
+}
+
 impl From<nuka_runtime::workspace_sessions::WorkspaceSessionSummary> for WorkspaceSessionResponse {
     fn from(value: nuka_runtime::workspace_sessions::WorkspaceSessionSummary) -> Self {
         Self {
@@ -88,6 +143,7 @@ impl From<nuka_runtime::workspace_sessions::WorkspaceSessionSummary> for Workspa
             title: value.title,
             status: value.status,
             updated_at: value.updated_at,
+            lineage: WorkspaceSessionLineageResponse::from(value.lineage),
         }
     }
 }
@@ -107,18 +163,64 @@ impl From<nuka_runtime::workspace_sessions::WorkspaceSessionDetail> for Workspac
             nuka_runtime::workspace_sessions::WorkspaceSessionDetail::DirectChat {
                 session,
                 messages,
+                lineage,
+                snapshots,
             } => Self::DirectChat {
                 session: super::chat::ChatSessionResponse::from(session),
                 messages: messages
                     .into_iter()
                     .map(super::chat::ChatMessageResponse::from)
                     .collect(),
+                lineage: WorkspaceSessionLineageResponse::from(lineage),
+                snapshots: snapshots
+                    .into_iter()
+                    .map(WorkspaceSessionSnapshotResponse::from)
+                    .collect(),
             },
-            nuka_runtime::workspace_sessions::WorkspaceSessionDetail::TeamRun(run) => {
+            nuka_runtime::workspace_sessions::WorkspaceSessionDetail::TeamRun {
+                run,
+                lineage,
+                snapshots,
+            } => {
                 Self::TeamRun {
                     run: super::team::TeamRunRecord::from(run),
+                    lineage: WorkspaceSessionLineageResponse::from(lineage),
+                    snapshots: snapshots
+                        .into_iter()
+                        .map(WorkspaceSessionSnapshotResponse::from)
+                        .collect(),
                 }
             }
+        }
+    }
+}
+
+impl From<nuka_runtime::workspace_sessions::WorkspaceSessionLineage>
+    for WorkspaceSessionLineageResponse
+{
+    fn from(value: nuka_runtime::workspace_sessions::WorkspaceSessionLineage) -> Self {
+        Self {
+            root_id: value.root_id,
+            parent_id: value.parent_id,
+            branch_snapshot_id: value.branch_snapshot_id,
+            branched_from_item_id: value.branched_from_item_id,
+            branch_depth: value.branch_depth,
+        }
+    }
+}
+
+impl From<nuka_runtime::workspace_sessions::WorkspaceSessionSnapshot>
+    for WorkspaceSessionSnapshotResponse
+{
+    fn from(value: nuka_runtime::workspace_sessions::WorkspaceSessionSnapshot) -> Self {
+        Self {
+            id: value.id,
+            anchor_id: value.anchor_id,
+            anchor_kind: value.anchor_kind,
+            anchor_index: value.anchor_index,
+            title: value.title,
+            excerpt: value.excerpt,
+            created_at: value.created_at,
         }
     }
 }
@@ -167,5 +269,115 @@ mod tests {
         let sessions = super::list_workspace_sessions_inner(&state).await.unwrap();
         assert!(sessions.iter().any(|session| session.kind == "direct_chat"));
         assert!(sessions.iter().any(|session| session.kind == "team_run"));
+    }
+
+    #[tokio::test]
+    async fn workspace_commands_branch_direct_chats_and_expose_lineage_metadata() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        configure_default_provider(&state).await;
+
+        let original = state
+            .world_runtime()
+            .start_session(
+                "Summarize the release blockers",
+                nuka_runtime::world::WorldChatMode::DirectChat,
+            )
+        .await
+        .unwrap();
+        let chat_turn = original.chat_turn.clone().unwrap();
+        let anchor_message_id = chat_turn.messages[1].id.clone();
+
+        let branch = super::create_workspace_session_branch_inner(
+            chat_turn.session.id.clone(),
+            super::WorkspaceSessionKindInput::DirectChat,
+            anchor_message_id.clone(),
+            "Release blockers / branch".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let branch_json = serde_json::to_value(&branch).unwrap();
+        assert_eq!(branch_json["kind"], "direct_chat");
+        assert_eq!(branch_json["lineage"]["rootId"], chat_turn.session.id);
+        assert_eq!(branch_json["lineage"]["parentId"], chat_turn.session.id);
+        assert_eq!(
+            branch_json["lineage"]["branchedFromItemId"],
+            anchor_message_id
+        );
+        assert_eq!(branch_json["messages"].as_array().unwrap().len(), 2);
+
+        let sessions = super::list_workspace_sessions_inner(&state).await.unwrap();
+        let branch_id = branch_json["session"]["id"].as_str().unwrap();
+        let branch_summary = sessions
+            .iter()
+            .find(|session| session.id == branch_id)
+            .unwrap();
+        let branch_summary_json = serde_json::to_value(branch_summary).unwrap();
+        assert_eq!(branch_summary_json["lineage"]["branchDepth"], 1);
+
+        let original_detail = super::load_workspace_session_inner(
+            chat_turn.session.id.clone(),
+            super::WorkspaceSessionKindInput::DirectChat,
+            &state,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let original_detail_json = serde_json::to_value(&original_detail).unwrap();
+        assert_eq!(original_detail_json["snapshots"][0]["anchorId"], anchor_message_id);
+    }
+
+    #[tokio::test]
+    async fn workspace_commands_branch_team_runs_and_expose_lineage_metadata() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        configure_default_provider(&state).await;
+
+        let team = crate::commands::team::create_team_from_goal_inner(
+            "Ship the release".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+        let run = crate::commands::team::start_team_run_inner(team.id.clone(), &state)
+            .await
+            .unwrap();
+        let anchor_event_id = run
+            .events
+            .iter()
+            .find(|event| event.kind == "checkpoint_summary")
+            .unwrap()
+            .id
+            .clone();
+
+        let branch = super::create_workspace_session_branch_inner(
+            run.id.clone(),
+            super::WorkspaceSessionKindInput::TeamRun,
+            anchor_event_id.clone(),
+            "Release team run / branch".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let branch_json = serde_json::to_value(&branch).unwrap();
+        assert_eq!(branch_json["kind"], "team_run");
+        assert_eq!(branch_json["lineage"]["rootId"], run.id);
+        assert_eq!(branch_json["lineage"]["parentId"], run.id);
+        assert_eq!(
+            branch_json["lineage"]["branchedFromItemId"],
+            anchor_event_id
+        );
+
+        let original_detail = super::load_workspace_session_inner(
+            run.id.clone(),
+            super::WorkspaceSessionKindInput::TeamRun,
+            &state,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let original_detail_json = serde_json::to_value(&original_detail).unwrap();
+        assert_eq!(original_detail_json["snapshots"][0]["anchorId"], anchor_event_id);
     }
 }
