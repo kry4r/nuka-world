@@ -1,7 +1,5 @@
 use nuka_integrations::providers::{
-    openai::OpenAiCompatibleProvider,
-    types::OpenAiChatMessage,
-    ChatCompletionProvider,
+    openai::OpenAiCompatibleProvider, types::OpenAiChatMessage, ChatCompletionProvider,
 };
 
 #[derive(Debug, Clone)]
@@ -93,13 +91,15 @@ impl TeamRunService {
         charter.current_phase = "kickoff".to_string();
 
         let mut run = snapshot_team_into_run(&team, charter);
-        self.maybe_run_provider_preflight(&provider, &mut run).await?;
+        self.maybe_run_provider_preflight(&provider, &mut run)
+            .await?;
         execute_round(
             &self.provider_client,
             &provider,
             self.seed_completion.as_deref(),
             &mut run,
             "Kick off the team run",
+            &[],
         )
         .await?;
 
@@ -124,6 +124,7 @@ impl TeamRunService {
             .load_run(run_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("unknown team run: {run_id}"))?;
+        let compactions = maybe_compact_run_events(&repo, &run).await?;
 
         run.status = nuka_domain::team::TeamRunStatus::Active;
         run.events.push(nuka_domain::team::TeamRunEvent {
@@ -141,13 +142,15 @@ impl TeamRunService {
             created_at: String::new(),
         });
 
-        self.maybe_run_provider_preflight(&provider, &mut run).await?;
+        self.maybe_run_provider_preflight(&provider, &mut run)
+            .await?;
         execute_round(
             &self.provider_client,
             &provider,
             self.seed_completion.as_deref(),
             &mut run,
             prompt,
+            &compactions,
         )
         .await?;
 
@@ -224,7 +227,9 @@ impl TeamRunService {
         };
 
         if self.provider_service.list_providers().await?.is_empty() {
-            self.provider_service.save_provider(provider.clone()).await?;
+            self.provider_service
+                .save_provider(provider.clone())
+                .await?;
             self.provider_service
                 .set_default_provider(&provider.id)
                 .await?;
@@ -252,8 +257,14 @@ impl TeamRunService {
         )?;
 
         if !is_local_provider(&provider.base_url) {
-            let status = self.provider_service.test_provider_connection(provider).await?;
-            if !matches!(status, nuka_domain::provider::ProviderConnectionStatus::Ready) {
+            let status = self
+                .provider_service
+                .test_provider_connection(provider)
+                .await?;
+            if !matches!(
+                status,
+                nuka_domain::provider::ProviderConnectionStatus::Ready
+            ) {
                 anyhow::bail!(
                     "provider connection check failed: {}",
                     provider_connection_status_label(&status)
@@ -285,8 +296,11 @@ async fn execute_round(
     seed_completion: Option<&str>,
     run: &mut nuka_domain::team::TeamRun,
     prompt: &str,
+    compactions: &[nuka_storage::team_runs::TeamRunCompactionRecord],
 ) -> anyhow::Result<()> {
-    let selected_indexes = select_active_agent_indexes(&run.agents, run.charter.max_active_agents_per_round);
+    let history_context = render_run_history_context(run, compactions);
+    let selected_indexes =
+        select_active_agent_indexes(&run.agents, run.charter.max_active_agents_per_round);
     if let Some(index) = selected_indexes.first().copied() {
         run.lead_agent_id = Some(run.agents[index].id.clone());
     }
@@ -338,8 +352,8 @@ async fn execute_round(
                     content: agent.system_prompt.clone(),
                 },
                 OpenAiChatMessage::user(format!(
-                    "Goal: {}\nResponsibility: {}\nAgenda: {}\nProvide a concise position card with evidence and recommendation.",
-                    run.goal, agent.responsibility, agenda
+                    "Goal: {}\nResponsibility: {}\nHistory: {}\nAgenda: {}\nProvide a concise position card with evidence and recommendation.",
+                    run.goal, agent.responsibility, history_context, agenda
                 )),
             ],
             &format!("{} recommends a focused next step for: {}", agent.name, prompt),
@@ -368,8 +382,9 @@ async fn execute_round(
         provider,
         seed_completion,
         vec![OpenAiChatMessage::user(format!(
-            "Goal: {}\nPrompt: {}\nPositions:\n{}\nWrite a short checkpoint summary and next step.",
+            "Goal: {}\nHistory: {}\nPrompt: {}\nPositions:\n{}\nWrite a short checkpoint summary and next step.",
             run.goal,
+            history_context,
             prompt,
             position_cards.join("\n")
         ))],
@@ -506,6 +521,98 @@ fn next_sequence(events: &[nuka_domain::team::TeamRunEvent]) -> i64 {
     events.iter().map(|event| event.sequence).max().unwrap_or(0) + 1
 }
 
+const TEAM_RUN_COMPACTION_RETAIN_EVENTS: usize = 4;
+
+async fn maybe_compact_run_events(
+    repo: &nuka_storage::team_runs::TeamRunRepository,
+    run: &nuka_domain::team::TeamRun,
+) -> anyhow::Result<Vec<nuka_storage::team_runs::TeamRunCompactionRecord>> {
+    let compactions = repo.list_run_compactions(&run.id).await?;
+    let compacted_count = compactions
+        .last()
+        .map(|record| record.event_sequence as usize)
+        .unwrap_or(0);
+    let live_events = &run.events[compacted_count..];
+    let source_event_count = live_events
+        .len()
+        .saturating_sub(TEAM_RUN_COMPACTION_RETAIN_EVENTS);
+    if source_event_count == 0 {
+        return Ok(compactions);
+    }
+
+    let last_event_sequence = live_events
+        .get(source_event_count - 1)
+        .map(|event| event.sequence)
+        .ok_or_else(|| anyhow::anyhow!("team run compaction lost source event boundary"))?;
+    let record = nuka_storage::team_runs::TeamRunCompactionRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        run_id: run.id.clone(),
+        event_sequence: last_event_sequence,
+        source_event_count,
+        summary: summarize_run_events(&live_events[..source_event_count]),
+        created_at: String::new(),
+    };
+    repo.create_run_compaction(record).await?;
+    repo.list_run_compactions(&run.id).await
+}
+
+fn summarize_run_events(events: &[nuka_domain::team::TeamRunEvent]) -> String {
+    events
+        .iter()
+        .map(|event| {
+            format!(
+                "#{} {}: {}",
+                event.sequence,
+                event.title,
+                event
+                    .content
+                    .replace('\n', " ")
+                    .chars()
+                    .take(160)
+                    .collect::<String>()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn render_run_history_context(
+    run: &nuka_domain::team::TeamRun,
+    compactions: &[nuka_storage::team_runs::TeamRunCompactionRecord],
+) -> String {
+    let compacted_sequence = compactions
+        .last()
+        .map(|record| record.event_sequence)
+        .unwrap_or(0);
+    let mut sections = Vec::new();
+    if !compactions.is_empty() {
+        sections.push(format!(
+            "Compacted earlier run history:\n{}",
+            compactions
+                .iter()
+                .map(|record| record.summary.as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        ));
+    }
+
+    let recent_events = run
+        .events
+        .iter()
+        .filter(|event| event.sequence > compacted_sequence)
+        .map(|event| format!("#{} {}: {}", event.sequence, event.title, event.content))
+        .collect::<Vec<_>>();
+    if !recent_events.is_empty() {
+        sections.push(format!("Recent run events:\n{}", recent_events.join("\n")));
+    }
+
+    if sections.is_empty() {
+        "No earlier run history.".to_string()
+    } else {
+        sections.join("\n\n")
+    }
+}
+
 fn sample_seed_team() -> nuka_domain::team::Team {
     nuka_domain::team::Team {
         id: "team-release".to_string(),
@@ -526,7 +633,9 @@ fn sample_seed_team() -> nuka_domain::team::Team {
                 name: "Coordinator".to_string(),
                 role: "Coordinator".to_string(),
                 responsibility: "Run the agenda and align the team.".to_string(),
-                system_prompt: "Coordinate the meeting, keep rounds bounded, and summarize checkpoints.".to_string(),
+                system_prompt:
+                    "Coordinate the meeting, keep rounds bounded, and summarize checkpoints."
+                        .to_string(),
                 tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed_cli(
                     "cli:git-read",
                     "Inspect repository status",
@@ -543,7 +652,9 @@ fn sample_seed_team() -> nuka_domain::team::Team {
                 role: "Writer".to_string(),
                 responsibility: "Draft the release notes.".to_string(),
                 system_prompt: "Draft concise release notes and final outputs.".to_string(),
-                tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed("mcp:filesystem")],
+                tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed(
+                    "mcp:filesystem",
+                )],
                 tool_use_policy: Default::default(),
                 order_hint: 1,
                 created_at: String::new(),
@@ -650,7 +761,9 @@ mod tests {
             role: "Reviewer".to_string(),
             responsibility: "Check the final package for missing evidence.".to_string(),
             system_prompt: "Review the output for missing evidence and conflicts.".to_string(),
-            tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed("mcp:filesystem")],
+            tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed(
+                "mcp:filesystem",
+            )],
             tool_use_policy: Default::default(),
             join_reason: "Need a dedicated verification pass".to_string(),
         }
@@ -671,7 +784,10 @@ mod tests {
             .agents
             .iter()
             .all(|agent| agent.source_team_assignment_id.is_some()));
-        assert!(run.events.iter().any(|event| event.kind == "checkpoint_summary"));
+        assert!(run
+            .events
+            .iter()
+            .any(|event| event.kind == "checkpoint_summary"));
     }
 
     #[tokio::test]
@@ -684,9 +800,15 @@ mod tests {
             .unwrap();
 
         assert_eq!(updated.agents.len(), run.agents.len() + 1);
-        assert_eq!(updated.agents[0].responsibility, run.agents[0].responsibility);
         assert_eq!(
-            updated.agents.last().and_then(|agent| agent.source_agent_id.as_ref()),
+            updated.agents[0].responsibility,
+            run.agents[0].responsibility
+        );
+        assert_eq!(
+            updated
+                .agents
+                .last()
+                .and_then(|agent| agent.source_agent_id.as_ref()),
             None
         );
     }
@@ -704,7 +826,11 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        runtime.provider_service.save_provider(provider).await.unwrap();
+        runtime
+            .provider_service
+            .save_provider(provider)
+            .await
+            .unwrap();
         runtime
             .provider_service
             .set_default_provider(&provider_id)
@@ -721,5 +847,25 @@ mod tests {
             .events
             .iter()
             .any(|event| event.kind == "provider_check_passed"));
+    }
+
+    #[tokio::test]
+    async fn team_run_service_compacts_older_events_before_follow_up_rounds() {
+        let runtime = super::TeamRunService::new_for_test_with_provider();
+        let run = runtime.start_team_run("team-release").await.unwrap();
+        let continued = runtime
+            .continue_team_run(&run.id, "List the final release blockers")
+            .await
+            .unwrap();
+
+        let repo = nuka_storage::team_runs::TeamRunRepository::new(runtime.pool.clone());
+        let compactions = repo.list_run_compactions(&continued.id).await.unwrap();
+
+        assert_eq!(compactions.len(), 1);
+        assert_eq!(compactions[0].event_sequence, 2);
+        assert_eq!(compactions[0].source_event_count, 2);
+        assert!(compactions[0]
+            .summary
+            .contains("Started run from team Release Team"));
     }
 }

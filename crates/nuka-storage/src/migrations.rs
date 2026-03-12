@@ -14,11 +14,9 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     .await?;
 
     if has_visibility == 0 {
-        sqlx::query(
-            "alter table workflows add column visibility text not null default 'private'",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("alter table workflows add column visibility text not null default 'private'")
+            .execute(pool)
+            .await?;
     }
 
     let has_agent_binding_adapter_kind: i64 = sqlx::query_scalar(
@@ -54,11 +52,9 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     .await?;
 
     if has_agent_binding_purpose == 0 {
-        sqlx::query(
-            "alter table agent_tool_bindings add column purpose text not null default ''",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("alter table agent_tool_bindings add column purpose text not null default ''")
+            .execute(pool)
+            .await?;
     }
 
     let has_agent_binding_cost_class: i64 = sqlx::query_scalar(
@@ -123,8 +119,8 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     if has_team_permission_policy == 0 {
         sqlx::query("alter table teams add column permission_policy text not null default ''")
-        .execute(pool)
-        .await?;
+            .execute(pool)
+            .await?;
     }
 
     let has_provider_secret_ref: i64 = sqlx::query_scalar(
@@ -146,11 +142,9 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     .await?;
 
     if has_provider_secret_present == 0 {
-        sqlx::query(
-            "alter table providers add column secret_present integer not null default 0",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("alter table providers add column secret_present integer not null default 0")
+            .execute(pool)
+            .await?;
     }
 
     let has_provider_secret_updated_at: i64 = sqlx::query_scalar(
@@ -326,6 +320,21 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     .execute(pool)
     .await?;
 
+    sqlx::query(
+        r#"
+        create table if not exists chat_session_compactions (
+          id text primary key,
+          session_id text not null,
+          message_index integer not null,
+          source_message_count integer not null,
+          summary text not null,
+          created_at text not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
     let has_team_root_run_id: i64 = sqlx::query_scalar(
         "select count(*) from pragma_table_info('team_runs') where name = 'root_run_id'",
     )
@@ -415,6 +424,21 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     sqlx::query(
         r#"
+        create table if not exists team_run_compactions (
+          id text primary key,
+          run_id text not null,
+          event_sequence integer not null,
+          source_event_count integer not null,
+          summary text not null,
+          created_at text not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         insert or ignore into memory_scopes (id, name, workflow_id, session_id, agent_id, created_at)
         values ('world', 'World', null, null, null, datetime('now'))
         "#,
@@ -474,6 +498,12 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     .await?;
 
     sqlx::query(
+        "create index if not exists chat_session_compactions_session_message_idx on chat_session_compactions(session_id, message_index)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
         "create index if not exists team_runs_root_updated_idx on team_runs(root_run_id, updated_at)",
     )
     .execute(pool)
@@ -481,6 +511,12 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     sqlx::query(
         "create index if not exists team_run_snapshots_run_sequence_idx on team_run_snapshots(run_id, event_sequence)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "create index if not exists team_run_compactions_run_sequence_idx on team_run_compactions(run_id, event_sequence)",
     )
     .execute(pool)
     .await?;

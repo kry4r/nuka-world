@@ -29,6 +29,16 @@ pub struct ChatSessionSnapshotRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatSessionCompactionRecord {
+    pub id: String,
+    pub session_id: String,
+    pub message_index: usize,
+    pub source_message_count: usize,
+    pub summary: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatSessionBranchRecord {
     pub session: ChatSessionSummary,
     pub lineage: ChatSessionLineageRecord,
@@ -210,6 +220,54 @@ impl ChatRepository {
         Ok(rows.into_iter().map(map_snapshot).collect())
     }
 
+    pub async fn create_session_compaction(
+        &self,
+        record: ChatSessionCompactionRecord,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"
+            insert into chat_session_compactions (
+              id, session_id, message_index, source_message_count, summary, created_at
+            )
+            values (?1, ?2, ?3, ?4, ?5, datetime('now'))
+            "#,
+        )
+        .bind(record.id)
+        .bind(record.session_id)
+        .bind(record.message_index as i64)
+        .bind(record.source_message_count as i64)
+        .bind(record.summary)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn list_session_compactions(
+        &self,
+        session_id: &str,
+    ) -> anyhow::Result<Vec<ChatSessionCompactionRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select
+              id,
+              session_id,
+              message_index,
+              source_message_count,
+              summary,
+              created_at
+            from chat_session_compactions
+            where session_id = ?1
+            order by message_index asc, created_at asc, rowid asc
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(map_compaction).collect())
+    }
+
     pub async fn create_branch_from_message(
         &self,
         source_session_id: &str,
@@ -364,6 +422,17 @@ fn map_snapshot(row: sqlx::sqlite::SqliteRow) -> ChatSessionSnapshotRecord {
     }
 }
 
+fn map_compaction(row: sqlx::sqlite::SqliteRow) -> ChatSessionCompactionRecord {
+    ChatSessionCompactionRecord {
+        id: row.get("id"),
+        session_id: row.get("session_id"),
+        message_index: row.get::<i64, _>("message_index") as usize,
+        source_message_count: row.get::<i64, _>("source_message_count") as usize,
+        summary: row.get("summary"),
+        created_at: row.get("created_at"),
+    }
+}
+
 fn role_as_str(role: &ChatMessageRole) -> &'static str {
     match role {
         ChatMessageRole::System => "system",
@@ -407,14 +476,12 @@ mod tests {
     }
 
     async fn column_exists(db: &sqlx::SqlitePool, table: &str, column: &str) -> bool {
-        sqlx::query_scalar::<_, i64>(
-            "select count(*) from pragma_table_info(?1) where name = ?2",
-        )
-        .bind(table)
-        .bind(column)
-        .fetch_one(db)
-        .await
-        .unwrap()
+        sqlx::query_scalar::<_, i64>("select count(*) from pragma_table_info(?1) where name = ?2")
+            .bind(table)
+            .bind(column)
+            .fetch_one(db)
+            .await
+            .unwrap()
             > 0
     }
 
@@ -424,6 +491,7 @@ mod tests {
         crate::migrations::run(&db).await.unwrap();
 
         assert!(table_exists(&db, "chat_session_snapshots").await);
+        assert!(table_exists(&db, "chat_session_compactions").await);
         assert!(column_exists(&db, "chat_sessions", "root_session_id").await);
         assert!(column_exists(&db, "chat_sessions", "parent_session_id").await);
         assert!(column_exists(&db, "chat_sessions", "branch_snapshot_id").await);
@@ -447,13 +515,21 @@ mod tests {
         .await
         .unwrap();
         for (id, role, content) in [
-            ("message-1", ChatMessageRole::User, "Summarize the release blockers"),
+            (
+                "message-1",
+                ChatMessageRole::User,
+                "Summarize the release blockers",
+            ),
             (
                 "message-2",
                 ChatMessageRole::Assistant,
                 "The main blockers are notes and verification",
             ),
-            ("message-3", ChatMessageRole::User, "Draft the final ship checklist"),
+            (
+                "message-3",
+                ChatMessageRole::User,
+                "Draft the final ship checklist",
+            ),
         ] {
             repo.append_message(ChatMessage {
                 id: id.to_string(),
@@ -466,11 +542,7 @@ mod tests {
         }
 
         let branch = repo
-            .create_branch_from_message(
-                "session-root",
-                "message-2",
-                "Release review / branch",
-            )
+            .create_branch_from_message("session-root", "message-2", "Release review / branch")
             .await
             .unwrap();
 
@@ -481,7 +553,10 @@ mod tests {
             branch.lineage.parent_session_id.as_deref(),
             Some("session-root")
         );
-        assert_eq!(branch.lineage.branched_from_message_id.as_deref(), Some("message-2"));
+        assert_eq!(
+            branch.lineage.branched_from_message_id.as_deref(),
+            Some("message-2")
+        );
         assert_eq!(branch.lineage.branch_depth, 1);
         assert_eq!(branch.snapshots.len(), 1);
         assert_eq!(branch.snapshots[0].message_id, "message-2");

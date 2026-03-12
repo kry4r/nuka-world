@@ -31,6 +31,16 @@ pub struct TeamRunSnapshotRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamRunCompactionRecord {
+    pub id: String,
+    pub run_id: String,
+    pub event_sequence: i64,
+    pub source_event_count: usize,
+    pub summary: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeamRunBranchRecord {
     pub run: TeamRun,
     pub lineage: TeamRunLineageRecord,
@@ -47,7 +57,8 @@ impl TeamRunRepository {
     }
 
     pub async fn create_run(&self, run: TeamRun) -> anyhow::Result<()> {
-        self.save_run_with_lineage(run, default_lineage_for_run).await
+        self.save_run_with_lineage(run, default_lineage_for_run)
+            .await
     }
 
     pub async fn save_run(&self, run: TeamRun) -> anyhow::Result<()> {
@@ -201,6 +212,54 @@ impl TeamRunRepository {
         .await?;
 
         Ok(rows.into_iter().map(map_run_snapshot).collect())
+    }
+
+    pub async fn create_run_compaction(
+        &self,
+        record: TeamRunCompactionRecord,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"
+            insert into team_run_compactions (
+              id, run_id, event_sequence, source_event_count, summary, created_at
+            )
+            values (?1, ?2, ?3, ?4, ?5, datetime('now'))
+            "#,
+        )
+        .bind(record.id)
+        .bind(record.run_id)
+        .bind(record.event_sequence)
+        .bind(record.source_event_count as i64)
+        .bind(record.summary)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn list_run_compactions(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<Vec<TeamRunCompactionRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select
+              id,
+              run_id,
+              event_sequence,
+              source_event_count,
+              summary,
+              created_at
+            from team_run_compactions
+            where run_id = ?1
+            order by event_sequence asc, created_at asc, rowid asc
+            "#,
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(map_run_compaction).collect())
     }
 
     pub async fn create_branch_from_event(
@@ -566,6 +625,17 @@ fn map_run_snapshot(row: sqlx::sqlite::SqliteRow) -> TeamRunSnapshotRecord {
     }
 }
 
+fn map_run_compaction(row: sqlx::sqlite::SqliteRow) -> TeamRunCompactionRecord {
+    TeamRunCompactionRecord {
+        id: row.get("id"),
+        run_id: row.get("run_id"),
+        event_sequence: row.get("event_sequence"),
+        source_event_count: row.get::<i64, _>("source_event_count") as usize,
+        summary: row.get("summary"),
+        created_at: row.get("created_at"),
+    }
+}
+
 fn team_run_status_as_str(status: &TeamRunStatus) -> &'static str {
     match status {
         TeamRunStatus::Active => "active",
@@ -647,14 +717,12 @@ mod tests {
     }
 
     async fn column_exists(db: &sqlx::SqlitePool, table: &str, column: &str) -> bool {
-        sqlx::query_scalar::<_, i64>(
-            "select count(*) from pragma_table_info(?1) where name = ?2",
-        )
-        .bind(table)
-        .bind(column)
-        .fetch_one(db)
-        .await
-        .unwrap()
+        sqlx::query_scalar::<_, i64>("select count(*) from pragma_table_info(?1) where name = ?2")
+            .bind(table)
+            .bind(column)
+            .fetch_one(db)
+            .await
+            .unwrap()
             > 0
     }
 
@@ -664,6 +732,7 @@ mod tests {
         crate::migrations::run(&db).await.unwrap();
 
         assert!(table_exists(&db, "team_run_snapshots").await);
+        assert!(table_exists(&db, "team_run_compactions").await);
         assert!(column_exists(&db, "team_runs", "root_run_id").await);
         assert!(column_exists(&db, "team_runs", "parent_run_id").await);
         assert!(column_exists(&db, "team_runs", "branch_snapshot_id").await);
@@ -762,7 +831,10 @@ mod tests {
         assert_eq!(branch.run.title, "Release team run / branch");
         assert_eq!(branch.lineage.root_run_id, "run-root");
         assert_eq!(branch.lineage.parent_run_id.as_deref(), Some("run-root"));
-        assert_eq!(branch.lineage.branched_from_event_id.as_deref(), Some("event-2"));
+        assert_eq!(
+            branch.lineage.branched_from_event_id.as_deref(),
+            Some("event-2")
+        );
         assert_eq!(branch.lineage.branch_depth, 1);
         assert_eq!(branch.snapshots.len(), 1);
         assert_eq!(branch.snapshots[0].event_id, "event-2");
