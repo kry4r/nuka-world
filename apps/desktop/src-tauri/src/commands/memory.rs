@@ -63,6 +63,8 @@ pub struct MemoryCandidateResponse {
     pub id: String,
     pub node_id: String,
     pub title: String,
+    pub body: Option<String>,
+    pub related_titles: Vec<String>,
     pub surface: String,
     pub owner_id: String,
     pub suggested_schema_id: Option<String>,
@@ -307,6 +309,7 @@ async fn list_pending_memory_candidates_inner(
 ) -> anyhow::Result<Vec<MemoryCandidateResponse>> {
     let surface = nuka_domain::memory::MemorySurface::from_str(&surface)
         .map_err(anyhow::Error::msg)?;
+    let graph = state.memory_service().load_graph().await?;
 
     Ok(state
         .memory_service()
@@ -314,7 +317,7 @@ async fn list_pending_memory_candidates_inner(
         .await?
         .into_iter()
         .filter(|candidate| candidate.surface == surface && candidate.owner_id == owner_id)
-        .map(Into::into)
+        .map(|candidate| memory_candidate_response_from_graph(candidate, &graph))
         .collect())
 }
 
@@ -364,6 +367,8 @@ impl From<nuka_domain::memory::MemoryCandidate> for MemoryCandidateResponse {
             id: candidate.id,
             node_id: candidate.node_id,
             title: candidate.title,
+            body: None,
+            related_titles: Vec::new(),
             surface: candidate.surface.as_str().to_string(),
             owner_id: candidate.owner_id,
             suggested_schema_id: candidate.suggested_schema_id,
@@ -371,6 +376,46 @@ impl From<nuka_domain::memory::MemoryCandidate> for MemoryCandidateResponse {
             reason: candidate.reason,
             evidence_count: candidate.evidence_count,
         }
+    }
+}
+
+fn memory_candidate_response_from_graph(
+    candidate: nuka_domain::memory::MemoryCandidate,
+    graph: &nuka_domain::memory::MemoryGraph,
+) -> MemoryCandidateResponse {
+    let node = graph.nodes.iter().find(|entry| entry.id == candidate.node_id);
+    let related_titles = node
+        .map(|node| {
+            graph
+                .edges
+                .iter()
+                .filter_map(|edge| {
+                    if edge.source_id == node.id {
+                        graph
+                            .nodes
+                            .iter()
+                            .find(|entry| entry.id == edge.target_id)
+                            .map(|entry| entry.title.clone())
+                    } else if edge.target_id == node.id {
+                        graph
+                            .nodes
+                            .iter()
+                            .find(|entry| entry.id == edge.source_id)
+                            .map(|entry| entry.title.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        })
+        .unwrap_or_default();
+
+    MemoryCandidateResponse {
+        body: node.and_then(|entry| entry.body.clone()),
+        related_titles,
+        ..candidate.into()
     }
 }
 
@@ -668,6 +713,90 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].surface, "chat");
         assert_eq!(items[0].owner_id, "session-1");
+    }
+
+    #[tokio::test]
+    async fn list_pending_memory_candidates_includes_node_detail_and_related_titles() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        state
+            .memory_service()
+            .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                session_id: "session-1".to_string(),
+                prompt: "Capture release blockers and owners".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let graph = state.memory_service().load_graph().await.unwrap();
+        let candidate_node = graph
+            .nodes
+            .iter()
+            .find(|node| node.title == "Capture release blockers and owners")
+            .cloned()
+            .expect("candidate node should exist");
+
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "workflow-release".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Workflow,
+                title: "Release Workflow".to_string(),
+                body: Some("Coordinates release validation.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .upsert_node(nuka_domain::memory::MemoryGraphNode {
+                id: "owner-register".to_string(),
+                kind: nuka_domain::memory::MemoryNodeKind::Fact,
+                title: "Owner Register".to_string(),
+                body: Some("Tracks release owner handoff.".to_string()),
+                trace_type: nuka_domain::memory::MemoryTraceType::Semantic,
+                consolidation_state: nuka_domain::memory::MemoryConsolidationState::None,
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .create_edge(nuka_domain::memory::MemoryGraphEdge {
+                id: "edge-release-workflow".to_string(),
+                source_id: candidate_node.id.clone(),
+                target_id: "workflow-release".to_string(),
+                relation: "supports".to_string(),
+            })
+            .await
+            .unwrap();
+        state
+            .memory_service()
+            .create_edge(nuka_domain::memory::MemoryGraphEdge {
+                id: "edge-owner-register".to_string(),
+                source_id: "owner-register".to_string(),
+                target_id: candidate_node.id.clone(),
+                relation: "references".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let items = super::list_pending_memory_candidates_inner(
+            "chat".to_string(),
+            "session-1".to_string(),
+            &state,
+        )
+        .await
+        .unwrap();
+        let json = serde_json::to_value(&items[0]).unwrap();
+
+        assert_eq!(
+            json["body"],
+            serde_json::Value::String("Capture release blockers and owners".to_string())
+        );
+        assert_eq!(
+            json["relatedTitles"],
+            serde_json::json!(["Owner Register", "Release Workflow"])
+        );
     }
 
     #[tokio::test]

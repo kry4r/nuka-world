@@ -645,6 +645,61 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Continue Run")).toBeTruthy();
   });
 
+  it("renders browser-like uniform session tabs and clean session meta text", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "release-direct-session",
+        kind: "direct_chat",
+        title: "Design Review Chat",
+        status: "active",
+        updatedAt: "2026-03-11T12:05:00Z",
+      },
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "active",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "direct_chat",
+      session: {
+        id: "release-direct-session",
+        title: "Design Review Chat",
+        providerId: "provider-local",
+        workflowId: null,
+        messageCount: 2,
+      },
+      messages: [
+        {
+          id: "message-design-1",
+          role: "user",
+          content: "Check the design handoff",
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const tabList = view.container.querySelector(".session-tabs");
+    const tabs = Array.from(view.container.querySelectorAll(".session-tab"));
+
+    expect(tabList?.className).toContain("session-tabs--uniform");
+    expect(tabs.length).toBeGreaterThan(1);
+    expect(tabs.every((tab) => tab.className.includes("session-tab--uniform"))).toBe(true);
+    expect(findText(view.container, "Session release-… · Direct reply")).toBeTruthy();
+    expect(view.container.textContent?.includes("璺")).toBe(false);
+    expect(view.container.textContent?.includes("鈥")).toBe(false);
+  });
+
   it("shows the lead agent, current work, and tool activity for an active team run", async () => {
     listWorkspaceSessionsMock.mockResolvedValueOnce([
       {
@@ -833,7 +888,9 @@ describe("ChatPage", () => {
         confidence: 0.82,
         reason: "Repeated release guidance",
         evidenceCount: 2,
-      },
+        body: "Remember the final sign-off order and the release owner handoff.",
+        relatedTitles: ["Release Workflow", "Owner Register"],
+      } as MemoryCandidate,
     ]);
 
     const view = await renderIntoDocument(<ChatPage />);
@@ -855,6 +912,29 @@ describe("ChatPage", () => {
         view.container.querySelector('[data-testid="memory-review-inline"]') ?? null,
       ),
     ).toBe(true);
+    expect(findText(view.container, "Release Checklist Memory")).toBeTruthy();
+    expect(
+      findText(
+        view.container,
+        "Remember the final sign-off order and the release owner handoff.",
+      ),
+    ).toBeTruthy();
+    expect(findText(view.container, "Release Workflow")).toBeTruthy();
+    expect(findText(view.container, "Owner Register")).toBeTruthy();
+    expect(findText(view.container, "转入长期")).toBeTruthy();
+    expect(findText(view.container, "留存短期")).toBeTruthy();
+    expect(findText(view.container, "拒绝")).toBeTruthy();
+    expect(findText(view.container, "Agent memory review")).toBeFalsy();
+    expect(findText(view.container, "Chat turn proposed for review")).toBeFalsy();
+    expect(findText(view.container, "应用审核")).toBeFalsy();
+    expect(findText(view.container, "Schema schema-release")).toBeFalsy();
+
+    await clickButton(view.container, "留存短期");
+
+    expect(reviewMemoryCandidateMock).toHaveBeenCalledWith(
+      "candidate-chat-1",
+      "keep_episodic",
+    );
   });
 
   it("prevents overlapping sends while routing is active", async () => {

@@ -1095,6 +1095,13 @@ button {
   display: flex;
   gap: 10px;
   overflow-x: auto;
+  align-items: stretch;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.session-tabs--uniform {
+  scroll-snap-type: x proximity;
 }
 
 .session-tab {
@@ -1110,9 +1117,17 @@ button {
   text-align: left;
 }
 
+.session-tab--uniform {
+  flex: 1 1 196px;
+  min-width: 176px;
+  max-width: 220px;
+  scroll-snap-align: start;
+}
+
 .session-tab.is-active {
   border-color: rgba(182, 157, 122, 0.88);
   background: rgba(250, 244, 236, 0.96);
+  box-shadow: 0 14px 28px rgba(114, 92, 61, 0.1);
 }
 
 .session-tab__kind {
@@ -1127,6 +1142,9 @@ button {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-team-run-card {
@@ -2659,57 +2677,59 @@ button {
 }
 
 .chat-page .memory-review-inline {
-  width: min(78%, 700px);
+  width: min(78%, 640px);
   gap: 12px;
 }
 
-.chat-page .memory-review-inline__header,
 .chat-page .memory-review-inline__copy,
-.chat-page .memory-review-inline__stats {
+.chat-page .memory-review-inline__related,
+.chat-page .memory-review-inline__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.chat-page .memory-review-inline__header,
 .chat-page .memory-review-inline__copy {
   flex-direction: column;
 }
 
 .chat-page .memory-review-inline__title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.3;
 }
 
-.chat-page .memory-review-inline__meta,
-.chat-page .memory-review-inline__reason,
-.chat-page .memory-review-inline__stats span {
+.chat-page .memory-review-inline__body,
+.chat-page .memory-review-inline__related-label {
   color: #766d63;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
-.chat-page .memory-review-inline__meta,
-.chat-page .memory-review-inline__stats span {
+.chat-page .memory-review-inline__related {
+  flex-direction: column;
+}
+
+.chat-page .memory-review-inline__related-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-page .memory-review-inline__related-chip {
   display: inline-flex;
   align-items: center;
   min-height: 26px;
   padding: 0 10px;
   border-radius: var(--radius-pill);
   background: rgba(244, 236, 226, 0.88);
+  color: #5f584f;
+  font-size: 11px;
   white-space: nowrap;
 }
 
-.chat-page .memory-review-inline__decision-row,
-.chat-page .memory-review-inline__footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chat-page .memory-review-inline__footer {
-  justify-content: flex-end;
+.chat-page .memory-review-inline__actions {
+  justify-content: flex-start;
 }
 
 .chat-page .memory-review-inline button:focus-visible {

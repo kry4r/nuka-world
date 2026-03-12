@@ -20,14 +20,18 @@ export function SessionTabs({
   }
 
   return (
-    <div aria-label="Workspace sessions" className="session-tabs" role="tablist">
+    <div
+      aria-label="Workspace sessions"
+      className="session-tabs session-tabs--uniform"
+      role="tablist"
+    >
       {sessions.map((session) => {
         const active = session.id === activeSessionId;
 
         return (
           <button
             aria-selected={active}
-            className={`session-tab${active ? " is-active" : ""}`}
+            className={`session-tab session-tab--uniform${active ? " is-active" : ""}`}
             key={`${session.kind}:${session.id}`}
             onClick={() => onSelect(session.id)}
             role="tab"

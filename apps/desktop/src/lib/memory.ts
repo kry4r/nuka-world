@@ -50,6 +50,8 @@ export type MemoryCandidate = {
   id: string;
   nodeId: string;
   title: string;
+  body: string | null;
+  relatedTitles: string[];
   surface: MemoryReviewSurface;
   ownerId: string;
   suggestedSchemaId: string | null;

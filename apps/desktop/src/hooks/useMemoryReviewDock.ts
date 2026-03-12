@@ -9,17 +9,11 @@ import {
 
 export type MemoryReviewDockState = {
   candidate: MemoryCandidate | null;
-  queueCount: number;
-  queuePosition: number;
-  selectedDecision: MemoryReviewDecision;
-  setSelectedDecision: (decision: MemoryReviewDecision) => void;
-  applyDecision: () => Promise<void>;
+  applyDecision: (decision: MemoryReviewDecision) => Promise<void>;
   isLoading: boolean;
   isApplying: boolean;
   error: string | null;
 };
-
-const DEFAULT_DECISION: MemoryReviewDecision = "promote_semantic";
 
 export function useMemoryReviewDock(
   surface: MemoryReviewSurface,
@@ -27,8 +21,6 @@ export function useMemoryReviewDock(
   refreshKey: number | string | null = null,
 ): MemoryReviewDockState {
   const [queue, setQueue] = useState<MemoryCandidate[]>([]);
-  const [selectedDecision, setSelectedDecision] =
-    useState<MemoryReviewDecision>(DEFAULT_DECISION);
   const [isLoading, setIsLoading] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +32,6 @@ export function useMemoryReviewDock(
       setQueue([]);
       setError(null);
       setIsLoading(false);
-      setSelectedDecision(DEFAULT_DECISION);
       return () => {
         cancelled = true;
       };
@@ -49,7 +40,6 @@ export function useMemoryReviewDock(
     setIsLoading(true);
     setError(null);
     setQueue([]);
-    setSelectedDecision(DEFAULT_DECISION);
 
     void listPendingMemoryCandidates(surface, ownerId)
       .then((items) => {
@@ -84,11 +74,7 @@ export function useMemoryReviewDock(
 
   return {
     candidate,
-    queueCount: queue.length,
-    queuePosition: candidate ? 1 : 0,
-    selectedDecision,
-    setSelectedDecision,
-    applyDecision: async () => {
+    applyDecision: async (decision: MemoryReviewDecision) => {
       if (!candidate) {
         return;
       }
@@ -97,9 +83,8 @@ export function useMemoryReviewDock(
       setError(null);
 
       try {
-        await reviewMemoryCandidate(candidate.id, selectedDecision);
+        await reviewMemoryCandidate(candidate.id, decision);
         setQueue((current) => current.filter((item) => item.id !== candidate.id));
-        setSelectedDecision(DEFAULT_DECISION);
       } catch (caughtError) {
         const message =
           caughtError instanceof Error ? caughtError.message : String(caughtError);

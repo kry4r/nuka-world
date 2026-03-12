@@ -39,8 +39,8 @@ const CHOOSE_TEAM_SUGGESTIONS = [
 
 type ComposerEntryMode = "direct" | "choose_team" | "create_team";
 
-const META_SEPARATOR = " 路 ";
-const SESSION_ELLIPSIS = "鈥?";
+const META_SEPARATOR = " · ";
+const SESSION_ELLIPSIS = "…";
 
 function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
   if (!route || route.kind === "direct_reply") {
