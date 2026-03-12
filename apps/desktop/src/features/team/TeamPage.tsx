@@ -267,6 +267,15 @@ export function TeamPage() {
     try {
       const run = await startTeamRun(editorTeam.id);
       setNotice(`Run started: ${run.title}`);
+      window.dispatchEvent(
+        new CustomEvent("nuka:navigate", {
+          detail: {
+            page: "chat",
+            sessionId: run.id,
+            kind: "team_run",
+          },
+        }),
+      );
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setError(message);

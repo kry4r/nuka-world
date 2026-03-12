@@ -244,6 +244,7 @@ describe("TeamPage", () => {
   });
 
   it("shows persisted teams without the goal generator copy and still allows starting a run", async () => {
+    const dispatchEventSpy = vi.spyOn(window, "dispatchEvent");
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
 
@@ -262,6 +263,14 @@ describe("TeamPage", () => {
     await clickButton(view.container, "Start Run");
 
     expect(findText(view.container, "Run started: Release Team Run")).toBeTruthy();
+    expect(dispatchEventSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "nuka:navigate",
+        detail: expect.objectContaining({ page: "chat" }),
+      }),
+    );
+
+    dispatchEventSpy.mockRestore();
   });
 
   it("centers both empty team states inside their panels", async () => {
