@@ -24,6 +24,7 @@ pub fn run() {
             commands::agents::save_agent,
             commands::app::app_runtime_status,
             commands::app::close_policy_minimizes_to_tray,
+            commands::chat::execute_prompt_json,
             commands::chat::route_world_prompt,
             commands::knowledge::add_folder_connector,
             commands::knowledge::default_knowledge_library,
@@ -142,6 +143,20 @@ mod tests {
         assert!(
             invoke_handler_region.contains("commands::workspace::create_workspace_session_branch"),
             "missing invoke handler registration for workspace branch creation"
+        );
+    }
+
+    #[test]
+    fn tauri_lib_registers_json_prompt_execution_command() {
+        let lib_rs = std::fs::read_to_string("src/lib.rs").unwrap();
+        let invoke_handler_region = lib_rs
+            .split("#[cfg(test)]")
+            .next()
+            .expect("lib.rs should contain a non-test region");
+
+        assert!(
+            invoke_handler_region.contains("commands::chat::execute_prompt_json"),
+            "missing invoke handler registration for JSON prompt execution"
         );
     }
 

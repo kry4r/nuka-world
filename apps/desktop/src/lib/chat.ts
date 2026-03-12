@@ -8,7 +8,6 @@ export type ChatSessionSummary = {
   id: string;
   title: string;
   providerId: string | null;
-  workflowId: string | null;
   messageCount: number;
 };
 
