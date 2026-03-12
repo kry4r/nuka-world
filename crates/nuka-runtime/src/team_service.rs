@@ -1,6 +1,7 @@
 use nuka_integrations::providers::{
     openai::OpenAiCompatibleProvider,
     types::OpenAiChatMessage,
+    ChatCompletionProvider,
 };
 
 #[derive(Debug, Clone)]
@@ -133,6 +134,9 @@ impl TeamService {
         self.ensure_seed_provider().await?;
 
         let provider = self.provider_service.resolve_default_provider().await?;
+        if self.connection_checks_enabled().await? {
+            self.run_provider_preflight(&provider).await?;
+        }
         let completion = match &self.seed_completion {
             Some(payload) => payload.clone(),
             None => {
@@ -204,6 +208,34 @@ impl TeamService {
         }
 
         Ok(())
+    }
+
+    async fn connection_checks_enabled(&self) -> anyhow::Result<bool> {
+        load_connection_checks_enabled(&self.pool).await
+    }
+
+    async fn run_provider_preflight(
+        &self,
+        provider: &nuka_domain::provider::ProviderConfig,
+    ) -> anyhow::Result<()> {
+        self.provider_client.prepare_chat_request(
+            provider,
+            vec![OpenAiChatMessage::user("Provider preflight".to_string())],
+        )?;
+
+        if is_local_provider(&provider.base_url) {
+            return Ok(());
+        }
+
+        let status = self.provider_service.test_provider_connection(provider).await?;
+        if matches!(status, nuka_domain::provider::ProviderConnectionStatus::Ready) {
+            Ok(())
+        } else {
+            anyhow::bail!(
+                "provider connection check failed: {}",
+                provider_connection_status_label(&status)
+            );
+        }
     }
 }
 
@@ -292,6 +324,50 @@ fn hydrate_generated_team(
     ))
 }
 
+const PROVIDERS_STATE_KEY: &str = "settings.providers";
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderSettingsState {
+    #[serde(default = "default_connection_checks")]
+    connection_checks: bool,
+}
+
+fn default_connection_checks() -> bool {
+    true
+}
+
+async fn load_connection_checks_enabled(pool: &sqlx::SqlitePool) -> anyhow::Result<bool> {
+    let value = nuka_storage::runtime_state::RuntimeStateRepository::new(pool.clone())
+        .get(PROVIDERS_STATE_KEY)
+        .await?;
+
+    match value {
+        Some(value) => Ok(serde_json::from_str::<ProviderSettingsState>(&value)?.connection_checks),
+        None => Ok(true),
+    }
+}
+
+fn is_local_provider(base_url: &str) -> bool {
+    let normalized = base_url.to_ascii_lowercase();
+    normalized.contains("localhost") || normalized.contains("127.0.0.1")
+}
+
+fn provider_connection_status_label(
+    status: &nuka_domain::provider::ProviderConnectionStatus,
+) -> &'static str {
+    match status {
+        nuka_domain::provider::ProviderConnectionStatus::Unknown => "unknown",
+        nuka_domain::provider::ProviderConnectionStatus::Ready => "ready",
+        nuka_domain::provider::ProviderConnectionStatus::InvalidUrl => "invalid_url",
+        nuka_domain::provider::ProviderConnectionStatus::InvalidToken => "invalid_token",
+        nuka_domain::provider::ProviderConnectionStatus::MissingModel => "missing_model",
+        nuka_domain::provider::ProviderConnectionStatus::UnreachableHost => "unreachable_host",
+        nuka_domain::provider::ProviderConnectionStatus::Timeout => "timeout",
+        nuka_domain::provider::ProviderConnectionStatus::UpstreamFailure => "upstream_failure",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[tokio::test]
@@ -315,5 +391,35 @@ mod tests {
         assert!(team.agent_assignments.iter().all(|assignment| saved_agents
             .iter()
             .any(|agent| agent.id == assignment.agent_id)));
+    }
+
+    #[tokio::test]
+    async fn create_team_from_goal_requires_provider_preflight_when_connection_checks_are_enabled()
+    {
+        let pool = crate::settings_service::test_pool();
+        let service = super::TeamService::new_for_test_with_seeded_completion(pool.clone());
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Remote",
+            "https://api.example.com/v1",
+            "",
+            "MiniMax-M2.5",
+        );
+        let provider_id = provider.id.clone();
+
+        service.provider_service.save_provider(provider).await.unwrap();
+        service
+            .provider_service
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+
+        let error = service
+            .create_team_from_goal("Ship the release and publish notes")
+            .await
+            .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("provider connection check failed"));
     }
 }

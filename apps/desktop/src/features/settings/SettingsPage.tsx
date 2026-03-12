@@ -275,6 +275,10 @@ export function SettingsPage() {
       JSON.stringify(pickSettingsFields(initialSettings, PROVIDER_SCOPE_FIELDS)),
     [initialSettings, settings],
   );
+  const selectedDefaultProvider = useMemo(
+    () => providers.find((provider) => provider.id === settings.defaultProviderId) ?? null,
+    [providers, settings.defaultProviderId],
+  );
 
   const updateSetting = <K extends keyof SettingsPayload>(
     key: K,
@@ -694,6 +698,12 @@ export function SettingsPage() {
           </label>
         </div>
 
+        {selectedDefaultProvider ? (
+          <div className="settings-form-field__meta">
+            <span>{`New chat and team work routes through ${selectedDefaultProvider.name}.`}</span>
+          </div>
+        ) : null}
+
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
             <strong>Connection checks</strong>
@@ -709,6 +719,12 @@ export function SettingsPage() {
             type="checkbox"
           />
         </label>
+
+        {settings.connectionChecks ? (
+          <div className="settings-form-field__meta">
+            <span>Provider checks run before new work starts.</span>
+          </div>
+        ) : null}
       </section>
 
       <section className="settings-directory__panel">

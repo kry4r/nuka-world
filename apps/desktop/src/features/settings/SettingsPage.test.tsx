@@ -203,6 +203,61 @@ describe("SettingsPage", () => {
     expect(findText(view.container, "No secret saved")).toBeTruthy();
   });
 
+  it("shows the selected default provider as the active route in settings", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(findText(view.container, "New chat and team work routes through Local.")).toBeTruthy();
+  });
+
+  it("shows connection-check status only when the setting is enabled", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(findText(view.container, "Provider checks run before new work starts.")).toBeTruthy();
+
+    const connectionChecksToggle = view.container.querySelector(
+      'input[aria-label="Connection checks"]',
+    ) as HTMLInputElement | null;
+    const saveProviders = findButton(view.container, "Save Provider Changes");
+
+    await act(async () => {
+      if (!connectionChecksToggle) {
+        throw new Error("Connection checks toggle missing");
+      }
+
+      setCheckboxValue(connectionChecksToggle, false);
+    });
+
+    expect(findText(view.container, "Provider checks run before new work starts.")).toBeFalsy();
+    expect(saveProviders?.hasAttribute("disabled")).toBe(false);
+
+    await act(async () => {
+      saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_settings",
+      expect.objectContaining({
+        payload: expect.objectContaining({ connectionChecks: false }),
+      }),
+    );
+  });
+
   it("renders a minimal shortcuts section without a keyboard editor", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);

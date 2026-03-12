@@ -36,6 +36,35 @@ mod tests {
             nuka_domain::chat::ChatMessageRole::Assistant
         ));
     }
+
+    #[tokio::test]
+    async fn chat_service_requires_provider_preflight_when_connection_checks_are_enabled() {
+        let pool = crate::settings_service::test_pool();
+        let service = super::ChatService::new_for_test_with_seeded_completion(pool.clone());
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Remote",
+            "https://api.example.com/v1",
+            "",
+            "MiniMax-M2.5",
+        );
+        let provider_id = provider.id.clone();
+
+        service.provider_service.save_provider(provider).await.unwrap();
+        service
+            .provider_service
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+
+        let error = service
+            .send_message("Summarize the release notes", None)
+            .await
+            .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("provider connection check failed"));
+    }
 }
 
 impl ChatService {
@@ -182,6 +211,9 @@ impl ChatService {
             &provider,
             vec![OpenAiChatMessage::user(prompt.to_string())],
         )?;
+        if self.connection_checks_enabled().await? {
+            self.run_provider_preflight(&provider).await?;
+        }
 
         Ok(provider)
     }
@@ -200,6 +232,29 @@ impl ChatService {
 
         Ok(())
     }
+
+    async fn connection_checks_enabled(&self) -> anyhow::Result<bool> {
+        load_connection_checks_enabled(&self.pool).await
+    }
+
+    async fn run_provider_preflight(
+        &self,
+        provider: &nuka_domain::provider::ProviderConfig,
+    ) -> anyhow::Result<()> {
+        if is_local_provider(&provider.base_url) {
+            return Ok(());
+        }
+
+        let status = self.provider_service.test_provider_connection(provider).await?;
+        if matches!(status, nuka_domain::provider::ProviderConnectionStatus::Ready) {
+            Ok(())
+        } else {
+            anyhow::bail!(
+                "provider connection check failed: {}",
+                provider_connection_status_label(&status)
+            );
+        }
+    }
 }
 
 fn chat_message_to_provider_message(message: nuka_domain::chat::ChatMessage) -> OpenAiChatMessage {
@@ -212,5 +267,49 @@ fn chat_message_to_provider_message(message: nuka_domain::chat::ChatMessage) -> 
         }
         .to_string(),
         content: message.content,
+    }
+}
+
+const PROVIDERS_STATE_KEY: &str = "settings.providers";
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderSettingsState {
+    #[serde(default = "default_connection_checks")]
+    connection_checks: bool,
+}
+
+fn default_connection_checks() -> bool {
+    true
+}
+
+async fn load_connection_checks_enabled(pool: &sqlx::SqlitePool) -> anyhow::Result<bool> {
+    let value = nuka_storage::runtime_state::RuntimeStateRepository::new(pool.clone())
+        .get(PROVIDERS_STATE_KEY)
+        .await?;
+
+    match value {
+        Some(value) => Ok(serde_json::from_str::<ProviderSettingsState>(&value)?.connection_checks),
+        None => Ok(true),
+    }
+}
+
+fn is_local_provider(base_url: &str) -> bool {
+    let normalized = base_url.to_ascii_lowercase();
+    normalized.contains("localhost") || normalized.contains("127.0.0.1")
+}
+
+fn provider_connection_status_label(
+    status: &nuka_domain::provider::ProviderConnectionStatus,
+) -> &'static str {
+    match status {
+        nuka_domain::provider::ProviderConnectionStatus::Unknown => "unknown",
+        nuka_domain::provider::ProviderConnectionStatus::Ready => "ready",
+        nuka_domain::provider::ProviderConnectionStatus::InvalidUrl => "invalid_url",
+        nuka_domain::provider::ProviderConnectionStatus::InvalidToken => "invalid_token",
+        nuka_domain::provider::ProviderConnectionStatus::MissingModel => "missing_model",
+        nuka_domain::provider::ProviderConnectionStatus::UnreachableHost => "unreachable_host",
+        nuka_domain::provider::ProviderConnectionStatus::Timeout => "timeout",
+        nuka_domain::provider::ProviderConnectionStatus::UpstreamFailure => "upstream_failure",
     }
 }

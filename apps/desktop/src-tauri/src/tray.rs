@@ -106,4 +106,16 @@ mod tests {
             crate::tray::CloseAction::HideToTray
         ));
     }
+
+    #[test]
+    fn close_policy_quits_when_setting_requests_quit() {
+        let policy = crate::tray::ClosePolicy::from_settings(&crate::settings::SettingsState {
+            minimize_to_tray: false,
+        });
+
+        assert!(matches!(
+            crate::tray::close_action(&policy),
+            crate::tray::CloseAction::Exit
+        ));
+    }
 }

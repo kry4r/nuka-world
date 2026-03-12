@@ -1,4 +1,8 @@
-use nuka_integrations::providers::{openai::OpenAiCompatibleProvider, types::OpenAiChatMessage};
+use nuka_integrations::providers::{
+    openai::OpenAiCompatibleProvider,
+    types::OpenAiChatMessage,
+    ChatCompletionProvider,
+};
 
 #[derive(Debug, Clone)]
 pub struct RuntimeAgentSpec {
@@ -89,6 +93,7 @@ impl TeamRunService {
         charter.current_phase = "kickoff".to_string();
 
         let mut run = snapshot_team_into_run(&team, charter);
+        self.maybe_run_provider_preflight(&provider, &mut run).await?;
         execute_round(
             &self.provider_client,
             &provider,
@@ -136,6 +141,7 @@ impl TeamRunService {
             created_at: String::new(),
         });
 
+        self.maybe_run_provider_preflight(&provider, &mut run).await?;
         execute_round(
             &self.provider_client,
             &provider,
@@ -224,6 +230,38 @@ impl TeamRunService {
                 .await?;
         }
 
+        Ok(())
+    }
+
+    async fn connection_checks_enabled(&self) -> anyhow::Result<bool> {
+        load_connection_checks_enabled(&self.pool).await
+    }
+
+    async fn maybe_run_provider_preflight(
+        &self,
+        provider: &nuka_domain::provider::ProviderConfig,
+        run: &mut nuka_domain::team::TeamRun,
+    ) -> anyhow::Result<()> {
+        if !self.connection_checks_enabled().await? {
+            return Ok(());
+        }
+
+        self.provider_client.prepare_chat_request(
+            provider,
+            vec![OpenAiChatMessage::user("Provider preflight".to_string())],
+        )?;
+
+        if !is_local_provider(&provider.base_url) {
+            let status = self.provider_service.test_provider_connection(provider).await?;
+            if !matches!(status, nuka_domain::provider::ProviderConnectionStatus::Ready) {
+                anyhow::bail!(
+                    "provider connection check failed: {}",
+                    provider_connection_status_label(&status)
+                );
+            }
+        }
+
+        push_provider_preflight_event(run, provider);
         Ok(())
     }
 
@@ -539,6 +577,71 @@ fn sample_seed_team() -> nuka_domain::team::Team {
     }
 }
 
+const PROVIDERS_STATE_KEY: &str = "settings.providers";
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderSettingsState {
+    #[serde(default = "default_connection_checks")]
+    connection_checks: bool,
+}
+
+fn default_connection_checks() -> bool {
+    true
+}
+
+async fn load_connection_checks_enabled(pool: &sqlx::SqlitePool) -> anyhow::Result<bool> {
+    let value = nuka_storage::runtime_state::RuntimeStateRepository::new(pool.clone())
+        .get(PROVIDERS_STATE_KEY)
+        .await?;
+
+    match value {
+        Some(value) => Ok(serde_json::from_str::<ProviderSettingsState>(&value)?.connection_checks),
+        None => Ok(true),
+    }
+}
+
+fn is_local_provider(base_url: &str) -> bool {
+    let normalized = base_url.to_ascii_lowercase();
+    normalized.contains("localhost") || normalized.contains("127.0.0.1")
+}
+
+fn provider_connection_status_label(
+    status: &nuka_domain::provider::ProviderConnectionStatus,
+) -> &'static str {
+    match status {
+        nuka_domain::provider::ProviderConnectionStatus::Unknown => "unknown",
+        nuka_domain::provider::ProviderConnectionStatus::Ready => "ready",
+        nuka_domain::provider::ProviderConnectionStatus::InvalidUrl => "invalid_url",
+        nuka_domain::provider::ProviderConnectionStatus::InvalidToken => "invalid_token",
+        nuka_domain::provider::ProviderConnectionStatus::MissingModel => "missing_model",
+        nuka_domain::provider::ProviderConnectionStatus::UnreachableHost => "unreachable_host",
+        nuka_domain::provider::ProviderConnectionStatus::Timeout => "timeout",
+        nuka_domain::provider::ProviderConnectionStatus::UpstreamFailure => "upstream_failure",
+    }
+}
+
+fn push_provider_preflight_event(
+    run: &mut nuka_domain::team::TeamRun,
+    provider: &nuka_domain::provider::ProviderConfig,
+) {
+    let sequence = next_sequence(&run.events);
+    run.events.push(nuka_domain::team::TeamRunEvent {
+        id: uuid::Uuid::new_v4().to_string(),
+        run_id: run.id.clone(),
+        kind: "provider_check_passed".to_string(),
+        agent_id: None,
+        title: "Provider preflight".to_string(),
+        content: format!("Connection checks passed for {}.", provider.name),
+        status: Some("completed".to_string()),
+        tool_name: None,
+        tool_call_id: None,
+        tool_target: None,
+        sequence,
+        created_at: String::new(),
+    });
+}
+
 #[cfg(test)]
 mod tests {
     fn sample_runtime_agent() -> super::RuntimeAgentSpec {
@@ -586,5 +689,37 @@ mod tests {
             updated.agents.last().and_then(|agent| agent.source_agent_id.as_ref()),
             None
         );
+    }
+
+    #[tokio::test]
+    async fn team_run_records_provider_preflight_when_connection_checks_are_enabled() {
+        let pool = crate::settings_service::test_pool();
+        nuka_storage::migrations::run(&pool).await.unwrap();
+        let runtime = super::TeamRunService::new_for_test_with_seeded_completion(pool.clone());
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        );
+        let provider_id = provider.id.clone();
+
+        runtime.provider_service.save_provider(provider).await.unwrap();
+        runtime
+            .provider_service
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+        nuka_storage::teams::TeamRepository::new(pool)
+            .save_team(super::sample_seed_team())
+            .await
+            .unwrap();
+
+        let run = runtime.start_team_run("team-release").await.unwrap();
+
+        assert!(run
+            .events
+            .iter()
+            .any(|event| event.kind == "provider_check_passed"));
     }
 }

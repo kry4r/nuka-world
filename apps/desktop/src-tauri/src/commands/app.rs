@@ -109,4 +109,34 @@ mod tests {
         assert_eq!(status.provider.kind, "ready");
         assert_eq!(status.provider.label.as_deref(), Some("Local Provider"));
     }
+
+    #[tokio::test]
+    async fn app_runtime_status_uses_the_selected_default_provider_label() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let provider_a = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Provider A",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        );
+        let provider_b = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Provider B",
+            "http://localhost:22434/v1",
+            "",
+            "gpt-oss",
+        );
+        let provider_b_id = provider_b.id.clone();
+
+        state.provider_service().save_provider(provider_a).await.unwrap();
+        state.provider_service().save_provider(provider_b).await.unwrap();
+        state
+            .provider_service()
+            .set_default_provider(&provider_b_id)
+            .await
+            .unwrap();
+
+        let status = super::app_runtime_status_inner(&state).await.unwrap();
+
+        assert_eq!(status.provider.label.as_deref(), Some("Provider B"));
+    }
 }
