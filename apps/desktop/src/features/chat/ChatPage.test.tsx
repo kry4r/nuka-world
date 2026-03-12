@@ -18,6 +18,8 @@ const sampleTeam: TeamRecord = {
   name: "Release Team",
   goal: "Ship the release and publish notes",
   summary: "Coordinates release validation, notes, and final publish readiness.",
+  promptConstraints: "Stay concise and keep the release evidence auditable.",
+  permissionPolicy: "No destructive tools without explicit approval.",
   successCriteria: "Release notes and checklist are complete.",
   coordinationPolicy: "Moderator-led rounds with checkpoint summaries.",
   createdAt: "2026-03-11T12:00:00Z",
@@ -37,6 +39,19 @@ const sampleTeam: TeamRecord = {
         summarizeOutput: true,
       },
       orderHint: 0,
+      createdAt: "2026-03-11T12:00:00Z",
+      updatedAt: "2026-03-11T12:00:00Z",
+    },
+  ],
+  agentAssignments: [
+    {
+      id: "assignment-moderator",
+      teamId: "team-release",
+      agentId: "agent-moderator",
+      enabled: true,
+      orderHint: 0,
+      promptOverride: null,
+      permissionOverrideJson: "{}",
       createdAt: "2026-03-11T12:00:00Z",
       updatedAt: "2026-03-11T12:00:00Z",
     },
@@ -68,6 +83,8 @@ const sampleRun: TeamRunRecord = {
     {
       id: "agent-coordinator",
       runId: "run-release",
+      sourceAgentId: "agent-moderator",
+      sourceTeamAssignmentId: "assignment-moderator",
       sourceTeamAgentId: "team-agent-moderator",
       name: "Coordinator",
       role: "Coordinator",
@@ -472,23 +489,7 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Select a team before sending.")).toBeTruthy();
   });
 
-  it("creates a team from chat and starts a real team run", async () => {
-    listWorkspaceSessionsMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: "run-release",
-          kind: "team_run",
-          title: "Release Team Run",
-          status: "active",
-          updatedAt: "2026-03-11T12:15:00Z",
-        },
-      ]);
-    loadWorkspaceSessionMock.mockResolvedValueOnce({
-      kind: "team_run",
-      run: sampleRun,
-    });
-
+  it("creates a team from chat without auto-starting a run", async () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
 
@@ -505,9 +506,9 @@ describe("ChatPage", () => {
     expect(createTeamFromGoalMock).toHaveBeenCalledWith(
       "Ship the release and publish notes",
     );
-    expect(startTeamRunMock).toHaveBeenCalledWith("team-release");
-    expect(findText(view.container, "Release Team Run")).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Team run session"]')).toBeTruthy();
+    expect(startTeamRunMock).not.toHaveBeenCalled();
+    expect(findText(view.container, "Team created: Release Team")).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Team run session"]')).toBeFalsy();
   });
 
   it("starts a run from a selected team and continues it with the kickoff prompt", async () => {

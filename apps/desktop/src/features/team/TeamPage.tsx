@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { listAgents, type AgentRecord } from "@/lib/agents";
 import {
   listTeams,
   startTeamRun,
   updateTeam,
   type TeamRecord,
+  type TeamAgentAssignmentRecord,
+  type TeamAgentRecord,
+  type ToolBindingRecord,
 } from "@/lib/team";
 import { TeamEditor } from "./TeamEditor";
 import { TeamList } from "./TeamList";
@@ -16,11 +20,86 @@ function cloneTeam(team: TeamRecord): TeamRecord {
       toolBindings: agent.toolBindings.map((binding) => ({ ...binding })),
       toolUsePolicy: { ...agent.toolUsePolicy },
     })),
+    agentAssignments: team.agentAssignments.map((assignment) => ({ ...assignment })),
+  };
+}
+
+function inferAdapterKind(toolId: string) {
+  if (toolId.startsWith("mcp:")) {
+    return "mcp";
+  }
+
+  if (toolId.startsWith("cli:")) {
+    return "cli";
+  }
+
+  return "integrated_agent";
+}
+
+function buildToolBindings(agent: AgentRecord): ToolBindingRecord[] {
+  return agent.toolNames.map((toolId) => ({
+    toolId,
+    allowed: true,
+    adapterKind: inferAdapterKind(toolId),
+    purpose: agent.description || `Support ${agent.name} during the team run`,
+    costClass: "medium",
+  }));
+}
+
+function buildTeamAgent(agent: AgentRecord, teamId: string, orderHint: number): TeamAgentRecord {
+  return {
+    id: `team-agent-${agent.id}`,
+    teamId,
+    name: agent.name,
+    role: agent.name,
+    responsibility: agent.description || `${agent.name} contributes to the team run.`,
+    systemPrompt: agent.systemPrompt,
+    toolBindings: buildToolBindings(agent),
+    toolUsePolicy: {
+      maxCallsPerRound: 1,
+      summarizeOutput: true,
+    },
+    orderHint,
+    createdAt: "",
+    updatedAt: "",
+  };
+}
+
+function buildAssignment(
+  agentId: string,
+  teamId: string,
+  orderHint: number,
+): TeamAgentAssignmentRecord {
+  return {
+    id: `assignment-${agentId}`,
+    teamId,
+    agentId,
+    enabled: true,
+    orderHint,
+    promptOverride: null,
+    permissionOverrideJson: "{}",
+    createdAt: "",
+    updatedAt: "",
+  };
+}
+
+function normalizeTeam(team: TeamRecord): TeamRecord {
+  return {
+    ...team,
+    agents: team.agents.map((agent, index) => ({
+      ...agent,
+      orderHint: index,
+    })),
+    agentAssignments: team.agentAssignments.map((assignment, index) => ({
+      ...assignment,
+      orderHint: index,
+    })),
   };
 }
 
 export function TeamPage() {
   const [teams, setTeams] = useState<TeamRecord[]>([]);
+  const [availableAgents, setAvailableAgents] = useState<AgentRecord[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [editorTeam, setEditorTeam] = useState<TeamRecord | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -31,8 +110,8 @@ export function TeamPage() {
   useEffect(() => {
     let alive = true;
 
-    void listTeams()
-      .then((savedTeams) => {
+    void Promise.all([listTeams(), listAgents()])
+      .then(([savedTeams, savedAgents]) => {
         if (!alive) {
           return;
         }
@@ -40,6 +119,7 @@ export function TeamPage() {
         const normalizedTeams = Array.isArray(savedTeams) ? savedTeams : [];
         setTeams(normalizedTeams);
         setSelectedTeamId(normalizedTeams[0]?.id ?? null);
+        setAvailableAgents(Array.isArray(savedAgents) ? savedAgents : []);
       })
       .catch((caughtError) => {
         if (!alive) {
@@ -88,6 +168,66 @@ export function TeamPage() {
             : agent,
         ),
       };
+    });
+  };
+
+  const handleFieldChange = (
+    field: "summary" | "promptConstraints" | "permissionPolicy",
+    value: string,
+  ) => {
+    setEditorTeam((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [field]: value,
+      };
+    });
+  };
+
+  const handleRemoveAssignedAgent = (agentId: string) => {
+    setEditorTeam((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const assignmentIndex = current.agentAssignments.findIndex(
+        (assignment) => assignment.agentId === agentId,
+      );
+      if (assignmentIndex === -1) {
+        return current;
+      }
+
+      return normalizeTeam({
+        ...current,
+        agents: current.agents.filter((_, index) => index !== assignmentIndex),
+        agentAssignments: current.agentAssignments.filter((_, index) => index !== assignmentIndex),
+      });
+    });
+  };
+
+  const handleAddAssignedAgent = (agentId: string) => {
+    setEditorTeam((current) => {
+      if (!current || current.agentAssignments.some((assignment) => assignment.agentId === agentId)) {
+        return current;
+      }
+
+      const agent = availableAgents.find((item) => item.id === agentId);
+      if (!agent) {
+        return current;
+      }
+
+      const orderHint = current.agentAssignments.length;
+      return normalizeTeam({
+        ...current,
+        agents: [...current.agents, buildTeamAgent(agent, current.id, orderHint)],
+        agentAssignments: [
+          ...current.agentAssignments,
+          buildAssignment(agent.id, current.id, orderHint),
+        ],
+      });
     });
   };
 
@@ -145,10 +285,14 @@ export function TeamPage() {
         />
 
         <TeamEditor
+          availableAgents={availableAgents}
           error={error}
           isSaving={isSaving}
           isStartingRun={isStartingRun}
           notice={notice}
+          onAddAssignedAgent={handleAddAssignedAgent}
+          onChangeField={handleFieldChange}
+          onRemoveAssignedAgent={handleRemoveAssignedAgent}
           onSave={() => {
             void handleSave();
           }}

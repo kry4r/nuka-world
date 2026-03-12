@@ -8,6 +8,8 @@ const sampleTeam = {
   name: "Release Team",
   goal: "Ship the release and publish notes",
   summary: "Coordinates release validation, notes, and final publish readiness.",
+  promptConstraints: "Keep the team concise and evidence-first.",
+  permissionPolicy: "No destructive tools without explicit approval.",
   successCriteria: "Release notes are reviewed and the release checklist is complete.",
   coordinationPolicy: "Moderator-led rounds with checkpoint summaries.",
   createdAt: "2026-03-11T12:00:00Z",
@@ -63,18 +65,66 @@ const sampleTeam = {
       updatedAt: "2026-03-11T12:00:00Z",
     },
   ],
+  agentAssignments: [
+    {
+      id: "assignment-moderator",
+      teamId: "team-release",
+      agentId: "agent-moderator",
+      enabled: true,
+      orderHint: 0,
+      promptOverride: null,
+      permissionOverrideJson: "{}",
+      createdAt: "2026-03-11T12:00:00Z",
+      updatedAt: "2026-03-11T12:00:00Z",
+    },
+    {
+      id: "assignment-publisher",
+      teamId: "team-release",
+      agentId: "agent-publisher",
+      enabled: true,
+      orderHint: 1,
+      promptOverride: null,
+      permissionOverrideJson: "{}",
+      createdAt: "2026-03-11T12:00:00Z",
+      updatedAt: "2026-03-11T12:00:00Z",
+    },
+  ],
 };
+
+const availableAgents = [
+  {
+    id: "agent-moderator",
+    name: "Moderator",
+    description: "Keeps the team focused and synthesizes checkpoints.",
+    systemPrompt: "Run moderated planning rounds.",
+    providerId: "provider-local",
+    toolNames: ["mcp:filesystem"],
+  },
+  {
+    id: "agent-publisher",
+    name: "Publisher",
+    description: "Drafts the release note output.",
+    systemPrompt: "Write concise release notes.",
+    providerId: "provider-local",
+    toolNames: ["codex"],
+  },
+  {
+    id: "agent-reviewer",
+    name: "Reviewer",
+    description: "Checks the release package for missing evidence.",
+    systemPrompt: "Review for missing evidence and consistency.",
+    providerId: "provider-local",
+    toolNames: ["mcp:filesystem", "codex"],
+  },
+];
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) => {
     switch (command) {
       case "list_teams":
         return [sampleTeam];
-      case "create_team_from_goal":
-        return {
-          ...sampleTeam,
-          goal: String(args?.goal ?? sampleTeam.goal),
-        };
+      case "list_agents":
+        return availableAgents;
       case "update_team":
         return args?.team ?? sampleTeam;
       case "start_team_run":
@@ -140,19 +190,20 @@ async function clickButton(container: HTMLElement, text: string) {
 }
 
 async function setInputValue(container: HTMLElement, label: string, value: string) {
-  const input = Array.from(container.querySelectorAll("input")).find(
+  const input = Array.from(container.querySelectorAll("input, textarea")).find(
     (node) => node.getAttribute("aria-label") === label,
-  ) as HTMLInputElement | undefined;
+  ) as HTMLInputElement | HTMLTextAreaElement | undefined;
 
   await act(async () => {
     if (!input) {
       throw new Error(`input missing: ${label}`);
     }
 
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
+    const prototype =
+      input instanceof HTMLTextAreaElement
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
     setter?.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -161,6 +212,37 @@ async function setInputValue(container: HTMLElement, label: string, value: strin
 }
 
 describe("TeamPage", () => {
+  it("keeps the page edit-only and saves description, constraints, and assigned agents", async () => {
+    const view = await renderIntoDocument(<TeamPage />);
+    cleanups.push(view.cleanup);
+
+    expect(findText(view.container, "Generate a Team from a goal")).toBeFalsy();
+    expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
+
+    await setInputValue(view.container, "Team description", "Tighten the release checklist before launch.");
+    await setInputValue(view.container, "Prompt constraints", "Only cite evidence found in the workspace.");
+    await setInputValue(view.container, "Permission policy", "No destructive tools and no network writes.");
+    await clickButton(view.container, "Remove Publisher");
+    await clickButton(view.container, "Add Reviewer");
+    await clickButton(view.container, "Save Changes");
+
+    const updateCall = invokeMock.mock.calls.find(([command]) => command === "update_team");
+    expect(updateCall).toBeTruthy();
+
+    const updatedTeam = updateCall?.[1]?.team as typeof sampleTeam;
+    expect(updatedTeam.summary).toBe("Tighten the release checklist before launch.");
+    expect(updatedTeam.promptConstraints).toBe("Only cite evidence found in the workspace.");
+    expect(updatedTeam.permissionPolicy).toBe("No destructive tools and no network writes.");
+    expect(updatedTeam.agentAssignments.map((assignment) => assignment.agentId)).toEqual([
+      "agent-moderator",
+      "agent-reviewer",
+    ]);
+    expect(updatedTeam.agents.map((agent) => agent.name)).toEqual([
+      "Moderator",
+      "Reviewer",
+    ]);
+  });
+
   it("shows persisted teams without the goal generator copy and still allows starting a run", async () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);

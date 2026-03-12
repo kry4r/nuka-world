@@ -160,6 +160,7 @@ export function ChatPage() {
   const [availableTeams, setAvailableTeams] = useState<TeamRecord[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
   const [teamRunState, setTeamRunState] = useState<TeamRunRecord | null>(null);
   const [teamRunError, setTeamRunError] = useState<string | null>(null);
@@ -226,6 +227,7 @@ export function ChatPage() {
     setEntryMode(nextMode);
     setEntryMenuOpen(false);
     setError(null);
+    setNotice(null);
 
     if (nextMode === "choose_team") {
       setTeamPickerOpen(true);
@@ -243,6 +245,7 @@ export function ChatPage() {
     setSelectedTeamId("");
     setEntryMode("direct");
     setError(null);
+    setNotice(null);
   };
 
   const handleSend = async (nextPrompt?: string) => {
@@ -262,6 +265,7 @@ export function ChatPage() {
 
     setPrompt("");
     setError(null);
+    setNotice(null);
     setEntryMenuOpen(false);
     setTeamPickerOpen(false);
     setIsRouting(true);
@@ -277,14 +281,9 @@ export function ChatPage() {
 
           return current.map((team, index) => (index === existingIndex ? created : team));
         });
-        const run = await startTeamRun(created.id);
-        setTeamRunState(run);
         setSelectedTeamId(created.id);
         setEntryMode("direct");
-        void workspaceSessions.refresh({
-          id: run.id,
-          kind: "team_run",
-        });
+        setNotice(`Team created: ${created.name}`);
         return;
       }
 
@@ -395,6 +394,9 @@ export function ChatPage() {
 
       {error ? (
         <div className="composer__inline-feedback composer__inline-feedback--error">{error}</div>
+      ) : null}
+      {notice ? (
+        <div className="composer__inline-feedback composer__inline-feedback--notice">{notice}</div>
       ) : null}
 
       <div
