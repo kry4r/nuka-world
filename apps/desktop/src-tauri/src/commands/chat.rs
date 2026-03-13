@@ -45,6 +45,25 @@ pub struct ChatContextResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptExecutionResponse {
+    pub exit_status: String,
+    pub session_id: String,
+    pub run_id: Option<String>,
+    pub route: PromptExecutionRoute,
+    pub provider: Option<ChatProviderResponse>,
+    pub final_output: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptExecutionRoute {
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChatRoute {
     DirectReply,
@@ -68,6 +87,17 @@ pub async fn route_world_prompt(
     state: tauri::State<'_, crate::app_state::AppState>,
 ) -> Result<ChatRouteResponse, String> {
     route_world_prompt_inner(prompt, session_id, mode, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn execute_prompt_json(
+    prompt: String,
+    session_id: Option<String>,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<PromptExecutionResponse, String> {
+    execute_prompt_json_inner(prompt, session_id, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -150,12 +180,56 @@ async fn route_world_prompt_inner(
     })
 }
 
+async fn execute_prompt_json_inner(
+    prompt: String,
+    session_id: Option<String>,
+    state: &crate::app_state::AppState,
+) -> anyhow::Result<PromptExecutionResponse> {
+    let response = route_world_prompt_inner(prompt, session_id, ChatModeInput::ChatOnly, state).await?;
+    let final_output = response
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "assistant")
+        .or_else(|| response.messages.last())
+        .map(|message| message.content.clone())
+        .unwrap_or_default();
+
+    Ok(PromptExecutionResponse {
+        exit_status: "success".to_string(),
+        session_id: response.session.id,
+        run_id: None,
+        route: PromptExecutionRoute::from(response.route),
+        provider: response.provider,
+        final_output,
+    })
+}
+
 impl From<ChatModeInput> for nuka_runtime::world::WorldChatMode {
     fn from(value: ChatModeInput) -> Self {
         match value {
             ChatModeInput::ChatOnly => Self::ChatOnly,
             ChatModeInput::CreateWorkflow => Self::CreateWorkflow,
             ChatModeInput::SpecificWorkflow { workflow_id } => Self::SpecificWorkflow(workflow_id),
+        }
+    }
+}
+
+impl From<ChatRoute> for PromptExecutionRoute {
+    fn from(value: ChatRoute) -> Self {
+        match value {
+            ChatRoute::DirectReply => Self {
+                kind: "direct_reply".to_string(),
+                workflow_id: None,
+            },
+            ChatRoute::ExistingWorkflow { workflow_id } => Self {
+                kind: "existing_workflow".to_string(),
+                workflow_id: Some(workflow_id),
+            },
+            ChatRoute::NewWorkflow => Self {
+                kind: "new_workflow".to_string(),
+                workflow_id: None,
+            },
         }
     }
 }
@@ -411,5 +485,87 @@ mod tests {
             if workflow_id == "workflow-release"
         ));
         assert_eq!(next.session.workflow_id.as_deref(), Some("workflow-release"));
+    }
+
+    #[tokio::test]
+    async fn execute_prompt_json_returns_machine_readable_result_for_direct_chat() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        );
+        let provider_id = provider.id.clone();
+
+        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+
+        let response = super::execute_prompt_json_inner(
+            "summarize today's notes".to_string(),
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.exit_status, "success");
+        assert_eq!(response.run_id, None);
+        assert!(!response.session_id.is_empty());
+        assert_eq!(response.route.kind, "direct_reply");
+        assert_eq!(response.provider.as_ref().map(|item| item.id.as_str()), Some(provider_id.as_str()));
+        assert!(!response.final_output.is_empty());
+    }
+
+    #[tokio::test]
+    async fn execute_prompt_json_persists_desktop_owned_chat_session() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        );
+        let provider_id = provider.id.clone();
+
+        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+
+        let response = super::execute_prompt_json_inner(
+            "capture the release checklist".to_string(),
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let loaded = state
+            .workspace_sessions_service()
+            .load(
+                &response.session_id,
+                nuka_runtime::workspace_sessions::WorkspaceSessionKind::DirectChat,
+            )
+            .await
+            .unwrap();
+
+        match loaded {
+            Some(nuka_runtime::workspace_sessions::WorkspaceSessionDetail::DirectChat {
+                session,
+                messages,
+            }) => {
+                assert_eq!(session.id, response.session_id);
+                assert_eq!(messages.len(), 2);
+                assert_eq!(messages[0].content, "capture the release checklist");
+            }
+            other => panic!("expected persisted direct chat session, got {other:?}"),
+        }
     }
 }
