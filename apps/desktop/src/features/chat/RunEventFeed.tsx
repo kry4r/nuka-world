@@ -18,9 +18,11 @@ function agentName(
 }
 
 export function RunEventFeed({ agents, events, onBranch }: RunEventFeedProps) {
+  const visibleEvents = events.filter((event) => event.kind !== "file_change");
+
   return (
     <section aria-label="Run event feed" className="run-event-feed">
-      {events.map((event) => (
+      {visibleEvents.map((event) => (
         <article className="run-event-feed__item" key={event.id}>
           <div className="run-event-feed__meta-row">
             <div className="run-event-feed__meta">

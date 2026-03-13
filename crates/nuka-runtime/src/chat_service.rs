@@ -1,7 +1,6 @@
 use nuka_integrations::providers::{
     openai::OpenAiCompatibleProvider,
     types::OpenAiChatMessage,
-    ChatCompletionProvider,
 };
 
 const CHAT_COMPACTION_MESSAGE_THRESHOLD: usize = 4;

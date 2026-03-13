@@ -1,10 +1,11 @@
+use std::path::{Path, PathBuf};
+
 use nuka_integrations::providers::{
     openai::OpenAiCompatibleProvider,
     types::OpenAiChatMessage,
-    ChatCompletionProvider,
 };
 
-const TEAM_RUN_COMPACTION_EVENT_THRESHOLD: usize = 8;
+const TEAM_RUN_COMPACTION_EVENT_THRESHOLD: usize = 12;
 const TEAM_RUN_COMPACTION_RECENT_WINDOW: usize = 5;
 
 #[derive(Debug, Clone)]
@@ -23,6 +24,7 @@ pub struct TeamRunService {
     pool: sqlx::SqlitePool,
     provider_service: crate::providers::ProvidersService,
     provider_client: OpenAiCompatibleProvider,
+    artifact_root: PathBuf,
     seed_provider: Option<nuka_domain::provider::ProviderConfig>,
     seed_team: Option<nuka_domain::team::Team>,
     seed_completion: Option<String>,
@@ -38,10 +40,23 @@ impl TeamRunService {
         pool: sqlx::SqlitePool,
         provider_service: crate::providers::ProvidersService,
     ) -> Self {
+        Self::new_with_provider_service_and_artifact_root(
+            pool,
+            provider_service,
+            default_artifact_root(),
+        )
+    }
+
+    pub fn new_with_provider_service_and_artifact_root(
+        pool: sqlx::SqlitePool,
+        provider_service: crate::providers::ProvidersService,
+        artifact_root: PathBuf,
+    ) -> Self {
         Self {
             pool,
             provider_service,
             provider_client: OpenAiCompatibleProvider::default(),
+            artifact_root,
             seed_provider: None,
             seed_team: None,
             seed_completion: None,
@@ -72,7 +87,11 @@ impl TeamRunService {
         pool: sqlx::SqlitePool,
         provider_service: crate::providers::ProvidersService,
     ) -> Self {
-        let mut service = Self::new_with_provider_service(pool, provider_service);
+        let mut service = Self::new_with_provider_service_and_artifact_root(
+            pool,
+            provider_service,
+            test_artifact_root(),
+        );
         service.seed_completion = Some("Seeded meeting output".to_string());
         service
     }
@@ -111,14 +130,16 @@ impl TeamRunService {
             &self.provider_client,
             &resolved_route.provider,
             self.seed_completion.as_deref(),
+            &self.artifact_root,
             &mut run,
             "Kick off the team run",
         )
         .await?;
 
         let repo = nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone());
-        self.maybe_compact_run_events(&repo, &mut run).await?;
         repo.create_run(run.clone()).await?;
+        self.maybe_compact_run_events(&repo, &mut run).await?;
+        repo.save_run(run.clone()).await?;
         repo.load_run(&run.id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("persisted run disappeared after save"))
@@ -182,6 +203,7 @@ impl TeamRunService {
             &self.provider_client,
             &resolved_route.provider,
             self.seed_completion.as_deref(),
+            &self.artifact_root,
             &mut run,
             prompt,
         )
@@ -343,6 +365,7 @@ async fn execute_round(
     provider_client: &OpenAiCompatibleProvider,
     provider: &nuka_domain::provider::ProviderConfig,
     seed_completion: Option<&str>,
+    artifact_root: &Path,
     run: &mut nuka_domain::team::TeamRun,
     prompt: &str,
 ) -> anyhow::Result<()> {
@@ -406,7 +429,7 @@ async fn execute_round(
         )
         .await?;
         agent.current_work = "Position card delivered".to_string();
-        position_cards.push(format!("{}: {}", agent.name, content));
+        position_cards.push((agent.name.clone(), content.clone()));
         run.events.push(nuka_domain::team::TeamRunEvent {
             id: uuid::Uuid::new_v4().to_string(),
             run_id: run.id.clone(),
@@ -431,7 +454,11 @@ async fn execute_round(
             "Goal: {}\nPrompt: {}\nPositions:\n{}\nWrite a short checkpoint summary and next step.",
             run.goal,
             prompt,
-            position_cards.join("\n")
+            position_cards
+                .iter()
+                .map(|(name, content)| format!("{name}: {content}"))
+                .collect::<Vec<_>>()
+                .join("\n")
         ))],
         &format!("Checkpoint summary for: {}", prompt),
     )
@@ -442,7 +469,7 @@ async fn execute_round(
         kind: "checkpoint_summary".to_string(),
         agent_id: run.lead_agent_id.clone(),
         title: "Checkpoint summary".to_string(),
-        content: summary,
+        content: summary.clone(),
         status: Some("completed".to_string()),
         tool_name: None,
         tool_call_id: None,
@@ -450,11 +477,20 @@ async fn execute_round(
         sequence: next_sequence(&run.events),
         created_at: String::new(),
     });
+    record_round_file_change_events(
+        artifact_root,
+        run,
+        &agenda,
+        &position_cards,
+        prompt,
+        &summary,
+    )?;
 
     for (index, agent) in run.agents.iter_mut().enumerate() {
         if selected_indexes.contains(&index) {
             agent.status = nuka_domain::team::TeamRunAgentStatus::Done;
             agent.current_work = "Completed current round".to_string();
+            agent.last_tool_activity = Some("session_artifacts".to_string());
         }
     }
 
@@ -593,6 +629,97 @@ fn excerpt(content: &str, limit: usize) -> String {
         excerpt.push_str("...");
     }
     excerpt
+}
+
+fn record_round_file_change_events(
+    artifact_root: &Path,
+    run: &mut nuka_domain::team::TeamRun,
+    agenda: &str,
+    position_cards: &[(String, String)],
+    prompt: &str,
+    checkpoint_summary: &str,
+) -> anyhow::Result<()> {
+    let round_index = run
+        .events
+        .iter()
+        .filter(|event| event.kind == "checkpoint_summary")
+        .count();
+    let round_label = format!("Round {round_index}");
+    let round_call_id = format!("round-{round_index:02}");
+    let round_dir = artifact_root
+        .join(&run.id)
+        .join(format!("round-{round_index:02}"));
+
+    let mut artifacts = vec![(
+        round_dir.join("agenda.md"),
+        format!("# {round_label}\n\nPrompt:\n{prompt}\n\nAgenda:\n{agenda}\n"),
+    )];
+
+    for (agent_name, content) in position_cards {
+        artifacts.push((
+            round_dir.join(format!("position-card-{}.md", slug(agent_name))),
+            format!("# {agent_name}\n\n{content}\n"),
+        ));
+    }
+
+    artifacts.push((
+        round_dir.join("checkpoint.md"),
+        format!("# {round_label} checkpoint\n\n{checkpoint_summary}\n"),
+    ));
+
+    for (path, content) in artifacts {
+        let change_kind = if path.exists() { "updated" } else { "created" };
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, content)?;
+
+        run.events.push(nuka_domain::team::TeamRunEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            run_id: run.id.clone(),
+            kind: "file_change".to_string(),
+            agent_id: run.lead_agent_id.clone(),
+            title: round_label.clone(),
+            content: path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_string(),
+            status: Some(change_kind.to_string()),
+            tool_name: Some("session_artifacts".to_string()),
+            tool_call_id: Some(round_call_id.clone()),
+            tool_target: Some(path.to_string_lossy().into_owned()),
+            sequence: next_sequence(&run.events),
+            created_at: String::new(),
+        });
+    }
+
+    Ok(())
+}
+
+fn slug(value: &str) -> String {
+    let mut slug = String::new();
+    let mut last_was_dash = false;
+
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            slug.push(character.to_ascii_lowercase());
+            last_was_dash = false;
+        } else if !last_was_dash {
+            slug.push('-');
+            last_was_dash = true;
+        }
+    }
+
+    slug.trim_matches('-').to_string()
+}
+
+fn default_artifact_root() -> PathBuf {
+    std::env::temp_dir().join("nuka-world").join("team-run-artifacts")
+}
+
+fn test_artifact_root() -> PathBuf {
+    std::env::temp_dir().join(format!("nuka-world-team-run-test-{}", uuid::Uuid::new_v4()))
 }
 
 fn sample_seed_team() -> nuka_domain::team::Team {
@@ -790,5 +917,27 @@ mod tests {
             .events
             .iter()
             .any(|event| event.kind == "provider_check_passed"));
+    }
+
+    #[tokio::test]
+    async fn team_run_records_real_file_change_events_for_each_round() {
+        let runtime = super::TeamRunService::new_for_test_with_provider();
+        let run = runtime.start_team_run("team-release").await.unwrap();
+
+        let file_changes = run
+            .events
+            .iter()
+            .filter(|event| event.kind == "file_change")
+            .collect::<Vec<_>>();
+
+        assert!(!file_changes.is_empty());
+        assert!(file_changes.iter().all(|event| event.title == "Round 1"));
+        assert!(file_changes.iter().all(|event| event.status.as_deref() == Some("created")));
+        assert!(file_changes.iter().all(|event| {
+            event
+                .tool_target
+                .as_ref()
+                .is_some_and(|path| std::path::Path::new(path).exists())
+        }));
     }
 }

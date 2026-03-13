@@ -11,7 +11,7 @@ pub async fn build_app_state_for_test() -> anyhow::Result<crate::app_state::AppS
         .connect("sqlite::memory:")
         .await?;
 
-    build_app_state_from_pool(pool, test_pageindex_runtime_path()).await
+    build_app_state_from_pool(pool, test_pageindex_runtime_path(), test_team_run_artifact_root()).await
 }
 
 pub async fn build_app_state<R: tauri::Runtime>(
@@ -27,15 +27,19 @@ pub async fn build_app_state<R: tauri::Runtime>(
     let pool = connect_persistent_pool(&db_path).await?;
 
     let pageindex_runtime = resolve_bundled_pageindex_runtime(app)?;
+    let team_run_artifact_root = data_dir.join("team-runs");
 
-    build_app_state_from_pool(pool, pageindex_runtime).await
+    build_app_state_from_pool(pool, pageindex_runtime, team_run_artifact_root).await
 }
 
 async fn build_app_state_from_pool(
     pool: sqlx::SqlitePool,
     pageindex_runtime: PathBuf,
+    team_run_artifact_root: PathBuf,
 ) -> anyhow::Result<crate::app_state::AppState> {
     nuka_storage::migrations::run(&pool).await?;
+    #[cfg(test)]
+    let _ = &team_run_artifact_root;
 
     #[cfg(test)]
     let provider_secret_store: std::sync::Arc<dyn crate::provider_secrets::ProviderSecretStore> =
@@ -76,9 +80,10 @@ async fn build_app_state_from_pool(
         provider_service.clone(),
     );
     #[cfg(not(test))]
-    let team_run_service = nuka_runtime::team_run_service::TeamRunService::new_with_provider_service(
+    let team_run_service = nuka_runtime::team_run_service::TeamRunService::new_with_provider_service_and_artifact_root(
         pool.clone(),
         provider_service.clone(),
+        team_run_artifact_root,
     );
     let agents_service = nuka_runtime::agents::AgentsService::new(pool.clone());
     let knowledge_service = nuka_runtime::knowledge_service::KnowledgeService::new(
@@ -169,6 +174,20 @@ fn resolve_bundled_pageindex_runtime<R: tauri::Runtime>(
 
 fn test_pageindex_runtime_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PAGEINDEX_RESOURCE_PATH)
+}
+
+#[cfg(test)]
+fn test_team_run_artifact_root() -> PathBuf {
+    let unique = format!(
+        "nuka-world-team-run-artifacts-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    );
+
+    std::env::temp_dir().join(unique)
 }
 
 fn knowledge_status(

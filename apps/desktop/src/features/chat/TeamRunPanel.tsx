@@ -19,6 +19,33 @@ type TeamRunPanelProps = {
   onContinue: (prompt: string) => Promise<void> | void;
 };
 
+function groupFileChanges(run: TeamRunRecord) {
+  const batches = new Map<
+    string,
+    { label: string; changes: TeamRunRecord["events"] }
+  >();
+
+  for (const event of run.events) {
+    if (event.kind !== "file_change") {
+      continue;
+    }
+
+    const key = event.toolCallId ?? event.title;
+    const batch = batches.get(key);
+    if (batch) {
+      batch.changes.push(event);
+      continue;
+    }
+
+    batches.set(key, {
+      label: event.title,
+      changes: [event],
+    });
+  }
+
+  return Array.from(batches.values());
+}
+
 export function TeamRunPanel({
   run,
   error,
@@ -32,12 +59,35 @@ export function TeamRunPanel({
   const [agentName, setAgentName] = useState("");
   const [agentRole, setAgentRole] = useState("");
   const [agentResponsibility, setAgentResponsibility] = useState("");
+  const fileChangeBatches = groupFileChanges(run);
 
   return (
     <section aria-label="Team run session" className="team-run-panel">
       <AgentTeamStrip agents={run.agents} leadAgentId={run.leadAgentId} />
       <RunCharterCard run={run} />
       <RunEventFeed agents={run.agents} events={run.events} onBranch={onBranchEvent} />
+      {fileChangeBatches.length > 0 ? (
+        <section aria-label="File timeline" className="team-run-panel__timeline">
+          <div className="team-run-panel__timeline-header">
+            <h2>File timeline</h2>
+          </div>
+          <div className="team-run-panel__timeline-groups">
+            {fileChangeBatches.map((batch) => (
+              <article className="team-run-panel__timeline-group ui-card" key={batch.label}>
+                <h3>{batch.label}</h3>
+                <ul className="team-run-panel__timeline-list">
+                  {batch.changes.map((change) => (
+                    <li className="team-run-panel__timeline-item" key={change.id}>
+                      <span className="team-run-panel__timeline-file">{change.content}</span>
+                      <span className="team-run-panel__timeline-kind">{change.status}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className="team-run-panel__composer ui-card">
         {error ? <div className="team-run-panel__error">{error}</div> : null}
