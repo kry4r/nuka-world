@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod chat;
 pub mod db;
+pub mod knowledge;
 pub mod memory;
 pub mod migrations;
 pub mod providers;
@@ -11,12 +12,11 @@ pub mod team_runs;
 pub mod teams;
 pub mod tools;
 pub mod workflows;
-pub mod knowledge;
 
 #[cfg(test)]
 mod tests {
     use nuka_domain::{
-        agent::AgentPreset,
+        agent::{AgentArchetype, AgentPreset},
         chat::{ChatMessage, ChatMessageRole, ChatSessionSummary},
         knowledge::{KnowledgeCollection, KnowledgeConnector, KnowledgeConnectorKind},
         memory::MemoryScope,
@@ -51,6 +51,19 @@ mod tests {
             description: "Checks plans and code".to_string(),
             system_prompt: "Review changes carefully.".to_string(),
             provider_id: Some("provider-local".to_string()),
+            archetype: AgentArchetype {
+                id: "archetype-research".to_string(),
+                title: "Research Analyst".to_string(),
+                family: "research_and_analysis".to_string(),
+                domain_focus: "Research synthesis".to_string(),
+                objective_pattern: "Investigate, compare, and summarize".to_string(),
+                communication_style: "Calm and evidence-first".to_string(),
+                default_tool_posture: "Use search and synthesis tools sparingly".to_string(),
+                memory_posture: "Keep durable findings and discard transient chatter".to_string(),
+                escalation_posture: "Escalate when evidence conflicts".to_string(),
+                safety_posture: "Avoid unsupported claims".to_string(),
+                output_contract: "Return a concise findings brief".to_string(),
+            },
             knowledge_collection_ids: vec!["knowledge-rust".to_string()],
             memory_scope_ids: vec!["memory-review".to_string()],
             tool_bindings: vec![AgentToolBinding::allowed("codex")],
@@ -266,10 +279,11 @@ mod tests {
         );
         assert!(providers[0].secret_present);
 
-        let token: String = sqlx::query_scalar("select token from providers where id = 'provider-live'")
-            .fetch_one(&db)
-            .await
-            .unwrap();
+        let token: String =
+            sqlx::query_scalar("select token from providers where id = 'provider-live'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
         assert_eq!(token, "");
     }
 
@@ -306,8 +320,19 @@ mod tests {
 
         let items = repo.list().await.unwrap();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].tool_bindings, vec![AgentToolBinding::allowed("codex")]);
-        assert_eq!(items[0].knowledge_collection_ids, vec!["knowledge-rust".to_string()]);
+        assert_eq!(
+            items[0].tool_bindings,
+            vec![AgentToolBinding::allowed("codex")]
+        );
+        assert_eq!(
+            items[0].knowledge_collection_ids,
+            vec!["knowledge-rust".to_string()]
+        );
+        assert_eq!(items[0].archetype.family, "research_and_analysis");
+        assert_eq!(
+            items[0].archetype.output_contract,
+            "Return a concise findings brief"
+        );
     }
 
     #[tokio::test]
@@ -374,10 +399,7 @@ mod tests {
         crate::migrations::run(&db).await.unwrap();
 
         let runtime_repo = crate::runtime_state::RuntimeStateRepository::new(db.clone());
-        runtime_repo
-            .put("knowledge-engine", "ready")
-            .await
-            .unwrap();
+        runtime_repo.put("knowledge-engine", "ready").await.unwrap();
 
         let memory_repo = crate::memory::MemoryScopeRepository::new(db.clone());
         memory_repo.upsert(sample_scope()).await.unwrap();
@@ -387,8 +409,7 @@ mod tests {
 
         assert_eq!(runtime_value.as_deref(), Some("ready"));
         assert!(scopes.iter().any(|scope| {
-            scope.id == "memory-review"
-                && scope.workflow_id.as_deref() == Some("workflow-review")
+            scope.id == "memory-review" && scope.workflow_id.as_deref() == Some("workflow-review")
         }));
     }
 

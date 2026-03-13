@@ -14,6 +14,7 @@ pub struct AgentRecord {
     pub description: String,
     pub system_prompt: String,
     pub provider_id: Option<String>,
+    pub archetype: AgentArchetypeRecord,
     pub tool_names: Vec<String>,
 }
 
@@ -25,7 +26,25 @@ pub struct AgentInput {
     pub description: String,
     pub system_prompt: String,
     pub provider_id: Option<String>,
+    #[serde(default)]
+    pub archetype: Option<AgentArchetypeRecord>,
     pub tool_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentArchetypeRecord {
+    pub id: String,
+    pub title: String,
+    pub family: String,
+    pub domain_focus: String,
+    pub objective_pattern: String,
+    pub communication_style: String,
+    pub default_tool_posture: String,
+    pub memory_posture: String,
+    pub escalation_posture: String,
+    pub safety_posture: String,
+    pub output_contract: String,
 }
 
 #[tauri::command]
@@ -74,9 +93,7 @@ pub async fn generate_agent_draft(
         .map_err(|error| error.to_string())
 }
 
-async fn list_agents_inner(
-    state: &crate::app_state::AppState,
-) -> anyhow::Result<Vec<AgentRecord>> {
+async fn list_agents_inner(state: &crate::app_state::AppState) -> anyhow::Result<Vec<AgentRecord>> {
     Ok(state
         .agents_service()
         .list_agents()
@@ -120,18 +137,28 @@ async fn generate_agent_draft_inner(
         description: draft_description_from_prompt(prompt),
         system_prompt: format!("You are {}. {}", draft_name_from_prompt(prompt), prompt),
         provider_id: Some(provider.id),
+        archetype: AgentArchetypeRecord::from(
+            nuka_domain::agent::AgentArchetype::inferred_from_text(
+                prompt,
+                &draft_description_from_prompt(prompt),
+            ),
+        ),
         tool_names: default_tool_names(),
     })
 }
 
 impl AgentInput {
     fn into_preset(self) -> nuka_domain::agent::AgentPreset {
+        let archetype = self.archetype.map(Into::into).unwrap_or_else(|| {
+            nuka_domain::agent::AgentArchetype::inferred_from_text(&self.name, &self.description)
+        });
         nuka_domain::agent::AgentPreset {
             id: self.id,
             name: self.name,
             description: self.description,
             system_prompt: self.system_prompt,
             provider_id: self.provider_id,
+            archetype,
             knowledge_collection_ids: Vec::new(),
             memory_scope_ids: Vec::new(),
             tool_bindings: self
@@ -151,12 +178,49 @@ impl From<nuka_domain::agent::AgentPreset> for AgentRecord {
             description: value.description,
             system_prompt: value.system_prompt,
             provider_id: value.provider_id,
+            archetype: AgentArchetypeRecord::from(value.archetype),
             tool_names: value
                 .tool_bindings
                 .into_iter()
                 .filter(|binding| binding.allowed)
                 .map(|binding| binding.tool_id)
                 .collect(),
+        }
+    }
+}
+
+impl From<AgentArchetypeRecord> for nuka_domain::agent::AgentArchetype {
+    fn from(value: AgentArchetypeRecord) -> Self {
+        Self {
+            id: value.id,
+            title: value.title,
+            family: value.family,
+            domain_focus: value.domain_focus,
+            objective_pattern: value.objective_pattern,
+            communication_style: value.communication_style,
+            default_tool_posture: value.default_tool_posture,
+            memory_posture: value.memory_posture,
+            escalation_posture: value.escalation_posture,
+            safety_posture: value.safety_posture,
+            output_contract: value.output_contract,
+        }
+    }
+}
+
+impl From<nuka_domain::agent::AgentArchetype> for AgentArchetypeRecord {
+    fn from(value: nuka_domain::agent::AgentArchetype) -> Self {
+        Self {
+            id: value.id,
+            title: value.title,
+            family: value.family,
+            domain_focus: value.domain_focus,
+            objective_pattern: value.objective_pattern,
+            communication_style: value.communication_style,
+            default_tool_posture: value.default_tool_posture,
+            memory_posture: value.memory_posture,
+            escalation_posture: value.escalation_posture,
+            safety_posture: value.safety_posture,
+            output_contract: value.output_contract,
         }
     }
 }
@@ -201,7 +265,13 @@ fn slugify(value: &str) -> String {
     value
         .to_ascii_lowercase()
         .chars()
-        .map(|character| if character.is_ascii_alphanumeric() { character } else { '-' })
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()
@@ -221,6 +291,19 @@ mod tests {
                 description: "Synthesis and retrieval".to_string(),
                 system_prompt: "Summarize findings and cite sources.".to_string(),
                 provider_id: Some("provider-local".to_string()),
+                archetype: Some(super::AgentArchetypeRecord {
+                    id: "archetype-research".to_string(),
+                    title: "Research Analyst".to_string(),
+                    family: "research_and_analysis".to_string(),
+                    domain_focus: "Research synthesis".to_string(),
+                    objective_pattern: "Investigate and summarize".to_string(),
+                    communication_style: "Calm and evidence-first".to_string(),
+                    default_tool_posture: "Prefer search and synthesis".to_string(),
+                    memory_posture: "Keep durable findings".to_string(),
+                    escalation_posture: "Escalate when evidence conflicts".to_string(),
+                    safety_posture: "Avoid unsupported claims".to_string(),
+                    output_contract: "Return a findings brief".to_string(),
+                }),
                 tool_names: vec!["codex".to_string(), "search_knowledge".to_string()],
             },
         )
@@ -230,6 +313,7 @@ mod tests {
         let items = super::list_agents_inner(&state).await.unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].name, "Researcher");
+        assert_eq!(items[0].archetype.family, "research_and_analysis");
     }
 
     #[tokio::test]
@@ -243,7 +327,11 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .save_provider(provider)
+            .await
+            .unwrap();
         state
             .provider_service()
             .set_default_provider(&provider_id)
@@ -258,6 +346,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(draft.provider_id.as_deref(), Some(provider_id.as_str()));
-        assert!(draft.tool_names.iter().any(|tool_name| tool_name == "codex"));
+        assert!(draft
+            .tool_names
+            .iter()
+            .any(|tool_name| tool_name == "codex"));
+        assert_ne!(draft.archetype.family, "software_only");
     }
 }

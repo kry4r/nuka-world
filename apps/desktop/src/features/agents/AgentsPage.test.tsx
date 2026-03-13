@@ -19,6 +19,19 @@ const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
             description: "Synthesis and retrieval",
             systemPrompt: "Summarize findings and cite sources.",
             providerId: "provider-local",
+            archetype: {
+              id: "archetype-research",
+              title: "Research Analyst",
+              family: "research_and_analysis",
+              domainFocus: "Research synthesis",
+              objectivePattern: "Investigate and summarize",
+              communicationStyle: "Calm and evidence-first",
+              defaultToolPosture: "Prefer search and synthesis",
+              memoryPosture: "Keep durable findings",
+              escalationPosture: "Escalate when evidence conflicts",
+              safetyPosture: "Avoid unsupported claims",
+              outputContract: "Return a findings brief",
+            },
             toolNames: ["codex", "search_knowledge"],
           },
         ];
@@ -29,6 +42,19 @@ const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
           description: "Weekly digest writer",
           systemPrompt: "Write concise weekly release digests.",
           providerId: "provider-local",
+          archetype: {
+            id: "archetype-operations",
+            title: "Operations Coordinator",
+            family: "operations",
+            domainFocus: "Operational follow-through",
+            objectivePattern: "Plan, coordinate, and close loops",
+            communicationStyle: "Clear and directive",
+            defaultToolPosture: "Prefer low-cost coordination tools",
+            memoryPosture: "Retain durable checkpoints",
+            escalationPosture: "Escalate on unresolved blockers",
+            safetyPosture: "Pause before destructive actions",
+            outputContract: "Return a checkpoint plan",
+          },
           toolNames: ["codex", "git"],
         };
       case "save_agent":
@@ -140,6 +166,8 @@ describe("AgentsPage", () => {
     expect(findText(view.container, "Summarize findings and cite sources.")).toBeTruthy();
     expect(findText(view.container, "search_knowledge")).toBeTruthy();
     expect(findText(view.container, "Provider")).toBeTruthy();
+    expect(findText(view.container, "Research Analyst")).toBeTruthy();
+    expect(findText(view.container, "research_and_analysis")).toBeTruthy();
   });
 
   it("creates an agent draft via backend draft generation", async () => {
@@ -173,8 +201,65 @@ describe("AgentsPage", () => {
     );
     expect(findText(view.container, "Release Digest")).toBeTruthy();
     expect(findText(view.container, "Weekly digest writer")).toBeTruthy();
+    expect(findText(view.container, "Operations Coordinator")).toBeTruthy();
     expect(findButton(view.container, "Save Agent")).toBeTruthy();
     expect(findButton(view.container, "Delete Agent")).toBeFalsy();
+  });
+
+  it("saves custom non-software archetype metadata from the editor", async () => {
+    const savedAgents: Array<Record<string, unknown>> = [];
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "save_agent") {
+        savedAgents.push(args?.agent as Record<string, unknown>);
+        return args?.agent ?? null;
+      }
+
+      return defaultInvokeImplementation(command, args);
+    });
+
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    const createButton = findButton(view.container, "Create");
+
+    await act(async () => {
+      createButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const titleInput = view.container.querySelector(
+      'input[aria-label="Archetype title"]',
+    ) as HTMLInputElement | null;
+    const familyInput = view.container.querySelector(
+      'input[aria-label="Archetype family"]',
+    ) as HTMLInputElement | null;
+    const saveButton = findButton(view.container, "Save Agent");
+
+    await act(async () => {
+      if (!titleInput || !familyInput) {
+        throw new Error("archetype inputs missing");
+      }
+
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(titleInput, "Household Planner");
+      titleInput.dispatchEvent(new Event("input", { bubbles: true }));
+      setter?.call(familyInput, "household_and_personal_logistics");
+      familyInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(savedAgents).toHaveLength(1);
+    expect(savedAgents[0]?.archetype).toEqual(
+      expect.objectContaining({
+        title: "Household Planner",
+        family: "household_and_personal_logistics",
+      }),
+    );
   });
 
   it("keeps an explicitly empty tool list empty instead of falling back to defaults", async () => {

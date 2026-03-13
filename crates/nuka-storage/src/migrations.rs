@@ -14,11 +14,9 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     .await?;
 
     if has_visibility == 0 {
-        sqlx::query(
-            "alter table workflows add column visibility text not null default 'private'",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("alter table workflows add column visibility text not null default 'private'")
+            .execute(pool)
+            .await?;
     }
 
     let has_agent_binding_adapter_kind: i64 = sqlx::query_scalar(
@@ -42,11 +40,9 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     .await?;
 
     if has_agent_binding_purpose == 0 {
-        sqlx::query(
-            "alter table agent_tool_bindings add column purpose text not null default ''",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("alter table agent_tool_bindings add column purpose text not null default ''")
+            .execute(pool)
+            .await?;
     }
 
     let has_agent_binding_cost_class: i64 = sqlx::query_scalar(
@@ -111,8 +107,8 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     if has_team_permission_policy == 0 {
         sqlx::query("alter table teams add column permission_policy text not null default ''")
-        .execute(pool)
-        .await?;
+            .execute(pool)
+            .await?;
     }
 
     let has_provider_secret_ref: i64 = sqlx::query_scalar(
@@ -134,11 +130,9 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     .await?;
 
     if has_provider_secret_present == 0 {
-        sqlx::query(
-            "alter table providers add column secret_present integer not null default 0",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("alter table providers add column secret_present integer not null default 0")
+            .execute(pool)
+            .await?;
     }
 
     let has_provider_secret_updated_at: i64 = sqlx::query_scalar(
@@ -223,6 +217,18 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     if has_team_run_source_assignment_id == 0 {
         sqlx::query("alter table team_run_agents add column source_team_assignment_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_agent_archetype_json: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('agents') where name = 'archetype_json'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_agent_archetype_json == 0 {
+        sqlx::query("alter table agents add column archetype_json text")
             .execute(pool)
             .await?;
     }

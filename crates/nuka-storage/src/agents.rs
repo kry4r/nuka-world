@@ -20,14 +20,15 @@ impl AgentRepository {
             r#"
             insert into agents (
               id, name, description, system_prompt, provider_id,
-              knowledge_collection_ids, memory_scope_ids, created_at, updated_at
+              archetype_json, knowledge_collection_ids, memory_scope_ids, created_at, updated_at
             )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'), datetime('now'))
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'), datetime('now'))
             on conflict(id) do update set
               name = excluded.name,
               description = excluded.description,
               system_prompt = excluded.system_prompt,
               provider_id = excluded.provider_id,
+              archetype_json = excluded.archetype_json,
               knowledge_collection_ids = excluded.knowledge_collection_ids,
               memory_scope_ids = excluded.memory_scope_ids,
               updated_at = datetime('now')
@@ -38,6 +39,7 @@ impl AgentRepository {
         .bind(agent.description)
         .bind(agent.system_prompt)
         .bind(agent.provider_id)
+        .bind(encode_json(&agent.archetype)?)
         .bind(encode_list(&agent.knowledge_collection_ids))
         .bind(encode_list(&agent.memory_scope_ids))
         .execute(&mut *tx)
@@ -73,7 +75,7 @@ impl AgentRepository {
 
     pub async fn list(&self) -> anyhow::Result<Vec<AgentPreset>> {
         let rows = sqlx::query(
-            "select id, name, description, system_prompt, provider_id, knowledge_collection_ids, memory_scope_ids from agents order by created_at asc",
+            "select id, name, description, system_prompt, provider_id, archetype_json, knowledge_collection_ids, memory_scope_ids from agents order by created_at asc",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -102,7 +104,21 @@ impl AgentRepository {
                 description: row.get("description"),
                 system_prompt: row.get("system_prompt"),
                 provider_id: row.get("provider_id"),
-                knowledge_collection_ids: decode_list(&row.get::<String, _>("knowledge_collection_ids")),
+                archetype: row
+                    .try_get::<String, _>("archetype_json")
+                    .ok()
+                    .and_then(|value| {
+                        decode_json::<nuka_domain::agent::AgentArchetype>(&value).ok()
+                    })
+                    .unwrap_or_else(|| {
+                        nuka_domain::agent::AgentArchetype::inferred_from_text(
+                            &row.get::<String, _>("name"),
+                            &row.get::<String, _>("description"),
+                        )
+                    }),
+                knowledge_collection_ids: decode_list(
+                    &row.get::<String, _>("knowledge_collection_ids"),
+                ),
                 memory_scope_ids: decode_list(&row.get::<String, _>("memory_scope_ids")),
                 tool_bindings: bindings,
             });
@@ -148,6 +164,14 @@ fn decode_list(items: &str) -> Vec<String> {
     } else {
         items.split('\n').map(str::to_string).collect()
     }
+}
+
+fn encode_json<T: serde::Serialize>(value: &T) -> anyhow::Result<String> {
+    Ok(serde_json::to_string(value)?)
+}
+
+fn decode_json<T: serde::de::DeserializeOwned>(value: &str) -> anyhow::Result<T> {
+    Ok(serde_json::from_str(value)?)
 }
 
 fn adapter_kind_as_str(kind: &ToolAdapterKind) -> &'static str {

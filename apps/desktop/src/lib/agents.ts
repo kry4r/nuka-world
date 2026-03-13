@@ -4,12 +4,27 @@ export type ToolBindingSetResponse = {
   names: string[];
 };
 
+export type AgentArchetypeRecord = {
+  id: string;
+  title: string;
+  family: string;
+  domainFocus: string;
+  objectivePattern: string;
+  communicationStyle: string;
+  defaultToolPosture: string;
+  memoryPosture: string;
+  escalationPosture: string;
+  safetyPosture: string;
+  outputContract: string;
+};
+
 export type AgentRecord = {
   id: string;
   name: string;
   description: string;
   systemPrompt: string;
   providerId: string | null;
+  archetype?: AgentArchetypeRecord;
   toolNames: string[];
 };
 

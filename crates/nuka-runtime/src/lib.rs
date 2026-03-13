@@ -7,21 +7,18 @@ pub mod providers;
 pub mod runtime_events;
 pub mod session;
 pub mod settings_service;
-pub mod team_service;
 pub mod team_run_service;
-pub mod workspace_sessions;
+pub mod team_service;
 pub mod workflow;
 pub mod workflow_world;
+pub mod workspace_sessions;
 pub mod world;
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        agents::AgentsService,
-        chat_service::ChatService,
-        knowledge_service::KnowledgeService,
-        memory_service::MemoryService,
-        providers::ProvidersService,
+        agents::AgentsService, chat_service::ChatService, knowledge_service::KnowledgeService,
+        memory_service::MemoryService, providers::ProvidersService,
         settings_service::SettingsService,
     };
     use nuka_domain::{
@@ -89,7 +86,10 @@ mod tests {
         provider.secret_ref = Some("provider:provider-local".to_string());
         provider.secret_present = true;
         service.save_provider(provider).await.unwrap();
-        service.set_default_provider("provider-local").await.unwrap();
+        service
+            .set_default_provider("provider-local")
+            .await
+            .unwrap();
 
         let provider = service.resolve_default_provider().await.unwrap();
         assert_eq!(provider.model, "gpt-oss");
@@ -106,6 +106,19 @@ mod tests {
                 description: "Checks plans and code".to_string(),
                 system_prompt: "Review carefully.".to_string(),
                 provider_id: Some("provider-local".to_string()),
+                archetype: nuka_domain::agent::AgentArchetype {
+                    id: "archetype-operations".to_string(),
+                    title: "Operations Coordinator".to_string(),
+                    family: "operations".to_string(),
+                    domain_focus: "Operational follow-through".to_string(),
+                    objective_pattern: "Plan, coordinate, and close loops".to_string(),
+                    communication_style: "Clear and directive".to_string(),
+                    default_tool_posture: "Prefer low-cost coordination tools".to_string(),
+                    memory_posture: "Retain durable checkpoints".to_string(),
+                    escalation_posture: "Escalate on unresolved blockers".to_string(),
+                    safety_posture: "Pause before destructive actions".to_string(),
+                    output_contract: "Return a checkpoint plan".to_string(),
+                },
                 knowledge_collection_ids: vec!["knowledge-rust".to_string()],
                 memory_scope_ids: vec!["memory-review".to_string()],
                 tool_bindings: vec![AgentToolBinding::allowed("codex")],
@@ -115,13 +128,21 @@ mod tests {
 
         let items = service.list_agents().await.unwrap();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].tool_bindings, vec![AgentToolBinding::allowed("codex")]);
+        assert_eq!(
+            items[0].tool_bindings,
+            vec![AgentToolBinding::allowed("codex")]
+        );
+        assert_eq!(items[0].archetype.family, "operations");
+        assert_eq!(items[0].archetype.title, "Operations Coordinator");
     }
 
     #[tokio::test]
     async fn knowledge_service_reports_engine_health() {
         let service = KnowledgeService::new_for_test_missing_engine();
-        assert!(matches!(service.health().await, EngineHealth::Unavailable { .. }));
+        assert!(matches!(
+            service.health().await,
+            EngineHealth::Unavailable { .. }
+        ));
     }
 
     #[tokio::test]

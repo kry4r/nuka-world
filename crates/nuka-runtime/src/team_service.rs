@@ -1,7 +1,5 @@
 use nuka_integrations::providers::{
-    openai::OpenAiCompatibleProvider,
-    types::OpenAiChatMessage,
-    ChatCompletionProvider,
+    openai::OpenAiCompatibleProvider, types::OpenAiChatMessage, ChatCompletionProvider,
 };
 
 #[derive(Debug, Clone)]
@@ -126,7 +124,7 @@ impl TeamService {
                     }
                   ]
                 }"#
-                .to_string(),
+            .to_string(),
         );
         service
     }
@@ -147,7 +145,10 @@ impl TeamService {
             None => {
                 let response = self
                     .provider_client
-                    .complete_chat(&provider, vec![OpenAiChatMessage::user(team_generation_prompt(goal))])
+                    .complete_chat(
+                        &provider,
+                        vec![OpenAiChatMessage::user(team_generation_prompt(goal))],
+                    )
                     .await?;
                 response
                     .choices
@@ -206,7 +207,9 @@ impl TeamService {
         };
 
         if self.provider_service.list_providers().await?.is_empty() {
-            self.provider_service.save_provider(provider.clone()).await?;
+            self.provider_service
+                .save_provider(provider.clone())
+                .await?;
             self.provider_service
                 .set_default_provider(&provider.id)
                 .await?;
@@ -232,8 +235,14 @@ impl TeamService {
             return Ok(());
         }
 
-        let status = self.provider_service.test_provider_connection(provider).await?;
-        if matches!(status, nuka_domain::provider::ProviderConnectionStatus::Ready) {
+        let status = self
+            .provider_service
+            .test_provider_connection(provider)
+            .await?;
+        if matches!(
+            status,
+            nuka_domain::provider::ProviderConnectionStatus::Ready
+        ) {
             Ok(())
         } else {
             anyhow::bail!(
@@ -281,6 +290,10 @@ fn hydrate_generated_team(
             description: format!("{}: {}", agent.role, responsibility),
             system_prompt: system_prompt.clone(),
             provider_id: Some(provider_id.to_string()),
+            archetype: nuka_domain::agent::AgentArchetype::inferred_from_text(
+                &agent.role,
+                &responsibility,
+            ),
             knowledge_collection_ids: Vec::new(),
             memory_scope_ids: Vec::new(),
             tool_bindings: tool_bindings.clone(),
@@ -315,20 +328,20 @@ fn hydrate_generated_team(
 
     Ok((
         nuka_domain::team::Team {
-        id: team_id.clone(),
-        name: draft.name,
-        goal: goal.to_string(),
-        summary: draft.summary,
-        prompt_constraints: json_field_to_storage_text(draft.prompt_constraints),
-        permission_policy: json_field_to_storage_text(draft.permission_policy),
-        success_criteria: json_field_to_storage_text(draft.success_criteria),
-        coordination_policy: json_field_to_storage_text(draft.coordination_policy),
-        created_at: String::new(),
-        updated_at: String::new(),
-        status: nuka_domain::team::TeamStatus::Ready,
-        agents,
-        agent_assignments,
-    },
+            id: team_id.clone(),
+            name: draft.name,
+            goal: goal.to_string(),
+            summary: draft.summary,
+            prompt_constraints: json_field_to_storage_text(draft.prompt_constraints),
+            permission_policy: json_field_to_storage_text(draft.permission_policy),
+            success_criteria: json_field_to_storage_text(draft.success_criteria),
+            coordination_policy: json_field_to_storage_text(draft.coordination_policy),
+            created_at: String::new(),
+            updated_at: String::new(),
+            status: nuka_domain::team::TeamStatus::Ready,
+            agents,
+            agent_assignments,
+        },
         generated_agents,
     ))
 }
@@ -369,10 +382,7 @@ fn normalize_agent_responsibility(agent: &GeneratedTeamAgentDraft) -> String {
     }
 }
 
-fn normalize_agent_system_prompt(
-    agent: &GeneratedTeamAgentDraft,
-    responsibility: &str,
-) -> String {
+fn normalize_agent_system_prompt(agent: &GeneratedTeamAgentDraft, responsibility: &str) -> String {
     let trimmed = agent.system_prompt.trim();
     if trimmed.is_empty() {
         format!(
@@ -384,28 +394,24 @@ fn normalize_agent_system_prompt(
     }
 }
 
-fn normalize_tool_bindings(
-    value: &serde_json::Value,
-) -> Vec<nuka_domain::tool::AgentToolBinding> {
+fn normalize_tool_bindings(value: &serde_json::Value) -> Vec<nuka_domain::tool::AgentToolBinding> {
     match value {
-        serde_json::Value::Array(items) => items
-            .iter()
-            .filter_map(parse_tool_binding)
-            .collect(),
+        serde_json::Value::Array(items) => items.iter().filter_map(parse_tool_binding).collect(),
         _ => Vec::new(),
     }
 }
 
-fn parse_tool_binding(
-    value: &serde_json::Value,
-) -> Option<nuka_domain::tool::AgentToolBinding> {
+fn parse_tool_binding(value: &serde_json::Value) -> Option<nuka_domain::tool::AgentToolBinding> {
     if let Ok(binding) =
         serde_json::from_value::<nuka_domain::tool::AgentToolBinding>(value.clone())
     {
         return Some(binding);
     }
 
-    let tool = value.get("tool").and_then(serde_json::Value::as_str)?.trim();
+    let tool = value
+        .get("tool")
+        .and_then(serde_json::Value::as_str)?
+        .trim();
     let purpose = value
         .get("description")
         .and_then(serde_json::Value::as_str)
@@ -479,7 +485,10 @@ mod tests {
         assert!(!team.id.is_empty());
         assert!(team.agents.len() >= 2);
         assert_eq!(team.agent_assignments.len(), team.agents.len());
-        assert!(team.agents.iter().any(|agent| !agent.tool_bindings.is_empty()));
+        assert!(team
+            .agents
+            .iter()
+            .any(|agent| !agent.tool_bindings.is_empty()));
 
         let saved_agents = nuka_storage::agents::AgentRepository::new(service.pool.clone())
             .list()
@@ -504,7 +513,11 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        service.provider_service.save_provider(provider).await.unwrap();
+        service
+            .provider_service
+            .save_provider(provider)
+            .await
+            .unwrap();
         service
             .provider_service
             .set_default_provider(&provider_id)
@@ -583,7 +596,9 @@ mod tests {
         );
         assert!(team.agents[0].system_prompt.contains("PlannerAgent"));
         assert!(!team.agents[0].tool_bindings.is_empty());
-        assert!(team.prompt_constraints.contains("All prompts must be in English."));
+        assert!(team
+            .prompt_constraints
+            .contains("All prompts must be in English."));
         assert!(team.permission_policy.contains("\"allow\""));
         assert!(team.success_criteria.contains("containsOutline"));
         assert!(team.coordination_policy.contains("PlannerAgent"));

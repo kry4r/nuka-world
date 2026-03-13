@@ -6,15 +6,33 @@ import {
   generateAgentDraft,
   listAgents,
   saveAgent,
+  type AgentArchetypeRecord,
   type AgentRecord,
 } from "@/lib/agents";
 import { ToolBindingsPanel } from "./ToolBindingsPanel";
 
 const DEFAULT_REQUEST = "Create an agent that researches release notes and writes short weekly digests.";
 
+function defaultArchetype(): AgentArchetypeRecord {
+  return {
+    id: "archetype-general",
+    title: "General Operator",
+    family: "general",
+    domainFocus: "General execution",
+    objectivePattern: "Understand the goal and move it forward",
+    communicationStyle: "Clear and pragmatic",
+    defaultToolPosture: "Use the least-cost tool that can finish the work",
+    memoryPosture: "Retain durable context and drop transient chatter",
+    escalationPosture: "Escalate when blocked or when risk rises",
+    safetyPosture: "Avoid unsupported or destructive actions",
+    outputContract: "Return a concise actionable result",
+  };
+}
+
 function cloneAgent(agent: AgentRecord): AgentRecord {
   return {
     ...agent,
+    archetype: { ...(agent.archetype ?? defaultArchetype()) },
     toolNames: [...agent.toolNames],
   };
 }
@@ -115,6 +133,7 @@ export function AgentsPage() {
     try {
       const payload = {
         ...editorAgent,
+        archetype: editorAgent.archetype ?? defaultArchetype(),
         toolNames: parseToolNames(toolNamesInput),
       };
       const saved = await saveAgent(payload);
@@ -161,6 +180,7 @@ export function AgentsPage() {
   };
 
   const detailTone = draftAgent ? "warning" : "accent";
+  const editorArchetype = editorAgent?.archetype ?? defaultArchetype();
 
   return (
     <div className="page-layout agents-page">
@@ -257,6 +277,8 @@ export function AgentsPage() {
                   </div>
                   <h2>{editorAgent.name}</h2>
                   <p>{editorAgent.description}</p>
+                  <p>{editorArchetype.title}</p>
+                  <p>{editorArchetype.family}</p>
                 </div>
                 <div className="agents-detail__actions">
                   <button
@@ -337,6 +359,50 @@ export function AgentsPage() {
                   <span className="agents-field__label">Provider</span>
                   <div className="agents-readonly">Provider: {editorAgent.providerId ?? "No provider"}</div>
                 </div>
+
+                <label className="agents-field">
+                  <span className="agents-field__label">Archetype title</span>
+                  <input
+                    aria-label="Archetype title"
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: {
+                                ...(current.archetype ?? defaultArchetype()),
+                                title: event.target.value,
+                              },
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorArchetype.title}
+                  />
+                </label>
+
+                <label className="agents-field">
+                  <span className="agents-field__label">Archetype family</span>
+                  <input
+                    aria-label="Archetype family"
+                    className="field-input"
+                    onChange={(event) =>
+                      setEditorAgent((current) =>
+                        current
+                          ? {
+                              ...current,
+                              archetype: {
+                                ...(current.archetype ?? defaultArchetype()),
+                                family: event.target.value,
+                              },
+                            }
+                          : current,
+                      )
+                    }
+                    value={editorArchetype.family}
+                  />
+                </label>
 
                 <ToolBindingsPanel
                   inputValue={toolNamesInput}
