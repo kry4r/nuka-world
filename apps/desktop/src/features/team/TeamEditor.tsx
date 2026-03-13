@@ -7,8 +7,6 @@ type TeamEditorProps = {
   availableAgents: AgentRecord[];
   isSaving: boolean;
   isStartingRun: boolean;
-  notice: string | null;
-  error: string | null;
   team: TeamRecord | null;
   onAddAssignedAgent: (agentId: string) => void;
   onChangeField: (
@@ -25,8 +23,6 @@ export function TeamEditor({
   availableAgents,
   isSaving,
   isStartingRun,
-  notice,
-  error,
   team,
   onAddAssignedAgent,
   onChangeField,
@@ -40,9 +36,6 @@ export function TeamEditor({
 
   return (
     <section className="team-editor">
-      {error ? <div className="team-editor__error">{error}</div> : null}
-      {notice ? <div className="team-editor__notice">{notice}</div> : null}
-
       {team ? (
         <div className="team-editor__detail" data-testid="team-detail">
           <div className="team-editor__summary">

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { listAgents, type AgentRecord } from "@/lib/agents";
+import { emitToast } from "@/lib/toast";
 import {
   listTeams,
   startTeamRun,
@@ -97,6 +98,10 @@ function normalizeTeam(team: TeamRecord): TeamRecord {
   };
 }
 
+function toErrorMessage(caughtError: unknown) {
+  return caughtError instanceof Error ? caughtError.message : String(caughtError);
+}
+
 export function TeamPage() {
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [availableAgents, setAvailableAgents] = useState<AgentRecord[]>([]);
@@ -104,8 +109,6 @@ export function TeamPage() {
   const [editorTeam, setEditorTeam] = useState<TeamRecord | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isStartingRun, setIsStartingRun] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -126,8 +129,10 @@ export function TeamPage() {
           return;
         }
 
-        const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-        setError(message);
+        emitToast({
+          message: toErrorMessage(caughtError),
+          tone: "error",
+        });
       });
 
     return () => {
@@ -237,8 +242,6 @@ export function TeamPage() {
     }
 
     setIsSaving(true);
-    setError(null);
-    setNotice(null);
 
     try {
       const saved = await updateTeam(editorTeam);
@@ -246,10 +249,15 @@ export function TeamPage() {
         current.map((team) => (team.id === saved.id ? saved : team)),
       );
       setEditorTeam(cloneTeam(saved));
-      setNotice("Team saved.");
+      emitToast({
+        message: "Team saved.",
+        tone: "success",
+      });
     } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsSaving(false);
     }
@@ -261,12 +269,13 @@ export function TeamPage() {
     }
 
     setIsStartingRun(true);
-    setError(null);
-    setNotice(null);
 
     try {
       const run = await startTeamRun(editorTeam.id);
-      setNotice(`Run started: ${run.title}`);
+      emitToast({
+        message: `Run started: ${run.title}`,
+        tone: "success",
+      });
       window.dispatchEvent(
         new CustomEvent("nuka:navigate", {
           detail: {
@@ -277,8 +286,10 @@ export function TeamPage() {
         }),
       );
     } catch (caughtError) {
-      const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsStartingRun(false);
     }
@@ -295,10 +306,8 @@ export function TeamPage() {
 
         <TeamEditor
           availableAgents={availableAgents}
-          error={error}
           isSaving={isSaving}
           isStartingRun={isStartingRun}
-          notice={notice}
           onAddAssignedAgent={handleAddAssignedAgent}
           onChangeField={handleFieldChange}
           onRemoveAssignedAgent={handleRemoveAssignedAgent}

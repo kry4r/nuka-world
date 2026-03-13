@@ -211,66 +211,104 @@ async function setInputValue(container: HTMLElement, label: string, value: strin
   });
 }
 
+function captureToasts() {
+  const toasts: Array<{ message?: string; tone?: string }> = [];
+  const handleToast = (event: Event) => {
+    toasts.push((event as CustomEvent<{ message?: string; tone?: string }>).detail);
+  };
+
+  window.addEventListener("nuka:toast", handleToast as EventListener);
+
+  return {
+    toasts,
+    release: () => {
+      window.removeEventListener("nuka:toast", handleToast as EventListener);
+    },
+  };
+}
+
 describe("TeamPage", () => {
   it("keeps the page edit-only and saves description, constraints, and assigned agents", async () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
+    const toastCapture = captureToasts();
 
-    expect(findText(view.container, "Generate a Team from a goal")).toBeFalsy();
-    expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
+    try {
+      expect(findText(view.container, "Generate a Team from a goal")).toBeFalsy();
+      expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
 
-    await setInputValue(view.container, "Team description", "Tighten the release checklist before launch.");
-    await setInputValue(view.container, "Prompt constraints", "Only cite evidence found in the workspace.");
-    await setInputValue(view.container, "Permission policy", "No destructive tools and no network writes.");
-    await clickButton(view.container, "Remove Publisher");
-    await clickButton(view.container, "Add Reviewer");
-    await clickButton(view.container, "Save Changes");
+      await setInputValue(view.container, "Team description", "Tighten the release checklist before launch.");
+      await setInputValue(view.container, "Prompt constraints", "Only cite evidence found in the workspace.");
+      await setInputValue(view.container, "Permission policy", "No destructive tools and no network writes.");
+      await clickButton(view.container, "Remove Publisher");
+      await clickButton(view.container, "Add Reviewer");
+      await clickButton(view.container, "Save Changes");
 
-    const updateCall = invokeMock.mock.calls.find(([command]) => command === "update_team");
-    expect(updateCall).toBeTruthy();
+      const updateCall = invokeMock.mock.calls.find(([command]) => command === "update_team");
+      expect(updateCall).toBeTruthy();
 
-    const updatedTeam = updateCall?.[1]?.team as typeof sampleTeam;
-    expect(updatedTeam.summary).toBe("Tighten the release checklist before launch.");
-    expect(updatedTeam.promptConstraints).toBe("Only cite evidence found in the workspace.");
-    expect(updatedTeam.permissionPolicy).toBe("No destructive tools and no network writes.");
-    expect(updatedTeam.agentAssignments.map((assignment) => assignment.agentId)).toEqual([
-      "agent-moderator",
-      "agent-reviewer",
-    ]);
-    expect(updatedTeam.agents.map((agent) => agent.name)).toEqual([
-      "Moderator",
-      "Reviewer",
-    ]);
+      const updatedTeam = updateCall?.[1]?.team as typeof sampleTeam;
+      expect(updatedTeam.summary).toBe("Tighten the release checklist before launch.");
+      expect(updatedTeam.promptConstraints).toBe("Only cite evidence found in the workspace.");
+      expect(updatedTeam.permissionPolicy).toBe("No destructive tools and no network writes.");
+      expect(updatedTeam.agentAssignments.map((assignment) => assignment.agentId)).toEqual([
+        "agent-moderator",
+        "agent-reviewer",
+      ]);
+      expect(updatedTeam.agents.map((agent) => agent.name)).toEqual([
+        "Moderator",
+        "Reviewer",
+      ]);
+      expect(toastCapture.toasts).toContainEqual(
+        expect.objectContaining({
+          message: "Team saved.",
+          tone: "success",
+        }),
+      );
+      expect(findText(view.container, "Team saved.")).toBeFalsy();
+    } finally {
+      toastCapture.release();
+    }
   });
 
   it("shows persisted teams without the goal generator copy and still allows starting a run", async () => {
     const dispatchEventSpy = vi.spyOn(window, "dispatchEvent");
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
+    const toastCapture = captureToasts();
 
-    expect(findText(view.container, "Release Team")).toBeTruthy();
-    expect(findText(view.container, "Allowed tools")).toBeTruthy();
-    expect(findText(view.container, "Start Run")).toBeTruthy();
-    expect(findText(view.container, "Provider-backed teams stay persisted and can be resumed into new runs.")).toBeFalsy();
-    expect(findText(view.container, "Generate a Team from a goal")).toBeFalsy();
-    expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
-    expect(
-      Array.from(view.container.querySelectorAll("input")).find(
-        (node) => node.getAttribute("aria-label") === "Team goal",
-      ),
-    ).toBeUndefined();
+    try {
+      expect(findText(view.container, "Release Team")).toBeTruthy();
+      expect(findText(view.container, "Allowed tools")).toBeTruthy();
+      expect(findText(view.container, "Start Run")).toBeTruthy();
+      expect(findText(view.container, "Provider-backed teams stay persisted and can be resumed into new runs.")).toBeFalsy();
+      expect(findText(view.container, "Generate a Team from a goal")).toBeFalsy();
+      expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
+      expect(
+        Array.from(view.container.querySelectorAll("input")).find(
+          (node) => node.getAttribute("aria-label") === "Team goal",
+        ),
+      ).toBeUndefined();
 
-    await clickButton(view.container, "Start Run");
+      await clickButton(view.container, "Start Run");
 
-    expect(findText(view.container, "Run started: Release Team Run")).toBeTruthy();
-    expect(dispatchEventSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "nuka:navigate",
-        detail: expect.objectContaining({ page: "chat" }),
-      }),
-    );
-
-    dispatchEventSpy.mockRestore();
+      expect(toastCapture.toasts).toContainEqual(
+        expect.objectContaining({
+          message: "Run started: Release Team Run",
+          tone: "success",
+        }),
+      );
+      expect(findText(view.container, "Run started: Release Team Run")).toBeFalsy();
+      expect(dispatchEventSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "nuka:navigate",
+          detail: expect.objectContaining({ page: "chat" }),
+        }),
+      );
+    } finally {
+      toastCapture.release();
+      dispatchEventSpy.mockRestore();
+    }
   });
 
   it("centers both empty team states inside their panels", async () => {

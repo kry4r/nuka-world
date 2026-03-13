@@ -99,7 +99,6 @@ describe("TeamRunPanel", () => {
   it("renders a file timeline grouped by round for active run artifacts", async () => {
     const view = await renderIntoDocument(
       <TeamRunPanel
-        error={null}
         isBusy={false}
         onAddAgent={vi.fn()}
         onContinue={vi.fn()}

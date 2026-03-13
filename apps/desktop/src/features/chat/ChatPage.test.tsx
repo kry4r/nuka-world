@@ -490,6 +490,22 @@ function deferredValue<T>() {
   return { promise, resolve };
 }
 
+function captureToasts() {
+  const toasts: Array<{ message?: string; tone?: string }> = [];
+  const handleToast = (event: Event) => {
+    toasts.push((event as CustomEvent<{ message?: string; tone?: string }>).detail);
+  };
+
+  window.addEventListener("nuka:toast", handleToast as EventListener);
+
+  return {
+    toasts,
+    release: () => {
+      window.removeEventListener("nuka:toast", handleToast as EventListener);
+    },
+  };
+}
+
 afterEach(async () => {
   invokeMock.mockClear();
   invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
@@ -680,11 +696,7 @@ describe("ChatPage", () => {
   it("opens the external editor draft flow and injects the returned content into the composer", async () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
-    const toasts: Array<{ message?: string; tone?: string }> = [];
-    const handleToast = (event: Event) => {
-      toasts.push((event as CustomEvent<{ message?: string; tone?: string }>).detail);
-    };
-    window.addEventListener("nuka:toast", handleToast as EventListener);
+    const toastCapture = captureToasts();
 
     try {
       await setComposerValue(view.container, "Initial outline");
@@ -697,14 +709,14 @@ describe("ChatPage", () => {
 
       const textarea = view.container.querySelector("textarea") as HTMLTextAreaElement | null;
       expect(textarea?.value).toContain("Expanded draft from editor");
-      expect(toasts).toContainEqual(
+      expect(toastCapture.toasts).toContainEqual(
         expect.objectContaining({
           message: "Draft loaded from editor.",
           tone: "success",
         }),
       );
     } finally {
-      window.removeEventListener("nuka:toast", handleToast as EventListener);
+      toastCapture.release();
     }
   });
 
@@ -719,16 +731,12 @@ describe("ChatPage", () => {
 
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
-    const toasts: Array<{ message?: string; tone?: string }> = [];
-    const handleToast = (event: Event) => {
-      toasts.push((event as CustomEvent<{ message?: string; tone?: string }>).detail);
-    };
-    window.addEventListener("nuka:toast", handleToast as EventListener);
+    const toastCapture = captureToasts();
 
     try {
       await clickButton(view.container, "Draft");
 
-      expect(toasts).toContainEqual(
+      expect(toastCapture.toasts).toContainEqual(
         expect.objectContaining({
           message: "external editor path is not configured",
           tone: "error",
@@ -736,7 +744,7 @@ describe("ChatPage", () => {
       );
       expect(findText(view.container, "external editor path is not configured")).toBeFalsy();
     } finally {
-      window.removeEventListener("nuka:toast", handleToast as EventListener);
+      toastCapture.release();
     }
   });
 
@@ -772,41 +780,86 @@ describe("ChatPage", () => {
   it("requires a saved team selection before starting a run from choose team mode", async () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
+    const toastCapture = captureToasts();
 
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    try {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
 
-    await clickButton(view.container, "+");
-    await clickButton(view.container, "Choose team");
-    await setComposerValue(view.container, "Kick off the release run");
-    await clickButton(view.container, "Send");
+      await clickButton(view.container, "+");
+      await clickButton(view.container, "Choose team");
+      await setComposerValue(view.container, "Kick off the release run");
+      await clickButton(view.container, "Send");
 
-    expect(startTeamRunMock).not.toHaveBeenCalled();
-    expect(findText(view.container, "Select a team before sending.")).toBeTruthy();
+      expect(startTeamRunMock).not.toHaveBeenCalled();
+      expect(toastCapture.toasts).toContainEqual(
+        expect.objectContaining({
+          message: "Select a team before sending.",
+          tone: "error",
+        }),
+      );
+      expect(findText(view.container, "Select a team before sending.")).toBeFalsy();
+    } finally {
+      toastCapture.release();
+    }
   });
 
   it("creates a team from chat without auto-starting a run", async () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
+    const toastCapture = captureToasts();
 
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    try {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
 
-    await clickButton(view.container, "+");
-    await clickButton(view.container, "Create team");
-    await setComposerValue(view.container, "Ship the release and publish notes");
-    await clickButton(view.container, "Send");
+      await clickButton(view.container, "+");
+      await clickButton(view.container, "Create team");
+      await setComposerValue(view.container, "Ship the release and publish notes");
+      await clickButton(view.container, "Send");
 
-    expect(createTeamFromGoalMock).toHaveBeenCalledWith(
-      "Ship the release and publish notes",
-    );
-    expect(startTeamRunMock).not.toHaveBeenCalled();
-    expect(findText(view.container, "Team created: Release Team")).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Team run session"]')).toBeFalsy();
+      expect(createTeamFromGoalMock).toHaveBeenCalledWith(
+        "Ship the release and publish notes",
+      );
+      expect(startTeamRunMock).not.toHaveBeenCalled();
+      expect(toastCapture.toasts).toContainEqual(
+        expect.objectContaining({
+          message: "Team created: Release Team",
+          tone: "success",
+        }),
+      );
+      expect(findText(view.container, "Team created: Release Team")).toBeFalsy();
+      expect(view.container.querySelector('[aria-label="Team run session"]')).toBeFalsy();
+    } finally {
+      toastCapture.release();
+    }
+  });
+
+  it("emits a toast when direct routing fails without rendering composer inline feedback", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+    const toastCapture = captureToasts();
+
+    try {
+      await setComposerValue(view.container, "Broken provider");
+      await clickButton(view.container, "Send");
+
+      expect(routeWorldPromptMock).toHaveBeenCalledWith("Broken provider", undefined);
+      expect(toastCapture.toasts).toContainEqual(
+        expect.objectContaining({
+          message: "default provider is not configured",
+          tone: "error",
+        }),
+      );
+      expect(findText(view.container, "default provider is not configured")).toBeFalsy();
+      expect(view.container.querySelector(".composer__inline-feedback")).toBeFalsy();
+    } finally {
+      toastCapture.release();
+    }
   });
 
   it("starts a run from a selected team and continues it with the kickoff prompt", async () => {

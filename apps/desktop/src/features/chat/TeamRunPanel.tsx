@@ -12,7 +12,6 @@ export type TeamRunPanelAgentDraft = {
 
 type TeamRunPanelProps = {
   run: TeamRunRecord;
-  error: string | null;
   isBusy: boolean;
   onAddAgent: (agent: TeamRunPanelAgentDraft) => Promise<void> | void;
   onBranchEvent?: (eventId: string) => Promise<void> | void;
@@ -48,7 +47,6 @@ function groupFileChanges(run: TeamRunRecord) {
 
 export function TeamRunPanel({
   run,
-  error,
   isBusy,
   onAddAgent,
   onBranchEvent,
@@ -90,8 +88,6 @@ export function TeamRunPanel({
       ) : null}
 
       <div className="team-run-panel__composer ui-card">
-        {error ? <div className="team-run-panel__error">{error}</div> : null}
-
         <label className="team-run-panel__field">
           <span>Follow-up</span>
           <textarea

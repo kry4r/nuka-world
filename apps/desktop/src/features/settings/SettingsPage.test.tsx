@@ -126,6 +126,22 @@ function setCheckboxValue(element: HTMLInputElement, checked: boolean) {
   element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function captureToasts() {
+  const toasts: Array<{ message?: string; tone?: string }> = [];
+  const handleToast = (event: Event) => {
+    toasts.push((event as CustomEvent<{ message?: string; tone?: string }>).detail);
+  };
+
+  window.addEventListener("nuka:toast", handleToast as EventListener);
+
+  return {
+    toasts,
+    release: () => {
+      window.removeEventListener("nuka:toast", handleToast as EventListener);
+    },
+  };
+}
+
 describe("SettingsPage", () => {
   it("renders only provider and runtime operations in the compact settings nav", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
@@ -357,49 +373,60 @@ describe("SettingsPage", () => {
   it("adds a provider draft and saves it through tauri", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
+    const toastCapture = captureToasts();
 
-    const providersButton = findButton(view.container, "Providers");
-    expect(providersButton).toBeTruthy();
+    try {
+      const providersButton = findButton(view.container, "Providers");
+      expect(providersButton).toBeTruthy();
 
-    await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+      await act(async () => {
+        providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
 
-    const addProviderButton = findButton(view.container, "+ Add Provider");
-    expect(addProviderButton).toBeTruthy();
+      const addProviderButton = findButton(view.container, "+ Add Provider");
+      expect(addProviderButton).toBeTruthy();
 
-    await act(async () => {
-      addProviderButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+      await act(async () => {
+        addProviderButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
 
-    const providerNameInputs = Array.from(
-      view.container.querySelectorAll('input[aria-label="Provider name"]'),
-    ) as HTMLInputElement[];
+      const providerNameInputs = Array.from(
+        view.container.querySelectorAll('input[aria-label="Provider name"]'),
+      ) as HTMLInputElement[];
 
-    expect(providerNameInputs).toHaveLength(2);
+      expect(providerNameInputs).toHaveLength(2);
 
-    const newestProvider = providerNameInputs[providerNameInputs.length - 1] ?? null;
+      const newestProvider = providerNameInputs[providerNameInputs.length - 1] ?? null;
 
-    await act(async () => {
-      if (!newestProvider) {
-        throw new Error("Provider name input missing");
-      }
-      setFormValue(newestProvider, "OpenRouter");
-    });
+      await act(async () => {
+        if (!newestProvider) {
+          throw new Error("Provider name input missing");
+        }
+        setFormValue(newestProvider, "OpenRouter");
+      });
 
-    const saveProviders = findButton(view.container, "Save Provider Changes");
-    expect(saveProviders?.hasAttribute("disabled")).toBe(false);
+      const saveProviders = findButton(view.container, "Save Provider Changes");
+      expect(saveProviders?.hasAttribute("disabled")).toBe(false);
 
-    await act(async () => {
-      saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+      await act(async () => {
+        saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
 
-    expect(invokeMock).toHaveBeenCalledWith(
-      "save_provider",
-      expect.objectContaining({
-        provider: expect.objectContaining({ name: "OpenRouter" }),
-      }),
-    );
+      expect(invokeMock).toHaveBeenCalledWith(
+        "save_provider",
+        expect.objectContaining({
+          provider: expect.objectContaining({ name: "OpenRouter" }),
+        }),
+      );
+      expect(toastCapture.toasts).toContainEqual(
+        expect.objectContaining({
+          message: "Provider changes saved.",
+          tone: "success",
+        }),
+      );
+    } finally {
+      toastCapture.release();
+    }
   });
 
   it("imports a provider from env without silently overwriting existing providers", async () => {
@@ -516,122 +543,145 @@ describe("SettingsPage", () => {
 
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
+    const toastCapture = captureToasts();
 
-    const providersButton = findButton(view.container, "Providers");
-    expect(providersButton).toBeTruthy();
+    try {
+      const providersButton = findButton(view.container, "Providers");
+      expect(providersButton).toBeTruthy();
 
-    await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+      await act(async () => {
+        providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
 
-    const initialSaveProviderCalls = invokeMock.mock.calls.filter(
-      ([command]) => command === "save_provider",
-    ).length;
+      const initialSaveProviderCalls = invokeMock.mock.calls.filter(
+        ([command]) => command === "save_provider",
+      ).length;
 
-    const existingProviderName = view.container.querySelector(
-      'input[aria-label="Provider name"]',
-    ) as HTMLInputElement | null;
+      const existingProviderName = view.container.querySelector(
+        'input[aria-label="Provider name"]',
+      ) as HTMLInputElement | null;
 
-    await act(async () => {
-      if (!existingProviderName) {
-        throw new Error("Existing provider name input missing");
-      }
-      setFormValue(existingProviderName, "Local Revised");
-    });
+      await act(async () => {
+        if (!existingProviderName) {
+          throw new Error("Existing provider name input missing");
+        }
+        setFormValue(existingProviderName, "Local Revised");
+      });
 
-    const addProviderButton = findButton(view.container, "+ Add Provider");
-    expect(addProviderButton).toBeTruthy();
+      const addProviderButton = findButton(view.container, "+ Add Provider");
+      expect(addProviderButton).toBeTruthy();
 
-    await act(async () => {
-      addProviderButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+      await act(async () => {
+        addProviderButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
 
-    const providerNameInputs = Array.from(
-      view.container.querySelectorAll('input[aria-label="Provider name"]'),
-    ) as HTMLInputElement[];
-    const newestProvider = providerNameInputs[providerNameInputs.length - 1] ?? null;
+      const providerNameInputs = Array.from(
+        view.container.querySelectorAll('input[aria-label="Provider name"]'),
+      ) as HTMLInputElement[];
+      const newestProvider = providerNameInputs[providerNameInputs.length - 1] ?? null;
 
-    await act(async () => {
-      if (!newestProvider) {
-        throw new Error("Newest provider input missing");
-      }
-      setFormValue(newestProvider, "OpenRouter");
-    });
+      await act(async () => {
+        if (!newestProvider) {
+          throw new Error("Newest provider input missing");
+        }
+        setFormValue(newestProvider, "OpenRouter");
+      });
 
-    const saveProviders = findButton(view.container, "Save Provider Changes");
-    expect(saveProviders).toBeTruthy();
+      const saveProviders = findButton(view.container, "Save Provider Changes");
+      expect(saveProviders).toBeTruthy();
 
-    await act(async () => {
-      saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
+      await act(async () => {
+        saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+      });
 
-    expect(findText(view.container, "save provider failed")).toBeTruthy();
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      "save_settings",
-      expect.objectContaining({
-        payload: expect.anything(),
-      }),
-    );
+      expect(toastCapture.toasts).toContainEqual(
+        expect.objectContaining({
+          message: "save provider failed",
+          tone: "error",
+        }),
+      );
+      expect(findText(view.container, "save provider failed")).toBeFalsy();
+      expect(view.container.querySelector(".settings-inline-error")).toBeFalsy();
+      expect(invokeMock).not.toHaveBeenCalledWith(
+        "save_settings",
+        expect.objectContaining({
+          payload: expect.anything(),
+        }),
+      );
 
-    await act(async () => {
-      saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
+      await act(async () => {
+        saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+      });
 
-    const saveProviderCalls = invokeMock.mock.calls.filter(
-      ([command]) => command === "save_provider",
-    );
-    const retryCalls = saveProviderCalls.slice(initialSaveProviderCalls + 2);
+      const saveProviderCalls = invokeMock.mock.calls.filter(
+        ([command]) => command === "save_provider",
+      );
+      const retryCalls = saveProviderCalls.slice(initialSaveProviderCalls + 2);
 
-    expect(retryCalls).toHaveLength(1);
-    expect(retryCalls[0]?.[1]).toEqual(
-      expect.objectContaining({
-        provider: expect.objectContaining({ name: "OpenRouter" }),
-      }),
-    );
+      expect(retryCalls).toHaveLength(1);
+      expect(retryCalls[0]?.[1]).toEqual(
+        expect.objectContaining({
+          provider: expect.objectContaining({ name: "OpenRouter" }),
+        }),
+      );
+    } finally {
+      toastCapture.release();
+    }
   });
 
   it("switches the expanded section and saves runtime toggles through tauri", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
+    const toastCapture = captureToasts();
 
-    const runtimeButton = findButton(view.container, "Runtime");
-    expect(runtimeButton).toBeTruthy();
+    try {
+      const runtimeButton = findButton(view.container, "Runtime");
+      expect(runtimeButton).toBeTruthy();
 
-    await act(async () => {
-      runtimeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+      await act(async () => {
+        runtimeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
 
-    expect(findText(view.container, "Close behavior")).toBeTruthy();
-    expect(findText(view.container, "Runtime Controls")).toBeTruthy();
+      expect(findText(view.container, "Close behavior")).toBeTruthy();
+      expect(findText(view.container, "Runtime Controls")).toBeTruthy();
 
-    const launchToggle = view.container.querySelector(
-      'input[aria-label="Launch at login"]',
-    ) as HTMLInputElement | null;
-    const saveRuntime = findButton(view.container, "Save Runtime");
+      const launchToggle = view.container.querySelector(
+        'input[aria-label="Launch at login"]',
+      ) as HTMLInputElement | null;
+      const saveRuntime = findButton(view.container, "Save Runtime");
 
-    expect(launchToggle?.checked).toBe(false);
+      expect(launchToggle?.checked).toBe(false);
 
-    await act(async () => {
-      if (!launchToggle) {
-        throw new Error("Launch toggle missing");
-      }
-      setCheckboxValue(launchToggle, true);
-    });
+      await act(async () => {
+        if (!launchToggle) {
+          throw new Error("Launch toggle missing");
+        }
+        setCheckboxValue(launchToggle, true);
+      });
 
-    expect(saveRuntime?.hasAttribute("disabled")).toBe(false);
+      expect(saveRuntime?.hasAttribute("disabled")).toBe(false);
 
-    await act(async () => {
-      saveRuntime?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+      await act(async () => {
+        saveRuntime?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
 
-    expect(invokeMock).toHaveBeenCalledWith(
-      "save_settings",
-      expect.objectContaining({
-        payload: expect.objectContaining({ launchAtLogin: true }),
-      }),
-    );
+      expect(invokeMock).toHaveBeenCalledWith(
+        "save_settings",
+        expect.objectContaining({
+          payload: expect.objectContaining({ launchAtLogin: true }),
+        }),
+      );
+      expect(toastCapture.toasts).toContainEqual(
+        expect.objectContaining({
+          message: "Runtime settings saved.",
+          tone: "success",
+        }),
+      );
+    } finally {
+      toastCapture.release();
+    }
   });
 
   it("persists the configured external editor path through runtime settings", async () => {

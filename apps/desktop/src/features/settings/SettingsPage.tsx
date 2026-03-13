@@ -8,6 +8,7 @@ import {
   saveProvider,
   type ProviderRecord,
 } from "@/lib/providers";
+import { emitToast } from "@/lib/toast";
 
 type SettingsSectionId =
   | "providers"
@@ -133,6 +134,10 @@ function sameProviderRecord(
   );
 }
 
+function toErrorMessage(caughtError: unknown) {
+  return caughtError instanceof Error ? caughtError.message : String(caughtError);
+}
+
 export function SettingsPage() {
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("providers");
@@ -144,7 +149,6 @@ export function SettingsPage() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSavingProviders, setIsSavingProviders] = useState(false);
   const [isSavingRuntime, setIsSavingRuntime] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -162,7 +166,6 @@ export function SettingsPage() {
         setInitialProviders(loadedProviders);
         setSettings(loadedSettings);
         setInitialSettings(loadedSettings);
-        setError(null);
         setIsLoaded(true);
       })
       .catch((caughtError) => {
@@ -170,9 +173,10 @@ export function SettingsPage() {
           return;
         }
 
-        const message =
-          caughtError instanceof Error ? caughtError.message : String(caughtError);
-        setError(message);
+        emitToast({
+          message: toErrorMessage(caughtError),
+          tone: "error",
+        });
         setIsLoaded(true);
       });
 
@@ -257,7 +261,6 @@ export function SettingsPage() {
     setSaving: (value: boolean) => void,
   ) => {
     setSaving(true);
-    setError(null);
 
     try {
       const saved = await invoke<SettingsPayload>("save_settings", {
@@ -265,10 +268,15 @@ export function SettingsPage() {
       });
       setSettings(saved);
       setInitialSettings(saved);
+      emitToast({
+        message: "Runtime settings saved.",
+        tone: "success",
+      });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -276,7 +284,6 @@ export function SettingsPage() {
 
   const handleSaveProviders = async () => {
     setIsSavingProviders(true);
-    setError(null);
 
     const nextProviders = [...providers];
     const nextInitialProviders = [...initialProviders];
@@ -300,12 +307,17 @@ export function SettingsPage() {
       setInitialProviders(nextInitialProviders);
       setSettings(savedSettings);
       setInitialSettings(savedSettings);
+      emitToast({
+        message: "Provider changes saved.",
+        tone: "success",
+      });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
       setProviders(nextProviders);
       setInitialProviders(nextInitialProviders);
-      setError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsSavingProviders(false);
     }
@@ -313,7 +325,6 @@ export function SettingsPage() {
 
   const handleImportProviderFromEnv = async () => {
     setIsSavingProviders(true);
-    setError(null);
 
     try {
       const imported = await importProviderFromEnv();
@@ -338,10 +349,15 @@ export function SettingsPage() {
         );
       });
       setActiveSection("providers");
+      emitToast({
+        message: `Imported provider: ${imported.name}`,
+        tone: "success",
+      });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsSavingProviders(false);
     }
@@ -354,7 +370,6 @@ export function SettingsPage() {
     }
 
     setIsSavingProviders(true);
-    setError(null);
 
     try {
       const clearedProvider = await clearProviderSecret(provider.id);
@@ -364,10 +379,15 @@ export function SettingsPage() {
       setInitialProviders((current) =>
         current.map((item, itemIndex) => (itemIndex === index ? clearedProvider : item)),
       );
+      emitToast({
+        message: `Secret cleared: ${clearedProvider.name}`,
+        tone: "success",
+      });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsSavingProviders(false);
     }
@@ -722,7 +742,6 @@ export function SettingsPage() {
           className="settings-main settings-directory__content"
           data-testid="settings-control-surface"
         >
-          {error ? <div className="settings-inline-error">{error}</div> : null}
           {!isLoaded ? <div className="settings-loading-state">Loading local settings...</div> : null}
 
           {isLoaded && activeSection === "providers" ? renderProvidersSection() : null}

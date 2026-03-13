@@ -139,6 +139,10 @@ function formatRunStatus(status: string) {
   return status.replace(/_/g, " ");
 }
 
+function toErrorMessage(caughtError: unknown) {
+  return caughtError instanceof Error ? caughtError.message : String(caughtError);
+}
+
 function latestRunEvent(run: TeamRunRecord | null, kind: string) {
   if (!run) {
     return null;
@@ -214,11 +218,8 @@ export function ChatPage() {
     requestedProviderId: "",
     requestedModel: "",
   });
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
   const [teamRunState, setTeamRunState] = useState<TeamRunRecord | null>(null);
-  const [teamRunError, setTeamRunError] = useState<string | null>(null);
   const [isTeamRunBusy, setIsTeamRunBusy] = useState(false);
   const [isDrafting, setIsDrafting] = useState(false);
   const activeDirectSession =
@@ -309,7 +310,6 @@ export function ChatPage() {
 
   useEffect(() => {
     setTeamRunState(workspaceTeamRun);
-    setTeamRunError(null);
   }, [workspaceTeamRun]);
 
   useEffect(() => {
@@ -325,8 +325,6 @@ export function ChatPage() {
     setEntryMode(nextMode);
     setEntryMenuOpen(false);
     setRouteMenuOpen(false);
-    setError(null);
-    setNotice(null);
 
     if (nextMode === "choose_team") {
       setTeamPickerOpen(true);
@@ -344,8 +342,6 @@ export function ChatPage() {
     setTeamPickerOpen(false);
     setSelectedTeamId("");
     setEntryMode("direct");
-    setError(null);
-    setNotice(null);
   };
 
   const handleSend = async (nextPrompt?: string) => {
@@ -359,13 +355,14 @@ export function ChatPage() {
     }
 
     if (entryMode === "choose_team" && !selectedTeamId.trim()) {
-      setError("Select a team before sending.");
+      emitToast({
+        message: "Select a team before sending.",
+        tone: "error",
+      });
       return;
     }
 
     setPrompt("");
-    setError(null);
-    setNotice(null);
     setEntryMenuOpen(false);
     setRouteMenuOpen(false);
     setTeamPickerOpen(false);
@@ -385,7 +382,10 @@ export function ChatPage() {
         });
         setSelectedTeamId(created.id);
         setEntryMode("direct");
-        setNotice(`Team created: ${created.name}`);
+        emitToast({
+          message: `Team created: ${created.name}`,
+          tone: "success",
+        });
         return;
       }
 
@@ -416,9 +416,10 @@ export function ChatPage() {
         kind: "direct_chat",
       });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsRouting(false);
     }
@@ -430,7 +431,6 @@ export function ChatPage() {
     }
 
     setIsTeamRunBusy(true);
-    setTeamRunError(null);
     const routingRequest = buildRoutingRequest(routeDraft);
 
     try {
@@ -443,9 +443,10 @@ export function ChatPage() {
         kind: "team_run",
       });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setTeamRunError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsTeamRunBusy(false);
     }
@@ -457,7 +458,6 @@ export function ChatPage() {
     }
 
     setIsTeamRunBusy(true);
-    setTeamRunError(null);
 
     try {
       const updated = await addTeamRunAgent(activeTeamRun.id, {
@@ -478,9 +478,10 @@ export function ChatPage() {
         kind: "team_run",
       });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setTeamRunError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsTeamRunBusy(false);
     }
@@ -492,7 +493,6 @@ export function ChatPage() {
     }
 
     setIsTeamRunBusy(true);
-    setTeamRunError(null);
 
     try {
       const updated = await retryTeamRun(activeTeamRun.id);
@@ -502,9 +502,10 @@ export function ChatPage() {
         kind: "team_run",
       });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setTeamRunError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsTeamRunBusy(false);
     }
@@ -516,7 +517,6 @@ export function ChatPage() {
     }
 
     setIsTeamRunBusy(true);
-    setTeamRunError(null);
 
     try {
       const updated = await resumeTeamRun(activeTeamRun.id);
@@ -526,9 +526,10 @@ export function ChatPage() {
         kind: "team_run",
       });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setTeamRunError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsTeamRunBusy(false);
     }
@@ -539,8 +540,6 @@ export function ChatPage() {
       return;
     }
 
-    setError(null);
-    setNotice(null);
     setEntryMenuOpen(false);
     setRouteMenuOpen(false);
     setIsDrafting(true);
@@ -555,10 +554,8 @@ export function ChatPage() {
         tone: "success",
       });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
       emitToast({
-        message,
+        message: toErrorMessage(caughtError),
         tone: "error",
       });
     } finally {
@@ -572,8 +569,6 @@ export function ChatPage() {
     }
 
     setIsRouting(true);
-    setError(null);
-    setNotice(null);
 
     try {
       const branched = await branchWorkspaceSession(
@@ -586,9 +581,10 @@ export function ChatPage() {
         kind: branched.kind,
       });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsRouting(false);
     }
@@ -600,7 +596,6 @@ export function ChatPage() {
     }
 
     setIsTeamRunBusy(true);
-    setTeamRunError(null);
 
     try {
       const branched = await branchWorkspaceSession(activeTeamRun.id, "team_run", eventId);
@@ -609,9 +604,10 @@ export function ChatPage() {
         kind: branched.kind,
       });
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setTeamRunError(message);
+      emitToast({
+        message: toErrorMessage(caughtError),
+        tone: "error",
+      });
     } finally {
       setIsTeamRunBusy(false);
     }
@@ -785,13 +781,6 @@ export function ChatPage() {
         />
       ) : null}
 
-      {error ? (
-        <div className="composer__inline-feedback composer__inline-feedback--error">{error}</div>
-      ) : null}
-      {notice ? (
-        <div className="composer__inline-feedback composer__inline-feedback--notice">{notice}</div>
-      ) : null}
-
       <div
         className={`composer__bar ${
           showTeamChooser || showCreateTeamPill ? "composer__bar--pill" : ""
@@ -887,7 +876,6 @@ export function ChatPage() {
                     setTeamPickerOpen(false);
                     setEntryMode("direct");
                     setRouteMenuOpen(false);
-                    setError(null);
                   }}
                   type="button"
                 >
@@ -909,7 +897,6 @@ export function ChatPage() {
                           setSelectedTeamId(team.id);
                           setTeamPickerOpen(false);
                           setRouteMenuOpen(false);
-                          setError(null);
                         }}
                         type="button"
                       >
@@ -934,7 +921,6 @@ export function ChatPage() {
                     setTeamPickerOpen(false);
                     setEntryMode("direct");
                     setRouteMenuOpen(false);
-                    setError(null);
                   }}
                   type="button"
                 >
@@ -1027,7 +1013,6 @@ export function ChatPage() {
                 {runQueue}
                 {recoveryPanel}
                 <TeamRunPanel
-                  error={teamRunError}
                   isBusy={isTeamRunBusy}
                   onAddAgent={handleAddTeamRunAgent}
                   onBranchEvent={handleBranchTeamRun}
