@@ -180,9 +180,22 @@ vi.mock("@tauri-apps/api/window", () => ({
 const cleanups: Array<() => Promise<void>> = [];
 
 function getButtonByText(container: HTMLElement, text: string) {
-  return Array.from(container.querySelectorAll("button")).find(
-    (button) => button.textContent?.trim() === text || button.textContent?.includes(text),
-  );
+  const normalizedText = text.trim().toLowerCase();
+
+  return Array.from(container.querySelectorAll("button")).find((button) => {
+    const buttonText = button.textContent?.trim().toLowerCase() ?? "";
+    const ariaLabel = button.getAttribute("aria-label")?.trim().toLowerCase() ?? "";
+    const title = button.getAttribute("title")?.trim().toLowerCase() ?? "";
+
+    return (
+      buttonText === normalizedText ||
+      buttonText.includes(normalizedText) ||
+      ariaLabel === normalizedText ||
+      ariaLabel.includes(normalizedText) ||
+      title === normalizedText ||
+      title.includes(normalizedText)
+    );
+  });
 }
 
 async function clickButton(container: HTMLElement, text: string) {
@@ -264,6 +277,22 @@ describe("App shell", () => {
     expect(findText(view.container, "Local Provider")).toBeTruthy();
     expect(findText(view.container, "Ready for chat and team runs.")).toBeFalsy();
     expect(providerCard?.querySelector(".status-badge")).toBeFalsy();
+  });
+
+  it("deduplicates runtime status requests across shell consumers on first load", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const runtimeStatusCalls = invokeMock.mock.calls.filter(
+      ([command]) => command === "app_runtime_status",
+    );
+
+    expect(runtimeStatusCalls).toHaveLength(1);
   });
 
   it("renders a global toast when the app receives a toast event", async () => {
@@ -522,6 +551,11 @@ describe("App shell", () => {
   it("creates a team from chat without auto-starting a run", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     await clickButton(view.container, "+");
     await clickButton(view.container, "Create team");
