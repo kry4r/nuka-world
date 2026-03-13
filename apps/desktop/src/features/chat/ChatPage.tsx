@@ -4,6 +4,7 @@ import { NukaLockup } from "@/components/brand/NukaLockup";
 import {
   routeWorldPrompt,
   type ChatMessage,
+  type ChatProviderInfo,
   type ChatRouteResponse,
   type ProviderRoutingRequest,
   type ProviderRoutingState,
@@ -28,7 +29,6 @@ import {
 import { branchWorkspaceSession } from "@/lib/workspace";
 import { ConversationEventBlock } from "./ConversationEventBlock";
 import { SessionTabs } from "./SessionTabs";
-import { SuggestionStrip } from "./SuggestionStrip";
 import { TeamRunPanel, type TeamRunPanelAgentDraft } from "./TeamRunPanel";
 
 const CHAT_ONLY_SUGGESTIONS = [
@@ -131,10 +131,6 @@ function routeDraftFromState(routing: ProviderRoutingState | null): ProviderRout
   };
 }
 
-function formatFailoverReason(reason: string | null) {
-  return reason ? reason.replace(/_/g, " ") : null;
-}
-
 function formatRunStatus(status: string) {
   return status.replace(/_/g, " ");
 }
@@ -189,6 +185,21 @@ function ComposerChevronIcon() {
   );
 }
 
+function ComposerNoteIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="composer__icon composer__icon--note"
+      viewBox="0 0 16 16"
+    >
+      <path d="M4.5 2.5h5.5l2.5 2.5v8H4.5z" />
+      <path d="M10 2.5v3h3" />
+      <path d="M6.5 8h4" />
+      <path d="M6.5 10.5h3" />
+    </svg>
+  );
+}
+
 function ComposerCloseIcon() {
   return (
     <svg
@@ -207,6 +218,7 @@ export function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [session, setSession] = useState<ChatRouteResponse | null>(null);
+  const [sessionProvider, setSessionProvider] = useState<ChatProviderInfo | null>(null);
   const [entryMode, setEntryMode] = useState<ComposerEntryMode>("direct");
   const [entryMenuOpen, setEntryMenuOpen] = useState(false);
   const [routeMenuOpen, setRouteMenuOpen] = useState(false);
@@ -238,25 +250,65 @@ export function ChatPage() {
   const activeSessionRecord = activeDirectSession?.session ?? session?.session ?? null;
   const activeMessages = activeDirectSession?.messages ?? messages;
   const activeRouting = activeTeamRun?.routing ?? activeSessionRecord?.routing ?? null;
+  const activeSessionProvider =
+    sessionProvider && session?.session.id === activeSessionRecord?.id
+      ? sessionProvider
+      : null;
   const activeTeamRunStatus = activeTeamRunSummary?.status ?? activeTeamRun?.status ?? null;
   const activeBlockedEvent = latestRunEvent(activeTeamRun, "run_blocked");
   const selectedTeam = useMemo(
     () => availableTeams.find((team) => team.id === selectedTeamId) ?? null,
     [availableTeams, selectedTeamId],
   );
+  const visibleSessions = useMemo(() => {
+    const sessions = [...workspaceSessions.sessions];
+
+    if (
+      activeSessionRecord &&
+      !sessions.some(
+        (workspaceSession) =>
+          workspaceSession.id === activeSessionRecord.id &&
+          workspaceSession.kind === "direct_chat",
+      )
+    ) {
+      sessions.unshift({
+        id: activeSessionRecord.id,
+        kind: "direct_chat",
+        title: activeSessionRecord.title,
+        status: "active",
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    if (
+      activeTeamRun &&
+      !sessions.some(
+        (workspaceSession) =>
+          workspaceSession.id === activeTeamRun.id && workspaceSession.kind === "team_run",
+      )
+    ) {
+      sessions.unshift({
+        id: activeTeamRun.id,
+        kind: "team_run",
+        title: activeTeamRun.title,
+        status: activeTeamRunSummary?.status ?? activeTeamRun.status,
+        updatedAt: activeTeamRun.updatedAt,
+      });
+    }
+
+    return sessions;
+  }, [
+    activeSessionRecord,
+    activeTeamRun,
+    activeTeamRunSummary?.status,
+    workspaceSessions.sessions,
+  ]);
   const queuedTeamRuns = useMemo(
     () =>
       workspaceSessions.sessions.filter(
         (session) => session.kind === "team_run" && TEAM_RUN_QUEUE_STATUSES.has(session.status),
       ),
     [workspaceSessions.sessions],
-  );
-  const providerNameById = useMemo(
-    () =>
-      new Map(
-        availableProviders.map((provider) => [provider.id, provider.name || provider.id]),
-      ),
-    [availableProviders],
   );
   const memoryReviewDock = useMemoryReviewDock(
     "chat",
@@ -411,6 +463,7 @@ export function ChatPage() {
         : await routeWorldPrompt(value, activeSessionRecord?.id);
       setMessages((current) => [...current, ...response.messages]);
       setSession(response);
+      setSessionProvider(response.provider);
       void workspaceSessions.refresh({
         id: response.session.id,
         kind: "direct_chat",
@@ -613,23 +666,16 @@ export function ChatPage() {
     }
   };
 
-  const effectiveProviderLabel = activeRouting
-    ? providerNameById.get(activeRouting.effectiveProviderId) ??
-      activeRouting.effectiveProviderId
-    : "";
-  const fallbackProviderLabel = activeRouting?.fallbackProviderId
-    ? providerNameById.get(activeRouting.fallbackProviderId) ??
-      activeRouting.fallbackProviderId
+  const activeDirectProviderRecord = activeSessionRecord?.providerId
+    ? availableProviders.find((provider) => provider.id === activeSessionRecord.providerId) ?? null
     : null;
-  const failoverReasonLabel = formatFailoverReason(activeRouting?.failoverReason ?? null);
-  const routeSummary = [
-    routeDraft.requestedProviderId
-      ? providerNameById.get(routeDraft.requestedProviderId) ?? routeDraft.requestedProviderId
-      : "Desktop default",
-    routeDraft.requestedModel.trim() || null,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join(META_SEPARATOR);
+  const effectiveModelLabel =
+    activeRouting?.effectiveModel ??
+    activeSessionProvider?.model ??
+    activeDirectProviderRecord?.model ??
+    "";
+  const routeSummary =
+    (!activeTeamRun && effectiveModelLabel) || routeDraft.requestedModel.trim() || "Desktop default";
   const routeControls = routeMenuOpen ? (
     <div className="composer__route-menu" data-testid="chat-route-controls">
       <label className="chat-route-field">
@@ -669,28 +715,6 @@ export function ChatPage() {
           value={routeDraft.requestedModel}
         />
       </label>
-    </div>
-  ) : null;
-  const routeState = activeRouting ? (
-    <div
-      className="chat-route-state"
-      data-testid={activeTeamRun ? "team-run-routing-state" : "chat-routing-state"}
-    >
-      <span className="chat-route-state__eyebrow">Effective route</span>
-      <div className="chat-route-state__chips">
-        <span className="chat-route-state__chip">{effectiveProviderLabel}</span>
-        <span className="chat-route-state__chip">{activeRouting.effectiveModel}</span>
-        {fallbackProviderLabel ? (
-          <span className="chat-route-state__chip chat-route-state__chip--warning">
-            Fallback {fallbackProviderLabel}
-          </span>
-        ) : null}
-        {failoverReasonLabel ? (
-          <span className="chat-route-state__chip chat-route-state__chip--warning">
-            {failoverReasonLabel}
-          </span>
-        ) : null}
-      </div>
     </div>
   ) : null;
   const runQueue =
@@ -771,16 +795,6 @@ export function ChatPage() {
       aria-label="World chat composer"
       className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}
     >
-      {!landing ? (
-        <SuggestionStrip
-          disabled={!providerGate.ready || isRouting}
-          onSelect={(choice) => {
-            void handleSend(choice);
-          }}
-          suggestions={suggestionsForMode(entryMode)}
-        />
-      ) : null}
-
       <div
         className={`composer__bar ${
           showTeamChooser || showCreateTeamPill ? "composer__bar--pill" : ""
@@ -934,7 +948,7 @@ export function ChatPage() {
                 aria-expanded={routeMenuOpen}
                 aria-haspopup="dialog"
                 aria-label="Configure session route"
-                className="composer__token-action composer__token-action--route"
+                className="composer__route-trigger composer__token-action composer__token-action--route"
                 onClick={() => {
                   setEntryMenuOpen(false);
                   setTeamPickerOpen(false);
@@ -950,43 +964,33 @@ export function ChatPage() {
               </button>
               {routeControls}
             </div>
+
           </div>
 
           <div className="composer__footer-actions">
             <button
-              aria-label="Draft in external editor"
-              className="composer__token-action composer__token-action--draft"
+              aria-label="Open external draft"
+              className="composer__icon-action composer__icon-action--draft"
               disabled={isDrafting || isRouting}
               onClick={() => {
                 void handleOpenExternalDraft();
               }}
+              title="Open external draft"
               type="button"
             >
-              {isDrafting ? "Drafting..." : "Draft"}
+              <ComposerNoteIcon />
             </button>
 
             <button
               aria-label={landing ? "Send to World" : "Send"}
-              className="composer__send"
+              className="composer__send composer__send--circle"
               disabled={!providerGate.ready || isRouting || prompt.trim().length === 0}
               onClick={() => {
                 void handleSend();
               }}
               type="button"
             >
-              {landing ? (
-                <>
-                  <span className="composer__visually-hidden">
-                    {isRouting ? "..." : "Send"}
-                  </span>
-                  <ComposerSendIcon />
-                </>
-              ) : (
-                <>
-                  <span className="composer__send-label">{isRouting ? "..." : "Send"}</span>
-                  {isRouting ? null : <ComposerSendIcon />}
-                </>
-              )}
+              {isRouting ? null : <ComposerSendIcon />}
             </button>
           </div>
         </div>
@@ -999,9 +1003,11 @@ export function ChatPage() {
       <div className="page-layout__body chat-page__body">
         <div className="chat-stage">
           <SessionTabs
-            activeSessionId={workspaceSessions.activeSessionId}
+            activeSessionId={
+              workspaceSessions.activeSessionId ?? activeTeamRun?.id ?? activeSessionRecord?.id ?? null
+            }
             onSelect={handleSessionSelect}
-            sessions={workspaceSessions.sessions}
+            sessions={visibleSessions}
           />
 
           <div
@@ -1009,7 +1015,6 @@ export function ChatPage() {
           >
             {activeTeamRun ? (
               <>
-                {routeState}
                 {runQueue}
                 {recoveryPanel}
                 <TeamRunPanel
@@ -1041,7 +1046,6 @@ export function ChatPage() {
                       Direct chat
                     </span>
                   </div>
-                  {routeState}
                 </header>
 
                 <div className="chat-feed" role="log">

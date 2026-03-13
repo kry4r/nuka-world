@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "./ChatPage";
 import type { MemoryCandidate } from "@/lib/memory";
 import type { ProviderRecord } from "@/lib/providers";
+import type { ChatMessage } from "@/lib/chat";
 import type {
   RuntimeAgentInput,
   TeamRecord,
@@ -13,6 +14,44 @@ import type {
   WorkspaceSessionSummary,
 } from "@/lib/workspace";
 import { findText, renderIntoDocument } from "@/test/render";
+
+type RouteWorldPromptMockResult = {
+  session: {
+    id: string;
+    title: string;
+    providerId: string | null;
+    messageCount: number;
+    routing: {
+      requestedProviderId: string | null;
+      requestedModel: string | null;
+      effectiveProviderId: string;
+      effectiveModel: string;
+      fallbackProviderId: string | null;
+      failoverReason: string | null;
+    } | null;
+  };
+  messages: ChatMessage[];
+  provider: {
+    id: string;
+    name: string;
+    model: string;
+    baseUrl: string;
+  } | null;
+  output: string;
+  exitStatus: string;
+  routing: {
+    requestedProviderId: string | null;
+    requestedModel: string | null;
+    effectiveProviderId: string;
+    effectiveModel: string;
+    fallbackProviderId: string | null;
+    failoverReason: string | null;
+  } | null;
+  context: {
+    attachedAgents: string[];
+    attachedKnowledgeLibraries: string[];
+  };
+};
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) => {
@@ -168,7 +207,13 @@ const sampleProviders: ProviderRecord[] = [
   },
 ];
 
-const routeWorldPromptMock = vi.fn(
+const routeWorldPromptMock = vi.fn<
+  (
+    prompt: string,
+    sessionId?: string,
+    routing?: { requestedProviderId: string | null; requestedModel: string | null },
+  ) => Promise<RouteWorldPromptMockResult>
+>(
   async (
     prompt: string,
     sessionId?: string,
@@ -375,9 +420,23 @@ vi.mock("@tauri-apps/api/core", () => ({
 const cleanups: Array<() => Promise<void>> = [];
 
 function getButtonByText(container: HTMLElement, text: string) {
+  const normalizedText = text.trim().toLowerCase();
+
   return Array.from(container.querySelectorAll("button")).find(
-    (button) =>
-      button.textContent?.trim() === text || button.textContent?.includes(text),
+    (button) => {
+      const buttonText = button.textContent?.trim().toLowerCase() ?? "";
+      const ariaLabel = button.getAttribute("aria-label")?.trim().toLowerCase() ?? "";
+      const title = button.getAttribute("title")?.trim().toLowerCase() ?? "";
+
+      return (
+        buttonText === normalizedText ||
+        buttonText.includes(normalizedText) ||
+        ariaLabel === normalizedText ||
+        ariaLabel.includes(normalizedText) ||
+        title === normalizedText ||
+        title.includes(normalizedText)
+      );
+    },
   );
 }
 
@@ -640,9 +699,12 @@ describe("ChatPage", () => {
     const routeButton = view.container.querySelector(
       '[aria-label="Configure session route"]',
     ) as HTMLButtonElement | null;
-    const draftButton = Array.from(view.container.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Draft",
-    );
+    const draftButton = view.container.querySelector(
+      '[aria-label="Open external draft"]',
+    ) as HTMLButtonElement | null;
+    const sendButton = view.container.querySelector(
+      '[aria-label="Send to World"]',
+    ) as HTMLButtonElement | null;
 
     expect(view.container.querySelector('[data-testid="chat-landing-stack"]')).toBeTruthy();
     expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
@@ -650,13 +712,16 @@ describe("ChatPage", () => {
     expect(view.container.querySelector(".composer__add")).toBeTruthy();
     expect(view.container.querySelector(".composer__icon--plus")).toBeTruthy();
     expect(view.container.querySelector(".composer__icon--send")).toBeTruthy();
+    expect(view.container.querySelector(".composer__icon--note")).toBeTruthy();
     expect(routeStrip).toBeFalsy();
     expect(footer).toBeTruthy();
     expect(routeButton && footer?.contains(routeButton)).toBe(true);
     expect(draftButton && footer?.contains(draftButton)).toBe(true);
-    expect(routeButton?.className).toContain("composer__token-action--route");
-    expect(draftButton?.className).toContain("composer__token-action--draft");
+    expect(routeButton?.className).toContain("composer__route-trigger");
+    expect(draftButton?.className).toContain("composer__icon-action");
+    expect(sendButton?.className).toContain("composer__send--circle");
     expect(view.container.querySelector('[aria-label="Composer entry modes"]')).toBeFalsy();
+    expect(view.container.querySelector('[aria-label="Suggested next steps"]')).toBeFalsy();
     expect(findText(view.container, "Provider required")).toBeFalsy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
   });
@@ -700,7 +765,15 @@ describe("ChatPage", () => {
 
     try {
       await setComposerValue(view.container, "Initial outline");
-      await clickButton(view.container, "Draft");
+      await act(async () => {
+        (
+          view.container.querySelector(
+            '[aria-label="Open external draft"]',
+          ) as HTMLButtonElement | null
+        )?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
 
       expect(invokeMock).toHaveBeenCalledWith(
         "open_external_prompt_draft",
@@ -734,7 +807,15 @@ describe("ChatPage", () => {
     const toastCapture = captureToasts();
 
     try {
-      await clickButton(view.container, "Draft");
+      await act(async () => {
+        (
+          view.container.querySelector(
+            '[aria-label="Open external draft"]',
+          ) as HTMLButtonElement | null
+        )?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
 
       expect(toastCapture.toasts).toContainEqual(
         expect.objectContaining({
@@ -1378,8 +1459,10 @@ describe("ChatPage", () => {
     });
 
     expect(findText(view.container, "Coordinator")).toBeTruthy();
-    expect(findText(view.container, "Using search_knowledge")).toBeTruthy();
-    expect(findText(view.container, "checkpoint_summary")).toBeTruthy();
+    expect(findText(view.container, "Using Search Knowledge")).toBeTruthy();
+    expect(findText(view.container, "Checkpoint summary")).toBeTruthy();
+    expect(findText(view.container, "checkpoint_summary")).toBeFalsy();
+    expect(findText(view.container, "waiting_for_user")).toBeFalsy();
     expect(findText(view.container, "Add Agent")).toBeTruthy();
   });
 
@@ -1655,7 +1738,7 @@ describe("ChatPage", () => {
     expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeTruthy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
     expect(findText(view.container, "Summarize today's notes")).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Suggested next steps"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Suggested next steps"]')).toBeFalsy();
   });
 
   it("renders the memory review as an inline chat card once a real session is active", async () => {
@@ -1762,8 +1845,10 @@ describe("ChatPage", () => {
     await setComposerValue(view.container, "Second turn");
     await clickButton(view.container, "Send");
 
-    const suggestionButton = getButtonByText(view.container, "Plan my next team");
-    expect(suggestionButton?.hasAttribute("disabled")).toBe(true);
+    const sendButton = view.container.querySelector(
+      '[aria-label="Send"]',
+    ) as HTMLButtonElement | null;
+    expect(sendButton?.disabled).toBe(true);
 
     expect(routeWorldPromptMock).toHaveBeenCalledTimes(2);
 
@@ -1863,7 +1948,7 @@ describe("ChatPage", () => {
         ],
       });
 
-    routeWorldPromptMock.mockResolvedValueOnce({
+    const branchContinuationResponse = {
       session: {
         id: "session-branch-1",
         title: "Branch Session",
@@ -1882,7 +1967,7 @@ describe("ChatPage", () => {
           role: "assistant" as const,
           content: "BRANCH OK",
         },
-      ],
+      ] as ChatMessage[],
       provider: {
         id: "provider-local",
         name: "Local",
@@ -1896,7 +1981,9 @@ describe("ChatPage", () => {
         attachedAgents: [],
         attachedKnowledgeLibraries: [],
       },
-    });
+    };
+
+    routeWorldPromptMock.mockResolvedValueOnce(branchContinuationResponse);
 
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
@@ -1985,12 +2072,40 @@ describe("ChatPage", () => {
       },
     );
 
-    const routingState = view.container.querySelector(
-      '[data-testid="chat-routing-state"]',
-    ) as HTMLElement | null;
+    const routeButton = view.container.querySelector(
+      '[aria-label="Configure session route"]',
+    ) as HTMLButtonElement | null;
 
-    expect(routingState?.textContent).toContain("Fallback");
-    expect(routingState?.textContent).toContain("gpt-4.1-mini");
+    expect(view.container.querySelector('[data-testid="chat-routing-state"]')).toBeFalsy();
+    expect(routeButton?.textContent).toContain("gpt-4.1-mini");
+  });
+
+  it("renders the compact chat chrome for an active direct session", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await setComposerValue(view.container, "Summarize today's notes");
+    await clickButton(view.container, "Send");
+
+    const routeButton = view.container.querySelector(
+      '[aria-label="Configure session route"]',
+    ) as HTMLButtonElement | null;
+    const draftButton = view.container.querySelector(
+      '[aria-label="Open external draft"]',
+    ) as HTMLButtonElement | null;
+    const sendButton = view.container.querySelector(
+      '[aria-label="Send"]',
+    ) as HTMLButtonElement | null;
+    const tabList = view.container.querySelector(".session-tabs");
+
+    expect(view.container.querySelector('[aria-label="Suggested next steps"]')).toBeFalsy();
+    expect(view.container.querySelector(".chat-route-card")).toBeFalsy();
+    expect(routeButton?.textContent).toContain("gpt-oss");
+    expect(routeButton?.textContent).not.toContain("Desktop default");
+    expect(draftButton?.className).toContain("composer__icon-action");
+    expect(sendButton?.className).toContain("composer__send--circle");
+    expect(sendButton?.textContent?.trim()).toBe("");
+    expect(tabList?.className).toContain("session-tabs--attached");
   });
 
   it("shows deterministic team-run failover state for the active route", async () => {
@@ -2046,12 +2161,7 @@ describe("ChatPage", () => {
       },
     );
 
-    const routingState = view.container.querySelector(
-      '[data-testid="team-run-routing-state"]',
-    ) as HTMLElement | null;
-
-    expect(routingState?.textContent).toContain("Fallback");
-    expect(routingState?.textContent).toContain("gpt-oss-fallback");
-    expect(routingState?.textContent).toContain("missing model");
+    expect(view.container.querySelector('[data-testid="team-run-routing-state"]')).toBeFalsy();
+    expect(view.container.querySelector(".chat-route-card")).toBeFalsy();
   });
 });

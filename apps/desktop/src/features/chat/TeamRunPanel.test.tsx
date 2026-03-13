@@ -113,4 +113,51 @@ describe("TeamRunPanel", () => {
 
     await view.cleanup();
   });
+
+  it("renders markdown-rich team updates and humanizes raw tool activity labels", async () => {
+    const run = sampleRun();
+    run.events = [
+      ...run.events,
+      {
+        id: "event-checkpoint-markdown",
+        runId: "run-release",
+        kind: "checkpoint_summary",
+        agentId: "agent-coordinator",
+        title: "Checkpoint summary",
+        content: [
+          "## Checkpoint Summary",
+          "",
+          "**Agreed Team Structure**",
+          "",
+          "| Role | Agent |",
+          "|------|-------|",
+          "| Driver | Coordinator |",
+          "| Validator | Reviewer |",
+        ].join("\n"),
+        status: "completed",
+        toolName: "session_artifacts",
+        toolCallId: "round-2",
+        toolTarget: "C:\\\\nuka\\\\team-runs\\\\run-release\\\\round-02\\\\checkpoint.md",
+        sequence: 6,
+        createdAt: "2026-03-13T00:04:00Z",
+      },
+    ];
+
+    const view = await renderIntoDocument(
+      <TeamRunPanel
+        isBusy={false}
+        onAddAgent={vi.fn()}
+        onContinue={vi.fn()}
+        run={run}
+      />,
+    );
+
+    expect(view.container.querySelector("table")).toBeTruthy();
+    expect(findText(view.container, "Driver")).toBeTruthy();
+    expect(findText(view.container, "Coordinator")).toBeTruthy();
+    expect(findText(view.container, "session_artifacts")).toBeFalsy();
+    expect(findText(view.container, "Session Artifacts")).toBeTruthy();
+
+    await view.cleanup();
+  });
 });

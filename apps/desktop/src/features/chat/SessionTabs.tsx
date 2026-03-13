@@ -22,7 +22,7 @@ export function SessionTabs({
   return (
     <div
       aria-label="Workspace sessions"
-      className="session-tabs session-tabs--uniform"
+      className="session-tabs session-tabs--uniform session-tabs--attached"
       role="tablist"
     >
       {sessions.map((session) => {
