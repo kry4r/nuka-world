@@ -1201,6 +1201,8 @@ describe("ChatPage", () => {
           {
             id: "agent-research",
             runId: "run-release",
+            sourceAgentId: null,
+            sourceTeamAssignmentId: null,
             sourceTeamAgentId: "team-agent-research",
             name: "Research",
             role: "Research",
@@ -1278,6 +1280,8 @@ describe("ChatPage", () => {
         {
           id: "agent-scribe",
           runId: "run-release",
+          sourceAgentId: null,
+          sourceTeamAssignmentId: null,
           sourceTeamAgentId: null,
           name: "Scribe",
           role: "Writer",
@@ -1574,6 +1578,8 @@ describe("ChatPage", () => {
         model: "gpt-oss",
         baseUrl: "http://localhost:11434/v1",
       },
+      output: "Start a release review",
+      exitStatus: "completed" as const,
       routing: null,
       context: {
         attachedAgents: [],
