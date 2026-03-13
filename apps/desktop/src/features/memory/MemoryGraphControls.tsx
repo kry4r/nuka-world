@@ -1,5 +1,11 @@
+import { FlatSelect } from "@/components/ui/FlatSelect";
+
 type MemoryGraphControlsProps = {
   filterKind: string;
+  kindOptions: Array<{
+    label: string;
+    value: string;
+  }>;
   searchQuery: string;
   scopeOptions: Array<{
     id: string;
@@ -13,6 +19,7 @@ type MemoryGraphControlsProps = {
 
 export function MemoryGraphControls({
   filterKind,
+  kindOptions,
   scopeOptions,
   searchQuery,
   selectedScopeId,
@@ -25,10 +32,11 @@ export function MemoryGraphControls({
       <div className="memory-controls__row">
         <label className="memory-controls__field">
           <span className="memory-controls__label">Scope</span>
-          <select
+          <FlatSelect
             aria-label="Memory scope"
             className="memory-controls__select"
             onChange={(event) => onScopeIdChange(event.target.value)}
+            shellClassName="memory-controls__select-shell"
             value={selectedScopeId}
           >
             {scopeOptions.map((scope) => (
@@ -36,7 +44,7 @@ export function MemoryGraphControls({
                 {scope.label}
               </option>
             ))}
-          </select>
+          </FlatSelect>
         </label>
 
         <label className="memory-controls__field memory-controls__field--search">
@@ -52,19 +60,19 @@ export function MemoryGraphControls({
 
         <label className="memory-controls__field">
           <span className="memory-controls__label">Kind</span>
-          <select
+          <FlatSelect
             aria-label="Filter kind"
             className="memory-controls__select"
             onChange={(event) => onFilterKindChange(event.target.value)}
+            shellClassName="memory-controls__select-shell"
             value={filterKind}
           >
-            <option value="all">All kinds</option>
-            <option value="workflow">workflow</option>
-            <option value="session">session</option>
-            <option value="agent">agent</option>
-            <option value="message">message</option>
-            <option value="fact">fact</option>
-          </select>
+            {kindOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </FlatSelect>
         </label>
       </div>
     </div>

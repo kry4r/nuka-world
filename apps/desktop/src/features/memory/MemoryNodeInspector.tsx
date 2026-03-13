@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FlatSelect } from "@/components/ui/FlatSelect";
 import type { MemoryGraphEdge, MemoryGraphNode } from "@/lib/memory";
 
 type MemoryNodeInspectorProps = {
@@ -146,10 +147,11 @@ export function MemoryNodeInspector({
           <div className="memory-node-detail__link-form">
             <label className="memory-node-detail__field">
               <span className="memory-node-detail__label">Link target</span>
-              <select
+              <FlatSelect
                 aria-label="Link target"
                 className="memory-node-detail__select"
                 onChange={(event) => setTargetId(event.target.value)}
+                shellClassName="memory-node-detail__select-shell"
                 value={targetId}
               >
                 {availableTargets.length === 0 ? <option value="">No other nodes</option> : null}
@@ -158,7 +160,7 @@ export function MemoryNodeInspector({
                     {candidate.title}
                   </option>
                 ))}
-              </select>
+              </FlatSelect>
             </label>
 
             <label className="memory-node-detail__field">

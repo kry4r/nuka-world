@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { FlatSelect } from "@/components/ui/FlatSelect";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { RUNTIME_STATUS_REFRESH_EVENT } from "@/hooks/useAppRuntimeStatus";
 import {
@@ -451,10 +452,11 @@ export function SettingsPage() {
         <div className="settings-form-grid">
           <label className="settings-form-field">
             <span className="settings-form-field__label">Default Provider</span>
-            <select
+            <FlatSelect
               aria-label="Default Provider"
               className="settings-select"
               onChange={(event) => updateSetting("defaultProviderId", event.target.value)}
+              shellClassName="settings-select-shell"
               value={settings.defaultProviderId}
             >
               <option value="">No default provider</option>
@@ -463,15 +465,16 @@ export function SettingsPage() {
                   {provider.name}
                 </option>
               ))}
-            </select>
+            </FlatSelect>
           </label>
 
           <label className="settings-form-field">
             <span className="settings-form-field__label">Fallback Provider</span>
-            <select
+            <FlatSelect
               aria-label="Fallback Provider"
               className="settings-select"
               onChange={(event) => updateSetting("fallbackProviderId", event.target.value)}
+              shellClassName="settings-select-shell"
               value={settings.fallbackProviderId}
             >
               <option value="">No fallback provider</option>
@@ -480,7 +483,7 @@ export function SettingsPage() {
                   {provider.name}
                 </option>
               ))}
-            </select>
+            </FlatSelect>
           </label>
         </div>
 
@@ -626,28 +629,30 @@ export function SettingsPage() {
 
           <label className="settings-form-field">
             <span className="settings-form-field__label">Close behavior</span>
-            <select
+            <FlatSelect
               aria-label="Close behavior"
               className="settings-select"
               onChange={(event) => updateSetting("closeBehavior", event.target.value)}
+              shellClassName="settings-select-shell"
               value={settings.closeBehavior}
             >
               <option value="Minimize to tray">Minimize to tray</option>
               <option value="Quit app">Quit app</option>
-            </select>
+            </FlatSelect>
           </label>
 
           <label className="settings-form-field">
             <span className="settings-form-field__label">Logging</span>
-            <select
+            <FlatSelect
               aria-label="Logging"
               className="settings-select"
               onChange={(event) => updateSetting("logging", event.target.value)}
+              shellClassName="settings-select-shell"
               value={settings.logging}
             >
               <option value="Standard">Standard</option>
               <option value="Verbose">Verbose</option>
-            </select>
+            </FlatSelect>
           </label>
         </div>
 

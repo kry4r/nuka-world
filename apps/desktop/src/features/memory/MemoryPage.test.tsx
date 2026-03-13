@@ -455,6 +455,108 @@ describe("MemoryPage", () => {
     expect(findButton(view.container, "Archive Fact")).toBeTruthy();
   });
 
+  it("prioritizes run and team scopes and renders scope controls with the shared flat selector shell", async () => {
+    graphState.nodes = [
+      {
+        id: "run-memory",
+        kind: "fact",
+        scopeId: "session:run-smoke",
+        title: "Run Memory",
+        body: "Tracks the active team follow-up.",
+        traceType: "working",
+        consolidationState: "candidate",
+      },
+      {
+        id: "team-memory",
+        kind: "fact",
+        scopeId: "workflow:team:smoke-validation",
+        title: "Team Memory",
+        body: "Tracks persistent team context.",
+        traceType: "semantic",
+        consolidationState: "approved",
+      },
+      {
+        id: "agent-memory",
+        kind: "agent",
+        scopeId: "agent:release-reviewer",
+        title: "Release Reviewer",
+        body: "Owns the release checklist.",
+        traceType: "semantic",
+        consolidationState: "approved",
+      },
+    ];
+    graphState.edges = [];
+
+    const currentImplementation = invokeMock.getMockImplementation();
+    cleanups.push(async () => {
+      if (currentImplementation) {
+        invokeMock.mockImplementation(currentImplementation);
+      }
+    });
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "list_memory_scopes") {
+        return [
+          {
+            id: "world",
+            title: "World",
+            kind: "world",
+            workflowId: null,
+            sessionId: null,
+            agentId: null,
+          },
+          {
+            id: "workflow:team:smoke-validation",
+            title: "Smoke Validation Team",
+            kind: "workflow",
+            workflowId: "team:smoke-validation",
+            sessionId: null,
+            agentId: null,
+          },
+          {
+            id: "session:run-smoke",
+            title: "Smoke Validation Run",
+            kind: "session",
+            workflowId: "team:smoke-validation",
+            sessionId: "run-smoke",
+            agentId: null,
+          },
+          {
+            id: "agent:release-reviewer",
+            title: "Release Reviewer",
+            kind: "agent",
+            workflowId: null,
+            sessionId: null,
+            agentId: "agent-reviewer",
+          },
+        ];
+      }
+
+      return currentImplementation?.(command, args);
+    });
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const scopeSelect = view.container.querySelector(
+      'select[aria-label="Memory scope"]',
+    ) as HTMLSelectElement | null;
+    const kindSelect = view.container.querySelector(
+      'select[aria-label="Filter kind"]',
+    ) as HTMLSelectElement | null;
+
+    expect(scopeSelect?.value).toBe("session:run-smoke");
+    expect(scopeSelect?.textContent).toContain("Run · Smoke Validation Run");
+    expect(scopeSelect?.textContent).toContain("Team · Smoke Validation Team");
+    expect(scopeSelect?.textContent).toContain("Agent · Release Reviewer");
+    expect(scopeSelect?.parentElement?.className).toContain("flat-select");
+    expect(kindSelect?.parentElement?.className).toContain("flat-select");
+  });
+
   it("uses a light graph surface and overlays graph stats inside the canvas", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);

@@ -48,6 +48,33 @@ button {
   cursor: pointer;
 }
 
+.flat-select {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+}
+
+.flat-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 40px;
+}
+
+.flat-select__icon {
+  position: absolute;
+  right: 14px;
+  width: 14px;
+  height: 14px;
+  color: #8f7f6d;
+  fill: none;
+  pointer-events: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
 .section-header {
   display: flex;
   align-items: flex-start;

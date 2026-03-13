@@ -16,6 +16,14 @@ import { MemoryNodeInspector } from "./MemoryNodeInspector";
 
 const defaultView = { x: 72, y: 52 };
 const defaultZoom = 1;
+const MEMORY_KIND_OPTIONS = [
+  { label: "All kinds", value: "all" },
+  { label: "Workflow", value: "workflow" },
+  { label: "Session", value: "session" },
+  { label: "Agent", value: "agent" },
+  { label: "Message", value: "message" },
+  { label: "Fact", value: "fact" },
+] as const;
 
 export function MemoryPage() {
   const [graph, setGraph] = useState<MemoryGraph>({ nodes: [], edges: [] });
@@ -125,25 +133,19 @@ export function MemoryPage() {
   const scopeOptions = useMemo(
     () =>
       scopes
-        .filter((scope) => scope.kind === "world" || scope.kind === "workflow")
         .sort((left, right) => {
-          if (left.kind === right.kind) {
+          const leftRank = scopePriority(left);
+          const rightRank = scopePriority(right);
+
+          if (leftRank === rightRank) {
             return left.title.localeCompare(right.title);
           }
 
-          if (left.kind === "workflow") {
-            return -1;
-          }
-
-          if (right.kind === "workflow") {
-            return 1;
-          }
-
-          return left.title.localeCompare(right.title);
+          return leftRank - rightRank;
         })
         .map((scope) => ({
           id: scope.id,
-          label: scope.title,
+          label: scopeLabel(scope),
         })),
     [scopes],
   );
@@ -416,6 +418,7 @@ export function MemoryPage() {
                 <div className="memory-stage__controls">
                   <MemoryGraphControls
                     filterKind={filterKind}
+                    kindOptions={[...MEMORY_KIND_OPTIONS]}
                     onFilterKindChange={setFilterKind}
                     onSearchQueryChange={setSearchQuery}
                     onScopeIdChange={(nextScopeId) => {
@@ -517,6 +520,54 @@ function createEdgeId(sourceId: string, targetId: string, relation: string) {
 function normalizeBody(body: string) {
   const trimmed = body.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+function scopePriority(scope: MemoryScope) {
+  if (scope.kind === "session" && scope.workflowId?.startsWith("team:")) {
+    return 0;
+  }
+
+  if (scope.kind === "workflow" && scope.workflowId?.startsWith("team:")) {
+    return 1;
+  }
+
+  if (scope.kind === "agent") {
+    return 2;
+  }
+
+  if (scope.kind === "session") {
+    return 3;
+  }
+
+  if (scope.kind === "workflow") {
+    return 4;
+  }
+
+  if (scope.kind === "world") {
+    return 5;
+  }
+
+  return 6;
+}
+
+function scopeLabel(scope: MemoryScope) {
+  if (scope.kind === "world") {
+    return "World";
+  }
+
+  if (scope.kind === "session") {
+    return `${scope.workflowId?.startsWith("team:") ? "Run" : "Session"} · ${scope.title}`;
+  }
+
+  if (scope.kind === "workflow") {
+    return `${scope.workflowId?.startsWith("team:") ? "Team" : "Workflow"} · ${scope.title}`;
+  }
+
+  if (scope.kind === "agent") {
+    return `Agent · ${scope.title}`;
+  }
+
+  return scope.title;
 }
 
 function upsertEdge(edges: MemoryGraph["edges"], nextEdge: MemoryGraph["edges"][number]) {

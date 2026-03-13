@@ -307,6 +307,45 @@ describe("SettingsPage", () => {
     expect(findText(view.container, "Set default routing and keep saved runtimes compact.")).toBeFalsy();
   });
 
+  it("uses the shared flat selector shell for provider routing and runtime dropdowns", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const defaultProviderSelect = view.container.querySelector(
+      'select[aria-label="Default Provider"]',
+    ) as HTMLSelectElement | null;
+    const fallbackProviderSelect = view.container.querySelector(
+      'select[aria-label="Fallback Provider"]',
+    ) as HTMLSelectElement | null;
+
+    expect(defaultProviderSelect?.parentElement?.className).toContain("flat-select");
+    expect(fallbackProviderSelect?.parentElement?.className).toContain("flat-select");
+
+    const runtimeButton = findButton(view.container, "Runtime");
+    expect(runtimeButton).toBeTruthy();
+
+    await act(async () => {
+      runtimeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const closeBehaviorSelect = view.container.querySelector(
+      'select[aria-label="Close behavior"]',
+    ) as HTMLSelectElement | null;
+    const loggingSelect = view.container.querySelector(
+      'select[aria-label="Logging"]',
+    ) as HTMLSelectElement | null;
+
+    expect(closeBehaviorSelect?.parentElement?.className).toContain("flat-select");
+    expect(loggingSelect?.parentElement?.className).toContain("flat-select");
+  });
+
   it("saves the connection-check setting without helper copy", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
