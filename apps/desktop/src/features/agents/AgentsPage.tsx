@@ -44,6 +44,20 @@ function parseToolNames(value: string) {
     .filter(Boolean);
 }
 
+const ARCHETYPE_FIELD_DEFINITIONS: Array<{
+  key: keyof AgentArchetypeRecord;
+  label: string;
+}> = [
+  { key: "domainFocus", label: "Domain focus" },
+  { key: "objectivePattern", label: "Objective pattern" },
+  { key: "communicationStyle", label: "Communication style" },
+  { key: "defaultToolPosture", label: "Default tool posture" },
+  { key: "memoryPosture", label: "Memory posture" },
+  { key: "escalationPosture", label: "Escalation posture" },
+  { key: "safetyPosture", label: "Safety posture" },
+  { key: "outputContract", label: "Output contract" },
+];
+
 export function AgentsPage() {
   const providerGate = useProviderGate();
   const [agents, setAgents] = useState<AgentRecord[]>([]);
@@ -216,7 +230,7 @@ export function AgentsPage() {
           </aside>
         ) : null}
 
-        <div className="agents-page__main">
+        <div className="agents-page__main agents-page__main--scrollable">
           <section className={`agents-create${showStandaloneCreate ? " agents-create--standalone" : ""}`} data-testid="agents-create">
             <div className="agents-create__header">
               <span className="agents-section__eyebrow">Agents</span>
@@ -403,6 +417,31 @@ export function AgentsPage() {
                     value={editorArchetype.family}
                   />
                 </label>
+
+                {ARCHETYPE_FIELD_DEFINITIONS.map((field) => (
+                  <label className="agents-field" key={field.key}>
+                    <span className="agents-field__label">{field.label}</span>
+                    <textarea
+                      aria-label={`Archetype ${field.label.toLowerCase()}`}
+                      className="agents-field__textarea agents-field__textarea--compact"
+                      onChange={(event) =>
+                        setEditorAgent((current) =>
+                          current
+                            ? {
+                                ...current,
+                                archetype: {
+                                  ...(current.archetype ?? defaultArchetype()),
+                                  [field.key]: event.target.value,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                      rows={3}
+                      value={editorArchetype[field.key]}
+                    />
+                  </label>
+                ))}
 
                 <ToolBindingsPanel
                   inputValue={toolNamesInput}

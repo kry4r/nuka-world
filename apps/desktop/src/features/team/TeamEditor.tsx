@@ -19,6 +19,126 @@ type TeamEditorProps = {
   onToggleTool: (agentId: string, toolId: string, allowed: boolean) => void;
 };
 
+type StructuredValue =
+  | {
+      kind: "list";
+      items: string[];
+    }
+  | {
+      kind: "pairs";
+      items: Array<{
+        label: string;
+        value: string;
+      }>;
+    }
+  | {
+      kind: "text";
+      value: string;
+    };
+
+function humanizeKey(value: string) {
+  const normalized = value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function formatStructuredValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => formatStructuredValue(item)).join(", ");
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => `${humanizeKey(key)}: ${formatStructuredValue(item)}`)
+      .join(" · ");
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (value == null) {
+    return "None";
+  }
+
+  return String(value);
+}
+
+function parseStructuredValue(value: string): StructuredValue {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return {
+      kind: "text",
+      value: "No details yet.",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+
+    if (Array.isArray(parsed)) {
+      return {
+        kind: "list",
+        items: parsed.map((item) => formatStructuredValue(item)),
+      };
+    }
+
+    if (parsed && typeof parsed === "object") {
+      return {
+        kind: "pairs",
+        items: Object.entries(parsed as Record<string, unknown>).map(([key, item]) => ({
+          label: humanizeKey(key),
+          value: formatStructuredValue(item),
+        })),
+      };
+    }
+  } catch {
+    // Keep plain-text values readable without forcing JSON parsing.
+  }
+
+  return {
+    kind: "text",
+    value: trimmed,
+  };
+}
+
+function StructuredValuePreview({ value }: { value: string }) {
+  const structured = parseStructuredValue(value);
+
+  if (structured.kind === "list") {
+    return (
+      <ul className="team-editor__structured-list">
+        {structured.items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  if (structured.kind === "pairs") {
+    return (
+      <dl className="team-editor__structured-pairs">
+        {structured.items.map((item) => (
+          <div className="team-editor__structured-pair" key={item.label}>
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
+
+  return <p>{structured.value}</p>;
+}
+
 export function TeamEditor({
   availableAgents,
   isSaving,
@@ -56,10 +176,12 @@ export function TeamEditor({
               </label>
             </div>
 
-            <div className="team-editor__summary-grid">
-              <div className="team-editor__summary-card">
-                <label className="team-editor__field">
-                  <span>Prompt constraints</span>
+              <div className="team-editor__summary-grid">
+              <div className="team-editor__summary-card team-editor__summary-card--editable">
+                <span>Prompt constraints</span>
+                <StructuredValuePreview value={team.promptConstraints} />
+                <label className="team-editor__field team-editor__field--compact">
+                  <span>Edit source</span>
                   <textarea
                     aria-label="Prompt constraints"
                     onChange={(event) =>
@@ -70,9 +192,11 @@ export function TeamEditor({
                   />
                 </label>
               </div>
-              <div className="team-editor__summary-card">
-                <label className="team-editor__field">
-                  <span>Permission policy</span>
+              <div className="team-editor__summary-card team-editor__summary-card--editable">
+                <span>Permission policy</span>
+                <StructuredValuePreview value={team.permissionPolicy} />
+                <label className="team-editor__field team-editor__field--compact">
+                  <span>Edit source</span>
                   <textarea
                     aria-label="Permission policy"
                     onChange={(event) =>
@@ -85,11 +209,11 @@ export function TeamEditor({
               </div>
               <div className="team-editor__summary-card">
                 <span>Success criteria</span>
-                <p>{team.successCriteria}</p>
+                <StructuredValuePreview value={team.successCriteria} />
               </div>
               <div className="team-editor__summary-card">
                 <span>Coordination</span>
-                <p>{team.coordinationPolicy}</p>
+                <StructuredValuePreview value={team.coordinationPolicy} />
               </div>
             </div>
           </div>
@@ -103,7 +227,10 @@ export function TeamEditor({
 
                 return (
                   <div className="team-editor__assignment-row" key={assignment.id}>
-                    <span>{label}</span>
+                    <div className="team-editor__assignment-copy">
+                      <strong>{label}</strong>
+                      <span>{agent?.responsibility ?? "Assigned to this template."}</span>
+                    </div>
                     <button onClick={() => onRemoveAssignedAgent(assignment.agentId)} type="button">
                       Remove {label}
                     </button>

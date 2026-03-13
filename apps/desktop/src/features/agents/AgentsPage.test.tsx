@@ -170,6 +170,23 @@ describe("AgentsPage", () => {
     expect(findText(view.container, "research_and_analysis")).toBeTruthy();
   });
 
+  it("shows the full archetype operating frame and keeps the detail column scrollable", async () => {
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    const main = view.container.querySelector(".agents-page__main");
+
+    expect(main?.className).toContain("agents-page__main--scrollable");
+    expect(view.container.querySelector('[aria-label="Archetype domain focus"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Archetype objective pattern"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Archetype communication style"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Archetype default tool posture"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Archetype memory posture"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Archetype escalation posture"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Archetype safety posture"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Archetype output contract"]')).toBeTruthy();
+  });
+
   it("creates an agent draft via backend draft generation", async () => {
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);

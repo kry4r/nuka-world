@@ -228,6 +228,65 @@ function captureToasts() {
 }
 
 describe("TeamPage", () => {
+  it("renders provider-generated template policies as structured sections instead of raw json blobs", async () => {
+    invokeMock.mockImplementationOnce(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "list_teams") {
+        return [
+          {
+            ...sampleTeam,
+            promptConstraints: JSON.stringify(
+              [
+                "Only use saved tools.",
+                "Keep the run bounded to one review round.",
+              ],
+              null,
+              2,
+            ),
+            permissionPolicy: JSON.stringify(
+              {
+                allowedResources: ["/release", "/notes"],
+                deniedActions: ["delete_repo"],
+              },
+              null,
+              2,
+            ),
+            successCriteria: JSON.stringify(
+              {
+                checklistComplete: true,
+                notesReviewed: true,
+              },
+              null,
+              2,
+            ),
+            coordinationPolicy: JSON.stringify(
+              {
+                flow: "moderated",
+                handoff: "Moderator finalizes the summary",
+              },
+              null,
+              2,
+            ),
+          },
+        ];
+      }
+
+      return invokeMock.getMockImplementation()?.(command, args);
+    });
+
+    const view = await renderIntoDocument(<TeamPage />);
+    cleanups.push(view.cleanup);
+
+    expect(findText(view.container, "Only use saved tools.")).toBeTruthy();
+    expect(findText(view.container, "Keep the run bounded to one review round.")).toBeTruthy();
+    expect(findText(view.container, "Allowed Resources")).toBeTruthy();
+    expect(view.container.textContent).toContain("/release");
+    expect(findText(view.container, "Checklist Complete")).toBeTruthy();
+    expect(view.container.textContent).toContain("moderated");
+    expect(findText(view.container, "\"allowedResources\"")).toBeFalsy();
+    expect(findText(view.container, "\"checklistComplete\"")).toBeFalsy();
+    expect(findText(view.container, "\"flow\"")).toBeFalsy();
+  });
+
   it("keeps the page edit-only and saves description, constraints, and assigned agents", async () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);

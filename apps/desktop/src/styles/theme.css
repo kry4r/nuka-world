@@ -3372,6 +3372,8 @@ button {
 .team-editor__detail,
 .team-editor__summary-copy,
 .team-editor__summary-grid,
+.team-editor__assignment-list,
+.team-editor__assignment-copy,
 .team-editor__agents,
 .team-agent-card,
 .team-agent-card__copy,
@@ -3402,6 +3404,7 @@ button {
 .team-list__item-summary,
 .team-editor__summary-copy p,
 .team-editor__summary-card p,
+.team-editor__assignment-copy span,
 .team-agent-card__responsibility,
 .team-tool-bindings__meta {
   margin: 0;
@@ -3523,6 +3526,85 @@ button {
   background: rgba(255, 252, 247, 0.92);
 }
 
+.team-editor__summary-card--editable {
+  gap: 12px;
+}
+
+.team-editor__field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team-editor__field span,
+.team-editor__assignment-list h3,
+.team-editor__structured-pair dt {
+  color: #766d63;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.team-editor__field textarea {
+  width: 100%;
+  min-height: 108px;
+  padding: 12px 14px;
+  border: 1px solid rgba(229, 221, 209, 0.94);
+  border-radius: 14px;
+  background: rgba(255, 250, 244, 0.96);
+  color: var(--color-text);
+  resize: vertical;
+}
+
+.team-editor__field--compact textarea {
+  min-height: 112px;
+}
+
+.team-editor__field textarea:focus {
+  outline: 2px solid rgba(182, 157, 122, 0.78);
+  outline-offset: 1px;
+}
+
+.team-editor__structured-list,
+.team-editor__structured-pairs {
+  margin: 0;
+  padding: 0;
+}
+
+.team-editor__structured-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 18px;
+  color: var(--color-text);
+}
+
+.team-editor__structured-list li {
+  line-height: 1.5;
+}
+
+.team-editor__structured-pairs {
+  display: grid;
+  gap: 10px;
+}
+
+.team-editor__structured-pair {
+  display: grid;
+  gap: 4px;
+}
+
+.team-editor__structured-pair dt,
+.team-editor__structured-pair dd {
+  margin: 0;
+}
+
+.team-editor__structured-pair dd {
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
 .team-agent-card__header {
   display: flex;
   align-items: flex-start;
@@ -3573,6 +3655,69 @@ button {
 .team-editor__error {
   background: rgba(247, 236, 233, 0.92);
   color: #7b5044;
+}
+
+.team-editor__assignments {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-editor__assignment-list {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(252, 248, 242, 0.92);
+}
+
+.team-editor__assignment-list h3 {
+  margin: 0;
+}
+
+.team-editor__assignment-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 252, 247, 0.92);
+}
+
+.team-editor__assignment-copy {
+  min-width: 0;
+}
+
+.team-editor__assignment-copy strong {
+  display: block;
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.team-editor__assignment-row button,
+.team-editor__assignment-list > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(217, 205, 190, 0.78);
+  border-radius: 999px;
+  background: rgba(255, 250, 244, 0.96);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.team-editor__assignment-list > button {
+  justify-content: flex-start;
+}
+
+@media (max-width: 900px) {
+  .team-editor__summary-grid,
+  .team-editor__assignments {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .workflow-catalog {
@@ -4127,8 +4272,14 @@ button {
   display: flex;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
   gap: 14px;
+}
+
+.agents-page__main--scrollable {
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .agents-list,
@@ -4154,6 +4305,8 @@ button {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+  overflow: auto;
 }
 
 .agents-create,
@@ -4315,6 +4468,10 @@ button {
 .agents-field__textarea {
   min-height: 140px;
   resize: vertical;
+}
+
+.agents-field__textarea--compact {
+  min-height: 108px;
 }
 
 .tool-bindings-panel {
