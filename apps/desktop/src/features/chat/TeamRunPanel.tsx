@@ -15,6 +15,7 @@ type TeamRunPanelProps = {
   error: string | null;
   isBusy: boolean;
   onAddAgent: (agent: TeamRunPanelAgentDraft) => Promise<void> | void;
+  onBranchEvent?: (eventId: string) => Promise<void> | void;
   onContinue: (prompt: string) => Promise<void> | void;
 };
 
@@ -23,6 +24,7 @@ export function TeamRunPanel({
   error,
   isBusy,
   onAddAgent,
+  onBranchEvent,
   onContinue,
 }: TeamRunPanelProps) {
   const [followUp, setFollowUp] = useState("");
@@ -35,7 +37,7 @@ export function TeamRunPanel({
     <section aria-label="Team run session" className="team-run-panel">
       <AgentTeamStrip agents={run.agents} leadAgentId={run.leadAgentId} />
       <RunCharterCard run={run} />
-      <RunEventFeed agents={run.agents} events={run.events} />
+      <RunEventFeed agents={run.agents} events={run.events} onBranch={onBranchEvent} />
 
       <div className="team-run-panel__composer ui-card">
         {error ? <div className="team-run-panel__error">{error}</div> : null}

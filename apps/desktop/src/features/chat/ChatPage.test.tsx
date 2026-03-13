@@ -178,7 +178,11 @@ const { listPendingMemoryCandidatesMock, reviewMemoryCandidateMock } = vi.hoiste
   reviewMemoryCandidateMock: vi.fn(async () => undefined),
 }));
 
-const { listWorkspaceSessionsMock, loadWorkspaceSessionMock } = vi.hoisted(() => ({
+const {
+  listWorkspaceSessionsMock,
+  loadWorkspaceSessionMock,
+  branchWorkspaceSessionMock,
+} = vi.hoisted(() => ({
   listWorkspaceSessionsMock: vi.fn<() => Promise<WorkspaceSessionSummary[]>>(
     async () => [],
   ),
@@ -188,6 +192,15 @@ const { listWorkspaceSessionsMock, loadWorkspaceSessionMock } = vi.hoisted(() =>
       kind: WorkspaceSessionSummary["kind"],
     ) => Promise<WorkspaceSessionDetail | null>
   >(async () => null),
+  branchWorkspaceSessionMock: vi.fn<
+    (
+      sessionId: string,
+      kind: WorkspaceSessionSummary["kind"],
+      anchorId: string,
+    ) => Promise<WorkspaceSessionSummary>
+  >(async () => {
+    throw new Error("unexpected branchWorkspaceSession call");
+  }),
 }));
 
 const {
@@ -244,6 +257,9 @@ vi.mock("@/lib/workspace", () => ({
   loadWorkspaceSession: (
     ...args: Parameters<typeof loadWorkspaceSessionMock>
   ) => loadWorkspaceSessionMock(...args),
+  branchWorkspaceSession: (
+    ...args: Parameters<typeof branchWorkspaceSessionMock>
+  ) => branchWorkspaceSessionMock(...args),
 }));
 
 vi.mock("@/lib/team", () => ({
@@ -392,6 +408,7 @@ afterEach(async () => {
   reviewMemoryCandidateMock.mockReset();
   listWorkspaceSessionsMock.mockReset();
   loadWorkspaceSessionMock.mockReset();
+  branchWorkspaceSessionMock.mockReset();
   listTeamsMock.mockReset();
   createTeamFromGoalMock.mockReset();
   startTeamRunMock.mockReset();
@@ -402,6 +419,9 @@ afterEach(async () => {
   reviewMemoryCandidateMock.mockImplementation(async () => undefined);
   listWorkspaceSessionsMock.mockImplementation(async () => []);
   loadWorkspaceSessionMock.mockImplementation(async () => null);
+  branchWorkspaceSessionMock.mockImplementation(async () => {
+    throw new Error("unexpected branchWorkspaceSession call");
+  });
   listTeamsMock.mockImplementation(async () => [sampleTeam]);
   createTeamFromGoalMock.mockImplementation(async (goal: string) => ({
     ...sampleTeam,
@@ -728,6 +748,279 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Session release-… · Direct chat")).toBeTruthy();
     expect(view.container.textContent?.includes("璺")).toBe(false);
     expect(view.container.textContent?.includes("鈥")).toBe(false);
+  });
+
+  it("marks branched sessions in the top tabs", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "release-direct-session",
+        kind: "direct_chat",
+        title: "Design Review Chat",
+        status: "active",
+        updatedAt: "2026-03-11T12:05:00Z",
+      },
+      {
+        id: "release-direct-session-branch-1",
+        kind: "direct_chat",
+        title: "Design Review Chat / Branch 1",
+        status: "active",
+        updatedAt: "2026-03-11T12:15:00Z",
+        lineage: {
+          rootId: "release-direct-session",
+          parentId: "release-direct-session",
+          snapshotId: "snapshot-design-1",
+          anchorId: "message-design-1",
+        },
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "direct_chat",
+      session: {
+        id: "release-direct-session",
+        title: "Design Review Chat",
+        providerId: "provider-local",
+        messageCount: 2,
+      },
+      messages: [
+        {
+          id: "message-design-1",
+          role: "user",
+          content: "Check the design handoff",
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector(".session-tab__branch")).toBeTruthy();
+    expect(findText(view.container, "Design Review Chat / Branch 1")).toBeTruthy();
+  });
+
+  it("branches a direct chat from a visible message anchor", async () => {
+    listWorkspaceSessionsMock
+      .mockResolvedValueOnce([
+        {
+          id: "release-direct-session",
+          kind: "direct_chat",
+          title: "Design Review Chat",
+          status: "active",
+          updatedAt: "2026-03-11T12:05:00Z",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "release-direct-session-branch-1",
+          kind: "direct_chat",
+          title: "Design Review Chat / Branch 1",
+          status: "active",
+          updatedAt: "2026-03-11T12:15:00Z",
+          lineage: {
+            rootId: "release-direct-session",
+            parentId: "release-direct-session",
+            snapshotId: "snapshot-design-1",
+            anchorId: "message-design-1",
+          },
+        },
+        {
+          id: "release-direct-session",
+          kind: "direct_chat",
+          title: "Design Review Chat",
+          status: "active",
+          updatedAt: "2026-03-11T12:05:00Z",
+        },
+      ]);
+
+    loadWorkspaceSessionMock.mockImplementation(async (sessionId: string, kind: string) => {
+      if (sessionId === "release-direct-session" && kind === "direct_chat") {
+        return {
+          kind: "direct_chat",
+          session: {
+            id: "release-direct-session",
+            title: "Design Review Chat",
+            providerId: "provider-local",
+            messageCount: 2,
+          },
+          messages: [
+            {
+              id: "message-design-1",
+              role: "user",
+              content: "Check the design handoff",
+            },
+          ],
+        };
+      }
+
+      if (sessionId === "release-direct-session-branch-1" && kind === "direct_chat") {
+        return {
+          kind: "direct_chat",
+          session: {
+            id: "release-direct-session-branch-1",
+            title: "Design Review Chat / Branch 1",
+            providerId: "provider-local",
+            messageCount: 1,
+          },
+          messages: [
+            {
+              id: "message-design-branch-1",
+              role: "user",
+              content: "Check the branched design path",
+            },
+          ],
+        };
+      }
+
+      return null;
+    });
+
+    branchWorkspaceSessionMock.mockResolvedValueOnce({
+      id: "release-direct-session-branch-1",
+      kind: "direct_chat",
+      title: "Design Review Chat / Branch 1",
+      status: "active",
+      updatedAt: "2026-03-11T12:15:00Z",
+      lineage: {
+        rootId: "release-direct-session",
+        parentId: "release-direct-session",
+        snapshotId: "snapshot-design-1",
+        anchorId: "message-design-1",
+      },
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const branchButton = view.container.querySelector(
+      'button[aria-label="Branch from this turn"]',
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      branchButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(branchWorkspaceSessionMock).toHaveBeenCalledWith(
+      "release-direct-session",
+      "direct_chat",
+      "message-design-1",
+    );
+    expect(findText(view.container, "Check the branched design path")).toBeTruthy();
+  });
+
+  it("branches a team run from a visible event anchor", async () => {
+    listWorkspaceSessionsMock
+      .mockResolvedValueOnce([
+        {
+          id: "run-release",
+          kind: "team_run",
+          title: "Release Team Run",
+          status: "waiting_for_user",
+          updatedAt: "2026-03-11T12:15:00Z",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "run-release-branch-1",
+          kind: "team_run",
+          title: "Release Team Run / Branch 1",
+          status: "active",
+          updatedAt: "2026-03-11T12:18:00Z",
+          lineage: {
+            rootId: "run-release",
+            parentId: "run-release",
+            snapshotId: "snapshot-run-1",
+            anchorId: "event-checkpoint",
+          },
+        },
+        {
+          id: "run-release",
+          kind: "team_run",
+          title: "Release Team Run",
+          status: "waiting_for_user",
+          updatedAt: "2026-03-11T12:15:00Z",
+        },
+      ]);
+
+    loadWorkspaceSessionMock.mockImplementation(async (sessionId: string, kind: string) => {
+      if (sessionId === "run-release" && kind === "team_run") {
+        return {
+          kind: "team_run",
+          run: sampleRun,
+        };
+      }
+
+      if (sessionId === "run-release-branch-1" && kind === "team_run") {
+        return {
+          kind: "team_run",
+          run: {
+            ...sampleRun,
+            id: "run-release-branch-1",
+            title: "Release Team Run / Branch 1",
+            events: [
+              {
+                ...sampleRun.events[0],
+                id: "event-branch-summary",
+                runId: "run-release-branch-1",
+                content: "Branch follow-up summary",
+              },
+            ],
+          },
+        };
+      }
+
+      return null;
+    });
+
+    branchWorkspaceSessionMock.mockResolvedValueOnce({
+      id: "run-release-branch-1",
+      kind: "team_run",
+      title: "Release Team Run / Branch 1",
+      status: "active",
+      updatedAt: "2026-03-11T12:18:00Z",
+      lineage: {
+        rootId: "run-release",
+        parentId: "run-release",
+        snapshotId: "snapshot-run-1",
+        anchorId: "event-checkpoint",
+      },
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const branchButton = view.container.querySelector(
+      'button[aria-label="Branch from this event"]',
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      branchButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(branchWorkspaceSessionMock).toHaveBeenCalledWith(
+      "run-release",
+      "team_run",
+      "event-checkpoint",
+    );
+    expect(findText(view.container, "Branch follow-up summary")).toBeTruthy();
   });
 
   it("shows the lead agent, current work, and tool activity for an active team run", async () => {

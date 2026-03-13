@@ -15,6 +15,7 @@ import {
   type TeamRecord,
   type TeamRunRecord,
 } from "@/lib/team";
+import { branchWorkspaceSession } from "@/lib/workspace";
 import { ConversationEventBlock } from "./ConversationEventBlock";
 import { SessionTabs } from "./SessionTabs";
 import { SuggestionStrip } from "./SuggestionStrip";
@@ -389,6 +390,57 @@ export function ChatPage() {
     }
   };
 
+  const handleBranchDirectChat = async (messageId: string) => {
+    if (!activeSessionRecord || isRouting) {
+      return;
+    }
+
+    setIsRouting(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const branched = await branchWorkspaceSession(
+        activeSessionRecord.id,
+        "direct_chat",
+        messageId,
+      );
+      await workspaceSessions.refresh({
+        id: branched.id,
+        kind: branched.kind,
+      });
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(message);
+    } finally {
+      setIsRouting(false);
+    }
+  };
+
+  const handleBranchTeamRun = async (eventId: string) => {
+    if (!activeTeamRun || isTeamRunBusy) {
+      return;
+    }
+
+    setIsTeamRunBusy(true);
+    setTeamRunError(null);
+
+    try {
+      const branched = await branchWorkspaceSession(activeTeamRun.id, "team_run", eventId);
+      await workspaceSessions.refresh({
+        id: branched.id,
+        kind: branched.kind,
+      });
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setTeamRunError(message);
+    } finally {
+      setIsTeamRunBusy(false);
+    }
+  };
+
   const composer = (
     <div
       aria-label="World chat composer"
@@ -605,6 +657,7 @@ export function ChatPage() {
                 error={teamRunError}
                 isBusy={isTeamRunBusy}
                 onAddAgent={handleAddTeamRunAgent}
+                onBranchEvent={handleBranchTeamRun}
                 onContinue={handleContinueTeamRun}
                 run={activeTeamRun}
               />
@@ -634,7 +687,11 @@ export function ChatPage() {
                 <div className="chat-feed" role="log">
                   <div className="chat-feed__stack">
                     {activeMessages.map((message) => (
-                      <ConversationEventBlock key={message.id} message={message} />
+                      <ConversationEventBlock
+                        key={message.id}
+                        message={message}
+                        onBranch={handleBranchDirectChat}
+                      />
                     ))}
                     <MemoryReviewDock {...memoryReviewDock} />
                   </div>

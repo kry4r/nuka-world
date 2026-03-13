@@ -27,6 +27,7 @@ export function SessionTabs({
     >
       {sessions.map((session) => {
         const active = session.id === activeSessionId;
+        const branch = Boolean(session.lineage);
 
         return (
           <button
@@ -37,7 +38,10 @@ export function SessionTabs({
             role="tab"
             type="button"
           >
-            <span className="session-tab__kind">{kindLabel(session.kind)}</span>
+            <span className="session-tab__meta">
+              <span className="session-tab__kind">{kindLabel(session.kind)}</span>
+              {branch ? <span className="session-tab__branch">Branch</span> : null}
+            </span>
             <span className="session-tab__title">{session.title}</span>
           </button>
         );

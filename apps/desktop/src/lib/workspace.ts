@@ -8,6 +8,14 @@ export type WorkspaceSessionSummary = {
   title: string;
   status: string;
   updatedAt: string;
+  lineage?: WorkspaceSessionLineage | null;
+};
+
+export type WorkspaceSessionLineage = {
+  rootId: string;
+  parentId: string;
+  snapshotId: string;
+  anchorId: string;
 };
 
 export type WorkspaceSessionDetail =
@@ -32,5 +40,17 @@ export async function loadWorkspaceSession(
   return invoke<WorkspaceSessionDetail | null>("load_workspace_session", {
     sessionId,
     kind,
+  });
+}
+
+export async function branchWorkspaceSession(
+  sessionId: string,
+  kind: WorkspaceSessionSummary["kind"],
+  anchorId: string,
+): Promise<WorkspaceSessionSummary> {
+  return invoke<WorkspaceSessionSummary>("branch_workspace_session", {
+    sessionId,
+    kind,
+    anchorId,
   });
 }

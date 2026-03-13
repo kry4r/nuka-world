@@ -16,14 +16,28 @@ function bubbleLabel(role: ChatMessage["role"]) {
 
 type ConversationEventBlockProps = {
   message: ChatMessage;
+  onBranch?: (messageId: string) => void;
 };
 
 export function ConversationEventBlock({
   message,
+  onBranch,
 }: ConversationEventBlockProps) {
   return (
     <article className={`chat-bubble chat-bubble--${message.role}`}>
-      <span className="chat-bubble__label">{bubbleLabel(message.role)}</span>
+      <div className="chat-bubble__header">
+        <span className="chat-bubble__label">{bubbleLabel(message.role)}</span>
+        {onBranch ? (
+          <button
+            aria-label="Branch from this turn"
+            className="chat-bubble__branch"
+            onClick={() => onBranch(message.id)}
+            type="button"
+          >
+            Branch
+          </button>
+        ) : null}
+      </div>
       <p className="chat-bubble__content">{message.content}</p>
     </article>
   );

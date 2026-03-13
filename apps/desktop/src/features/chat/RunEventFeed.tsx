@@ -3,6 +3,7 @@ import type { TeamRunAgentRecord, TeamRunEventRecord } from "@/lib/team";
 type RunEventFeedProps = {
   agents: TeamRunAgentRecord[];
   events: TeamRunEventRecord[];
+  onBranch?: (eventId: string) => void;
 };
 
 function agentName(
@@ -16,14 +17,26 @@ function agentName(
   return agents.find((agent) => agent.id === agentId)?.name ?? "Agent";
 }
 
-export function RunEventFeed({ agents, events }: RunEventFeedProps) {
+export function RunEventFeed({ agents, events, onBranch }: RunEventFeedProps) {
   return (
     <section aria-label="Run event feed" className="run-event-feed">
       {events.map((event) => (
         <article className="run-event-feed__item" key={event.id}>
-          <div className="run-event-feed__meta">
-            <span className="run-event-feed__kind">{event.kind}</span>
-            <span className="run-event-feed__agent">{agentName(agents, event.agentId)}</span>
+          <div className="run-event-feed__meta-row">
+            <div className="run-event-feed__meta">
+              <span className="run-event-feed__kind">{event.kind}</span>
+              <span className="run-event-feed__agent">{agentName(agents, event.agentId)}</span>
+            </div>
+            {onBranch ? (
+              <button
+                aria-label="Branch from this event"
+                className="run-event-feed__branch"
+                onClick={() => onBranch(event.id)}
+                type="button"
+              >
+                Branch
+              </button>
+            ) : null}
           </div>
           <h3>{event.title}</h3>
           <p>{event.content}</p>
