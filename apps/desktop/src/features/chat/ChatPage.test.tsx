@@ -130,11 +130,7 @@ const routeWorldPromptMock = vi.fn(
         id: sessionId ?? "session-123",
         title: "Summarize today's notes",
         providerId: "provider-local",
-        workflowId: null,
         messageCount: sessionId ? 2 : 1,
-      },
-      route: {
-        kind: "direct_reply" as const,
       },
       messages: [
         {
@@ -347,11 +343,7 @@ afterEach(async () => {
         id: sessionId ?? "session-123",
         title: "Summarize today's notes",
         providerId: "provider-local",
-        workflowId: null,
         messageCount: sessionId ? 2 : 1,
-      },
-      route: {
-        kind: "direct_reply" as const,
       },
       messages: [
         {
@@ -599,7 +591,6 @@ describe("ChatPage", () => {
             id: "chat-design-review",
             title: "Design Review Chat",
             providerId: "provider-local",
-            workflowId: null,
             messageCount: 2,
           },
           messages: [
@@ -669,7 +660,6 @@ describe("ChatPage", () => {
         id: "release-direct-session",
         title: "Design Review Chat",
         providerId: "provider-local",
-        workflowId: null,
         messageCount: 2,
       },
       messages: [
@@ -695,7 +685,7 @@ describe("ChatPage", () => {
     expect(tabList?.className).toContain("session-tabs--uniform");
     expect(tabs.length).toBeGreaterThan(1);
     expect(tabs.every((tab) => tab.className.includes("session-tab--uniform"))).toBe(true);
-    expect(findText(view.container, "Session release-… · Direct reply")).toBeTruthy();
+    expect(findText(view.container, "Session release-… · Direct chat")).toBeTruthy();
     expect(view.container.textContent?.includes("璺")).toBe(false);
     expect(view.container.textContent?.includes("鈥")).toBe(false);
   });
@@ -868,7 +858,6 @@ describe("ChatPage", () => {
     expect(routeWorldPromptMock).toHaveBeenCalledWith(
       "Summarize today's notes",
       undefined,
-      { kind: "chat_only" },
     );
     expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeTruthy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
@@ -943,10 +932,8 @@ describe("ChatPage", () => {
         id: "session-123",
         title: "Summarize today's notes",
         providerId: "provider-local",
-        workflowId: null,
         messageCount: 1,
       },
-      route: { kind: "direct_reply" as const },
       messages: [
         {
           id: "message-user-1",

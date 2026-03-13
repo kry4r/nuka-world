@@ -42,14 +42,6 @@ type ComposerEntryMode = "direct" | "choose_team" | "create_team";
 const META_SEPARATOR = " · ";
 const SESSION_ELLIPSIS = "…";
 
-function formatRoute(route: ChatRouteResponse["route"] | null | undefined) {
-  if (!route || route.kind === "direct_reply") {
-    return "Direct reply";
-  }
-
-  return "Direct reply";
-}
-
 function formatSession(sessionId: string | undefined) {
   if (!sessionId) {
     return "Pending";
@@ -176,10 +168,6 @@ export function ChatPage() {
   const activeTeamRun = teamRunState ?? workspaceTeamRun;
   const activeSessionRecord = activeDirectSession?.session ?? session?.session ?? null;
   const activeMessages = activeDirectSession?.messages ?? messages;
-  const activeRoute =
-    activeSessionRecord?.id && activeSessionRecord.id === session?.session.id
-      ? session?.route
-      : null;
   const selectedTeam = useMemo(
     () => availableTeams.find((team) => team.id === selectedTeamId) ?? null,
     [availableTeams, selectedTeamId],
@@ -300,9 +288,7 @@ export function ChatPage() {
         return;
       }
 
-      const response = await routeWorldPrompt(value, activeSessionRecord?.id, {
-        kind: "chat_only",
-      });
+      const response = await routeWorldPrompt(value, activeSessionRecord?.id);
       setMessages((current) => [...current, ...response.messages]);
       setSession(response);
       void workspaceSessions.refresh({
@@ -602,7 +588,7 @@ export function ChatPage() {
                     <span className="chat-surface__meta">
                       Session {formatSession(activeSessionRecord?.id)}
                       {META_SEPARATOR}
-                      {formatRoute(activeRoute)}
+                      Direct chat
                     </span>
                   </div>
                 </header>
