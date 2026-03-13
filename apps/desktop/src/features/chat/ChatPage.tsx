@@ -614,7 +614,10 @@ export function ChatPage() {
     : null;
   const failoverReasonLabel = formatFailoverReason(activeRouting?.failoverReason ?? null);
   const routeControls = (
-    <div className="chat-route-strip" data-testid="chat-route-controls">
+    <div
+      className={`chat-route-strip ${landing ? "chat-route-strip--landing" : "chat-route-strip--active"}`}
+      data-testid="chat-route-controls"
+    >
       <label className="chat-route-field">
         <span className="chat-route-field__label">Route</span>
         <select
@@ -894,7 +897,7 @@ export function ChatPage() {
 
         <button
           aria-label="Draft in external editor"
-          className="composer__token-action"
+          className="composer__token-action composer__token-action--draft"
           disabled={isDrafting || isRouting}
           onClick={() => {
             void handleOpenExternalDraft();

@@ -605,12 +605,19 @@ describe("ChatPage", () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
 
+    const routeStrip = view.container.querySelector(".chat-route-strip");
+    const draftButton = Array.from(view.container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Draft",
+    );
+
     expect(view.container.querySelector('[data-testid="chat-landing-stack"]')).toBeTruthy();
     expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
     expect(view.container.querySelector("textarea")).toBeTruthy();
     expect(view.container.querySelector(".composer__add")).toBeTruthy();
     expect(view.container.querySelector(".composer__icon--plus")).toBeTruthy();
     expect(view.container.querySelector(".composer__icon--send")).toBeTruthy();
+    expect(routeStrip?.className).toContain("chat-route-strip--landing");
+    expect(draftButton?.className).toContain("composer__token-action--draft");
     expect(view.container.querySelector('[aria-label="Composer entry modes"]')).toBeFalsy();
     expect(findText(view.container, "Provider required")).toBeFalsy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
