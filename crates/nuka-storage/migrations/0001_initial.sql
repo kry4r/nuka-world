@@ -92,6 +92,10 @@ create table if not exists chat_sessions (
   title text not null,
   provider_id text,
   workflow_id text,
+  branch_root_session_id text,
+  branch_parent_session_id text,
+  branch_source_snapshot_id text,
+  branch_anchor_message_id text,
   message_count integer not null default 0,
   created_at text not null
 );
@@ -101,6 +105,15 @@ create table if not exists chat_messages (
   session_id text not null,
   role text not null,
   content text not null,
+  created_at text not null
+);
+
+create table if not exists chat_session_snapshots (
+  id text primary key,
+  session_id text not null references chat_sessions(id) on delete cascade,
+  anchor_message_id text not null,
+  title text not null,
+  message_count integer not null,
   created_at text not null
 );
 
@@ -216,6 +229,10 @@ create table if not exists team_runs (
   status text not null,
   current_phase text not null,
   lead_agent_id text,
+  branch_root_run_id text,
+  branch_parent_run_id text,
+  branch_source_snapshot_id text,
+  branch_anchor_event_id text,
   charter_json text not null,
   created_at text not null,
   updated_at text not null
@@ -251,5 +268,14 @@ create table if not exists team_run_events (
   tool_call_id text,
   tool_target text,
   sequence integer not null,
+  created_at text not null
+);
+
+create table if not exists team_run_snapshots (
+  id text primary key,
+  run_id text not null references team_runs(id) on delete cascade,
+  anchor_event_id text not null,
+  title text not null,
+  event_count integer not null,
   created_at text not null
 );

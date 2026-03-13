@@ -221,6 +221,102 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
             .await?;
     }
 
+    let has_chat_branch_root_session_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'branch_root_session_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_branch_root_session_id == 0 {
+        sqlx::query("alter table chat_sessions add column branch_root_session_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_chat_branch_parent_session_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'branch_parent_session_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_branch_parent_session_id == 0 {
+        sqlx::query("alter table chat_sessions add column branch_parent_session_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_chat_branch_source_snapshot_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'branch_source_snapshot_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_branch_source_snapshot_id == 0 {
+        sqlx::query("alter table chat_sessions add column branch_source_snapshot_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_chat_branch_anchor_message_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('chat_sessions') where name = 'branch_anchor_message_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_chat_branch_anchor_message_id == 0 {
+        sqlx::query("alter table chat_sessions add column branch_anchor_message_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_run_branch_root_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'branch_root_run_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_run_branch_root_id == 0 {
+        sqlx::query("alter table team_runs add column branch_root_run_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_run_branch_parent_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'branch_parent_run_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_run_branch_parent_id == 0 {
+        sqlx::query("alter table team_runs add column branch_parent_run_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_run_branch_source_snapshot_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'branch_source_snapshot_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_run_branch_source_snapshot_id == 0 {
+        sqlx::query("alter table team_runs add column branch_source_snapshot_id text")
+            .execute(pool)
+            .await?;
+    }
+
+    let has_team_run_branch_anchor_event_id: i64 = sqlx::query_scalar(
+        "select count(*) from pragma_table_info('team_runs') where name = 'branch_anchor_event_id'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if has_team_run_branch_anchor_event_id == 0 {
+        sqlx::query("alter table team_runs add column branch_anchor_event_id text")
+            .execute(pool)
+            .await?;
+    }
+
     let has_agent_archetype_json: i64 = sqlx::query_scalar(
         "select count(*) from pragma_table_info('agents') where name = 'archetype_json'",
     )
@@ -297,12 +393,42 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 
     sqlx::query(
         r#"
+        create table if not exists chat_session_snapshots (
+          id text primary key,
+          session_id text not null references chat_sessions(id) on delete cascade,
+          anchor_message_id text not null,
+          title text not null,
+          message_count integer not null,
+          created_at text not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         create table if not exists team_run_compactions (
           id text primary key,
           run_id text not null references team_runs(id) on delete cascade,
           summary text not null,
           compacted_event_count integer not null,
           sequence integer not null,
+          created_at text not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        create table if not exists team_run_snapshots (
+          id text primary key,
+          run_id text not null references team_runs(id) on delete cascade,
+          anchor_event_id text not null,
+          title text not null,
+          event_count integer not null,
           created_at text not null
         )
         "#,

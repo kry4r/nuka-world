@@ -28,6 +28,7 @@ mod tests {
         tool::AgentToolBinding,
         workflow::WorkflowVisibility,
     };
+    use sqlx::Row;
 
     fn sample_provider() -> ProviderConfig {
         ProviderConfig {
@@ -446,6 +447,93 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn chat_repository_branches_from_message_anchor_and_persists_snapshot_lineage() {
+        let db = crate::db::open_in_memory().await.unwrap();
+        crate::migrations::run(&db).await.unwrap();
+
+        let repo = crate::chat::ChatRepository::new(db.clone());
+        repo.create_session(ChatSessionSummary {
+            id: "session-review".to_string(),
+            title: "Review task".to_string(),
+            provider_id: Some("provider-local".to_string()),
+            workflow_id: None,
+            message_count: 0,
+        })
+        .await
+        .unwrap();
+
+        for (id, role, content) in [
+            ("message-1", ChatMessageRole::User, "Need a release summary"),
+            ("message-2", ChatMessageRole::Assistant, "First draft"),
+            ("message-3", ChatMessageRole::User, "Add the blockers"),
+        ] {
+            repo.append_message(ChatMessage {
+                id: id.to_string(),
+                session_id: "session-review".to_string(),
+                role,
+                content: content.to_string(),
+            })
+            .await
+            .unwrap();
+        }
+
+        let (snapshot, branch_session_id) = repo
+            .branch_from_anchor("session-review", "message-2")
+            .await
+            .unwrap();
+
+        let branch_messages = repo.list_messages(&branch_session_id).await.unwrap();
+        let snapshots = repo.list_snapshots("session-review").await.unwrap();
+        let branch_row = sqlx::query(
+            r#"
+            select
+              branch_root_session_id,
+              branch_parent_session_id,
+              branch_source_snapshot_id,
+              branch_anchor_message_id
+            from chat_sessions
+            where id = ?1
+            "#,
+        )
+        .bind(&branch_session_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].id, snapshot.id);
+        assert_eq!(snapshot.anchor_message_id, "message-2");
+        assert_eq!(snapshot.message_count, 2);
+        assert_eq!(branch_messages.len(), 2);
+        assert_eq!(branch_messages[0].content, "Need a release summary");
+        assert_eq!(branch_messages[1].content, "First draft");
+        assert_eq!(
+            branch_row
+                .get::<Option<String>, _>("branch_root_session_id")
+                .as_deref(),
+            Some("session-review")
+        );
+        assert_eq!(
+            branch_row
+                .get::<Option<String>, _>("branch_parent_session_id")
+                .as_deref(),
+            Some("session-review")
+        );
+        assert_eq!(
+            branch_row
+                .get::<Option<String>, _>("branch_source_snapshot_id")
+                .as_deref(),
+            Some(snapshot.id.as_str())
+        );
+        assert_eq!(
+            branch_row
+                .get::<Option<String>, _>("branch_anchor_message_id")
+                .as_deref(),
+            Some("message-2")
+        );
+    }
+
+    #[tokio::test]
     async fn saves_and_reads_runtime_state_and_memory_scopes() {
         let db = crate::db::open_in_memory().await.unwrap();
         crate::migrations::run(&db).await.unwrap();
@@ -637,5 +725,68 @@ mod tests {
             .content
             .contains("Compacted earlier run checkpoints"));
         assert_eq!(loaded.events[1].id, "event-3");
+    }
+
+    #[tokio::test]
+    async fn team_run_repository_branches_from_event_anchor_and_persists_snapshot_lineage() {
+        let db = crate::db::open_in_memory().await.unwrap();
+        crate::migrations::run(&db).await.unwrap();
+
+        let repo = crate::team_runs::TeamRunRepository::new(db.clone());
+        repo.create_run(sample_run()).await.unwrap();
+
+        let (snapshot, branch_run_id) = repo
+            .branch_from_anchor("run-release", "event-checkpoint")
+            .await
+            .unwrap();
+
+        let branch_run = repo.load_run(&branch_run_id).await.unwrap().unwrap();
+        let snapshots = repo.list_snapshots("run-release").await.unwrap();
+        let branch_row = sqlx::query(
+            r#"
+            select
+              branch_root_run_id,
+              branch_parent_run_id,
+              branch_source_snapshot_id,
+              branch_anchor_event_id
+            from team_runs
+            where id = ?1
+            "#,
+        )
+        .bind(&branch_run_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].id, snapshot.id);
+        assert_eq!(snapshot.anchor_event_id, "event-checkpoint");
+        assert_eq!(snapshot.event_count, 1);
+        assert_eq!(branch_run.events.len(), 1);
+        assert_eq!(branch_run.events[0].title, "Round 1 checkpoint");
+        assert_eq!(
+            branch_row
+                .get::<Option<String>, _>("branch_root_run_id")
+                .as_deref(),
+            Some("run-release")
+        );
+        assert_eq!(
+            branch_row
+                .get::<Option<String>, _>("branch_parent_run_id")
+                .as_deref(),
+            Some("run-release")
+        );
+        assert_eq!(
+            branch_row
+                .get::<Option<String>, _>("branch_source_snapshot_id")
+                .as_deref(),
+            Some(snapshot.id.as_str())
+        );
+        assert_eq!(
+            branch_row
+                .get::<Option<String>, _>("branch_anchor_event_id")
+                .as_deref(),
+            Some("event-checkpoint")
+        );
     }
 }

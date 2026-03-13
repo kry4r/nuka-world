@@ -64,6 +64,7 @@ pub fn run() {
             commands::team::load_team_run,
             commands::team::start_team_run,
             commands::team::update_team,
+            commands::workspace::branch_workspace_session,
             commands::workspace::list_workspace_sessions,
             commands::workspace::load_workspace_session,
         ])
@@ -71,8 +72,11 @@ pub fn run() {
             crate::tray::handle_window_event(window, event);
         })
         .setup(|app| {
-            let state = tauri::async_runtime::block_on(crate::bootstrap::build_app_state(app.handle()))
-                .unwrap_or_else(|error| panic!("failed to bootstrap persistent app state: {error}"));
+            let state =
+                tauri::async_runtime::block_on(crate::bootstrap::build_app_state(app.handle()))
+                    .unwrap_or_else(|error| {
+                        panic!("failed to bootstrap persistent app state: {error}")
+                    });
             app.manage(state);
             crate::tray::install(app)?;
             Ok(())
@@ -86,7 +90,12 @@ mod tests {
     #[tokio::test]
     async fn bootstrap_initializes_database_and_services() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
-        assert!(state.provider_service().list_providers().await.unwrap().is_empty());
+        assert!(state
+            .provider_service()
+            .list_providers()
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -104,7 +113,10 @@ mod tests {
             "crates/nuka-memory",
             "crates/nuka-knowledge",
         ] {
-            assert!(manifest.contains(member), "missing workspace member: {member}");
+            assert!(
+                manifest.contains(member),
+                "missing workspace member: {member}"
+            );
         }
     }
 
@@ -143,6 +155,20 @@ mod tests {
         assert!(
             invoke_handler_region.contains("commands::chat::execute_prompt_json"),
             "missing invoke handler registration for non-interactive chat execution"
+        );
+    }
+
+    #[test]
+    fn tauri_lib_registers_workspace_branch_command() {
+        let lib_rs = std::fs::read_to_string("src/lib.rs").unwrap();
+        let invoke_handler_region = lib_rs
+            .split("#[cfg(test)]")
+            .next()
+            .expect("lib.rs should contain a non-test region");
+
+        assert!(
+            invoke_handler_region.contains("commands::workspace::branch_workspace_session"),
+            "missing invoke handler registration for workspace branching"
         );
     }
 

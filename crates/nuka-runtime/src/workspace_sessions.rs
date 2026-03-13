@@ -13,6 +13,15 @@ pub struct WorkspaceSessionSummary {
     pub title: String,
     pub status: String,
     pub updated_at: String,
+    pub lineage: Option<WorkspaceSessionLineage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSessionLineage {
+    pub root_id: String,
+    pub parent_id: String,
+    pub snapshot_id: String,
+    pub anchor_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -43,9 +52,21 @@ impl WorkspaceSessionsService {
               chat_sessions.id,
               chat_sessions.title,
               coalesce(max(chat_messages.created_at), chat_sessions.created_at) as updated_at
+              ,
+              chat_sessions.branch_root_session_id,
+              chat_sessions.branch_parent_session_id,
+              chat_sessions.branch_source_snapshot_id,
+              chat_sessions.branch_anchor_message_id
             from chat_sessions
             left join chat_messages on chat_messages.session_id = chat_sessions.id
-            group by chat_sessions.id, chat_sessions.title, chat_sessions.created_at
+            group by
+              chat_sessions.id,
+              chat_sessions.title,
+              chat_sessions.created_at,
+              chat_sessions.branch_root_session_id,
+              chat_sessions.branch_parent_session_id,
+              chat_sessions.branch_source_snapshot_id,
+              chat_sessions.branch_anchor_message_id
             "#,
         )
         .fetch_all(&self.pool)
@@ -59,32 +80,85 @@ impl WorkspaceSessionsService {
                 title: row.get("title"),
                 status: "active".to_string(),
                 updated_at: row.get("updated_at"),
+                lineage: workspace_lineage_from_row(
+                    &row,
+                    "branch_root_session_id",
+                    "branch_parent_session_id",
+                    "branch_source_snapshot_id",
+                    "branch_anchor_message_id",
+                ),
             })
             .collect::<Vec<_>>();
 
+        let team_run_rows = sqlx::query(
+            r#"
+            select
+              id,
+              title,
+              status,
+              updated_at,
+              branch_root_run_id,
+              branch_parent_run_id,
+              branch_source_snapshot_id,
+              branch_anchor_event_id
+            from team_runs
+            order by updated_at desc, created_at desc
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
         sessions.extend(
-            nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone())
-                .list_runs()
-                .await?
+            team_run_rows
                 .into_iter()
-                .map(|run| WorkspaceSessionSummary {
-                    id: run.id,
+                .map(|row| WorkspaceSessionSummary {
+                    id: row.get("id"),
                     kind: WorkspaceSessionKind::TeamRun,
-                    title: run.title,
-                    status: match run.status {
-                        nuka_domain::team::TeamRunStatus::Active => "active".to_string(),
-                        nuka_domain::team::TeamRunStatus::WaitingForAgents => "waiting_for_agents".to_string(),
-                        nuka_domain::team::TeamRunStatus::WaitingForUser => "waiting_for_user".to_string(),
-                        nuka_domain::team::TeamRunStatus::BudgetPaused => "budget_paused".to_string(),
-                        nuka_domain::team::TeamRunStatus::Completed => "completed".to_string(),
-                        nuka_domain::team::TeamRunStatus::Failed => "failed".to_string(),
-                    },
-                    updated_at: run.updated_at,
+                    title: row.get("title"),
+                    status: row.get("status"),
+                    updated_at: row.get("updated_at"),
+                    lineage: workspace_lineage_from_row(
+                        &row,
+                        "branch_root_run_id",
+                        "branch_parent_run_id",
+                        "branch_source_snapshot_id",
+                        "branch_anchor_event_id",
+                    ),
                 }),
         );
 
         sessions.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
         Ok(sessions)
+    }
+
+    pub async fn branch(
+        &self,
+        session_id: &str,
+        kind: WorkspaceSessionKind,
+        anchor_id: &str,
+    ) -> anyhow::Result<WorkspaceSessionSummary> {
+        nuka_storage::migrations::run(&self.pool).await?;
+
+        let branch_id = match kind.clone() {
+            WorkspaceSessionKind::DirectChat => {
+                nuka_storage::chat::ChatRepository::new(self.pool.clone())
+                    .branch_from_anchor(session_id, anchor_id)
+                    .await?
+                    .1
+            }
+            WorkspaceSessionKind::TeamRun => {
+                nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone())
+                    .branch_from_anchor(session_id, anchor_id)
+                    .await?
+                    .1
+            }
+        };
+
+        self.list()
+            .await?
+            .into_iter()
+            .find(|session| session.id == branch_id && session.kind == kind)
+            .ok_or_else(|| anyhow::anyhow!("branched workspace session disappeared: {branch_id}"))
     }
 
     pub async fn load(
@@ -110,12 +184,37 @@ impl WorkspaceSessionsService {
                     None => Ok(None),
                 }
             }
-            WorkspaceSessionKind::TeamRun => Ok(
-                nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone())
-                    .load_run(session_id)
-                    .await?
-                    .map(WorkspaceSessionDetail::TeamRun),
-            ),
+            WorkspaceSessionKind::TeamRun => Ok(nuka_storage::team_runs::TeamRunRepository::new(
+                self.pool.clone(),
+            )
+            .load_run(session_id)
+            .await?
+            .map(WorkspaceSessionDetail::TeamRun)),
         }
+    }
+}
+
+fn workspace_lineage_from_row(
+    row: &sqlx::sqlite::SqliteRow,
+    root_column: &str,
+    parent_column: &str,
+    snapshot_column: &str,
+    anchor_column: &str,
+) -> Option<WorkspaceSessionLineage> {
+    let root_id: Option<String> = row.get(root_column);
+    let parent_id: Option<String> = row.get(parent_column);
+    let snapshot_id: Option<String> = row.get(snapshot_column);
+    let anchor_id: Option<String> = row.get(anchor_column);
+
+    match (root_id, parent_id, snapshot_id, anchor_id) {
+        (Some(root_id), Some(parent_id), Some(snapshot_id), Some(anchor_id)) => {
+            Some(WorkspaceSessionLineage {
+                root_id,
+                parent_id,
+                snapshot_id,
+                anchor_id,
+            })
+        }
+        _ => None,
     }
 }

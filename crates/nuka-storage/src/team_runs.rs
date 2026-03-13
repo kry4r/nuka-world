@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use nuka_domain::team::{TeamRun, TeamRunAgent, TeamRunAgentStatus, TeamRunEvent, TeamRunStatus};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::Row;
@@ -10,6 +12,22 @@ pub struct TeamRunCompaction {
     pub compacted_event_count: usize,
     pub sequence: i64,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamRunSnapshot {
+    pub id: String,
+    pub run_id: String,
+    pub anchor_event_id: String,
+    pub title: String,
+    pub event_count: usize,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
+struct StoredRunMetadata {
+    title: String,
+    branch_root_run_id: Option<String>,
 }
 
 pub struct TeamRunRepository {
@@ -27,7 +45,16 @@ impl TeamRunRepository {
 
     pub async fn save_run(&self, run: TeamRun) -> anyhow::Result<()> {
         let mut tx = self.pool.begin().await?;
+        self.save_run_in_tx(&mut tx, run).await?;
+        tx.commit().await?;
+        Ok(())
+    }
 
+    async fn save_run_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        run: TeamRun,
+    ) -> anyhow::Result<()> {
         sqlx::query(
             r#"
             insert into team_runs (
@@ -59,16 +86,16 @@ impl TeamRunRepository {
         .bind(encode_json(&run.charter)?)
         .bind(run.created_at)
         .bind(run.updated_at)
-        .execute(&mut *tx)
+        .execute(tx.as_mut())
         .await?;
 
         sqlx::query("delete from team_run_agents where run_id = ?1")
             .bind(run.id.clone())
-            .execute(&mut *tx)
+            .execute(tx.as_mut())
             .await?;
         sqlx::query("delete from team_run_events where run_id = ?1")
             .bind(run.id.clone())
-            .execute(&mut *tx)
+            .execute(tx.as_mut())
             .await?;
 
         for agent in run.agents {
@@ -97,7 +124,7 @@ impl TeamRunRepository {
             .bind(agent.current_work)
             .bind(agent.last_tool_activity)
             .bind(agent.joined_at)
-            .execute(&mut *tx)
+            .execute(tx.as_mut())
             .await?;
         }
 
@@ -123,11 +150,10 @@ impl TeamRunRepository {
             .bind(event.tool_target)
             .bind(event.sequence)
             .bind(event.created_at)
-            .execute(&mut *tx)
+            .execute(tx.as_mut())
             .await?;
         }
 
-        tx.commit().await?;
         Ok(())
     }
 
@@ -204,6 +230,148 @@ impl TeamRunRepository {
                 created_at: row.get("created_at"),
             })
             .collect())
+    }
+
+    pub async fn list_snapshots(&self, run_id: &str) -> anyhow::Result<Vec<TeamRunSnapshot>> {
+        let rows = sqlx::query(
+            r#"
+            select id, run_id, anchor_event_id, title, event_count, created_at
+            from team_run_snapshots
+            where run_id = ?1
+            order by created_at asc, rowid asc
+            "#,
+        )
+        .bind(run_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| TeamRunSnapshot {
+                id: row.get("id"),
+                run_id: row.get("run_id"),
+                anchor_event_id: row.get("anchor_event_id"),
+                title: row.get("title"),
+                event_count: row.get::<i64, _>("event_count") as usize,
+                created_at: row.get("created_at"),
+            })
+            .collect())
+    }
+
+    pub async fn branch_from_anchor(
+        &self,
+        run_id: &str,
+        anchor_event_id: &str,
+    ) -> anyhow::Result<(TeamRunSnapshot, String)> {
+        let source_metadata = self
+            .load_run_metadata(run_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("unknown team run: {run_id}"))?;
+        let source_run = self
+            .load_run(run_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("unknown team run: {run_id}"))?;
+        let anchor_index = source_run
+            .events
+            .iter()
+            .position(|event| event.id == anchor_event_id)
+            .ok_or_else(|| anyhow::anyhow!("unknown team run anchor: {anchor_event_id}"))?;
+        let snapshot = TeamRunSnapshot {
+            id: uuid::Uuid::new_v4().to_string(),
+            run_id: run_id.to_string(),
+            anchor_event_id: anchor_event_id.to_string(),
+            title: snapshot_title(&source_run.events[anchor_index]),
+            event_count: anchor_index + 1,
+            created_at: current_timestamp(&self.pool).await?,
+        };
+        let branch_run_id = uuid::Uuid::new_v4().to_string();
+        let branch_root_run_id = source_metadata
+            .branch_root_run_id
+            .unwrap_or_else(|| run_id.to_string());
+        let mut branch_run = source_run.clone();
+        let mut agent_id_map = HashMap::new();
+
+        branch_run.id = branch_run_id.clone();
+        branch_run.title = format!(
+            "{} / Branch {}",
+            source_metadata.title,
+            self.next_branch_number(run_id).await?
+        );
+        branch_run.created_at = snapshot.created_at.clone();
+        branch_run.updated_at = snapshot.created_at.clone();
+
+        for agent in &mut branch_run.agents {
+            let original_id = agent.id.clone();
+            let next_id = uuid::Uuid::new_v4().to_string();
+            agent.id = next_id.clone();
+            agent.run_id = branch_run_id.clone();
+            agent_id_map.insert(original_id, next_id);
+        }
+
+        branch_run.lead_agent_id = branch_run
+            .lead_agent_id
+            .and_then(|agent_id| agent_id_map.get(&agent_id).cloned());
+        branch_run.events = source_run
+            .events
+            .into_iter()
+            .take(snapshot.event_count)
+            .map(|event| TeamRunEvent {
+                id: uuid::Uuid::new_v4().to_string(),
+                run_id: branch_run_id.clone(),
+                kind: event.kind,
+                agent_id: event
+                    .agent_id
+                    .and_then(|agent_id| agent_id_map.get(&agent_id).cloned()),
+                title: event.title,
+                content: event.content,
+                status: event.status,
+                tool_name: event.tool_name,
+                tool_call_id: event.tool_call_id,
+                tool_target: event.tool_target,
+                sequence: event.sequence,
+                created_at: event.created_at,
+            })
+            .collect();
+
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            r#"
+            insert into team_run_snapshots (
+              id, run_id, anchor_event_id, title, event_count, created_at
+            )
+            values (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+        )
+        .bind(snapshot.id.clone())
+        .bind(snapshot.run_id.clone())
+        .bind(snapshot.anchor_event_id.clone())
+        .bind(snapshot.title.clone())
+        .bind(snapshot.event_count as i64)
+        .bind(snapshot.created_at.clone())
+        .execute(&mut *tx)
+        .await?;
+        self.save_run_in_tx(&mut tx, branch_run).await?;
+        sqlx::query(
+            r#"
+            update team_runs
+            set
+              branch_root_run_id = ?2,
+              branch_parent_run_id = ?3,
+              branch_source_snapshot_id = ?4,
+              branch_anchor_event_id = ?5
+            where id = ?1
+            "#,
+        )
+        .bind(branch_run_id.clone())
+        .bind(branch_root_run_id)
+        .bind(run_id)
+        .bind(snapshot.id.clone())
+        .bind(snapshot.anchor_event_id.clone())
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        Ok((snapshot, branch_run_id))
     }
 
     pub async fn list_runs(&self) -> anyhow::Result<Vec<TeamRun>> {
@@ -352,7 +520,10 @@ impl TeamRunRepository {
             .collect()
     }
 
-    async fn load_events_with_compactions(&self, run_id: &str) -> anyhow::Result<Vec<TeamRunEvent>> {
+    async fn load_events_with_compactions(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<Vec<TeamRunEvent>> {
         let mut events = self
             .list_compactions(run_id)
             .await?
@@ -379,6 +550,35 @@ impl TeamRunRepository {
                 .then(left.created_at.cmp(&right.created_at))
         });
         Ok(events)
+    }
+
+    async fn load_run_metadata(&self, run_id: &str) -> anyhow::Result<Option<StoredRunMetadata>> {
+        let row = sqlx::query(
+            r#"
+            select title, branch_root_run_id
+            from team_runs
+            where id = ?1
+            limit 1
+            "#,
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|row| StoredRunMetadata {
+            title: row.get("title"),
+            branch_root_run_id: row.get("branch_root_run_id"),
+        }))
+    }
+
+    async fn next_branch_number(&self, run_id: &str) -> anyhow::Result<i64> {
+        let count: i64 =
+            sqlx::query_scalar("select count(*) from team_runs where branch_parent_run_id = ?1")
+                .bind(run_id)
+                .fetch_one(&self.pool)
+                .await?;
+
+        Ok(count + 1)
     }
 }
 
@@ -434,4 +634,22 @@ fn encode_json<T: Serialize>(value: &T) -> anyhow::Result<String> {
 
 fn decode_json<T: DeserializeOwned>(value: &str) -> anyhow::Result<T> {
     Ok(serde_json::from_str(value)?)
+}
+
+async fn current_timestamp(pool: &sqlx::SqlitePool) -> anyhow::Result<String> {
+    Ok(sqlx::query_scalar("select datetime('now')")
+        .fetch_one(pool)
+        .await?)
+}
+
+fn snapshot_title(event: &TeamRunEvent) -> String {
+    format!("{}: {}", event.kind, excerpt(&event.title, 48))
+}
+
+fn excerpt(content: &str, max_chars: usize) -> String {
+    let mut excerpt = content.trim().chars().take(max_chars).collect::<String>();
+    if content.chars().count() > max_chars {
+        excerpt.push_str("...");
+    }
+    excerpt
 }

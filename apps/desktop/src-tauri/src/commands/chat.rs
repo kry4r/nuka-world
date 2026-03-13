@@ -81,14 +81,19 @@ pub async fn execute_prompt_json(
         .map_err(|error| error.to_string())
 }
 
-async fn route_world_prompt_inner(
+pub(crate) async fn route_world_prompt_inner(
     prompt: String,
     session_id: Option<String>,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<ChatRouteResponse> {
     let prompt_for_memory = prompt.clone();
     let turn = match session_id.as_deref() {
-        Some(session_id) => state.world_runtime().continue_session(session_id, &prompt).await,
+        Some(session_id) => {
+            state
+                .world_runtime()
+                .continue_session(session_id, &prompt)
+                .await
+        }
         None => state.world_runtime().start_session(&prompt).await,
     }?;
     let chat_turn = turn.chat_turn;
@@ -102,10 +107,12 @@ async fn route_world_prompt_inner(
 
     state
         .memory_service()
-        .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
-            session_id: session.id.clone(),
-            prompt: prompt_for_memory,
-        })
+        .handle_runtime_event(
+            nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                session_id: session.id.clone(),
+                prompt: prompt_for_memory,
+            },
+        )
         .await?;
 
     Ok(ChatRouteResponse {
@@ -190,11 +197,14 @@ mod tests {
     async fn route_world_prompt_requires_default_provider() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
 
-        let error = super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
-            .await
-            .unwrap_err();
+        let error =
+            super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
+                .await
+                .unwrap_err();
 
-        assert!(error.to_string().contains("default provider is not configured"));
+        assert!(error
+            .to_string()
+            .contains("default provider is not configured"));
     }
 
     #[tokio::test]
@@ -208,22 +218,33 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .save_provider(provider)
+            .await
+            .unwrap();
         state
             .provider_service()
             .set_default_provider(&provider_id)
             .await
             .unwrap();
 
-        let response = super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
-            .await
-            .unwrap();
+        let response =
+            super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
+                .await
+                .unwrap();
 
         assert!(!response.session.id.is_empty());
         assert_eq!(response.messages.len(), 2);
         assert_eq!(response.messages[0].content, "summarize today's notes");
         assert_eq!(response.messages[1].role, "assistant");
-        assert_eq!(response.provider.as_ref().map(|provider| provider.name.as_str()), Some("Local"));
+        assert_eq!(
+            response
+                .provider
+                .as_ref()
+                .map(|provider| provider.name.as_str()),
+            Some("Local")
+        );
     }
 
     #[tokio::test]
@@ -237,18 +258,29 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .save_provider(provider)
+            .await
+            .unwrap();
         state
             .provider_service()
             .set_default_provider(&provider_id)
             .await
             .unwrap();
 
-        let response =
-            super::route_world_prompt_inner("capture the release checklist".to_string(), None, &state)
-                .await
-                .unwrap();
-        let pending = state.memory_service().list_pending_candidates().await.unwrap();
+        let response = super::route_world_prompt_inner(
+            "capture the release checklist".to_string(),
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
+        let pending = state
+            .memory_service()
+            .list_pending_candidates()
+            .await
+            .unwrap();
 
         assert!(pending.iter().any(|candidate| {
             candidate.surface == nuka_domain::memory::MemorySurface::Chat
@@ -267,16 +299,21 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .save_provider(provider)
+            .await
+            .unwrap();
         state
             .provider_service()
             .set_default_provider(&provider_id)
             .await
             .unwrap();
 
-        let first = super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
-            .await
-            .unwrap();
+        let first =
+            super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
+                .await
+                .unwrap();
         let next = super::route_world_prompt_inner(
             "continue the same conversation".to_string(),
             Some(first.session.id.clone()),
@@ -301,26 +338,30 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .save_provider(provider)
+            .await
+            .unwrap();
         state
             .provider_service()
             .set_default_provider(&provider_id)
             .await
             .unwrap();
 
-        let response = super::execute_prompt_json_inner(
-            "summarize today's notes".to_string(),
-            None,
-            &state,
-        )
-        .await
-        .unwrap();
+        let response =
+            super::execute_prompt_json_inner("summarize today's notes".to_string(), None, &state)
+                .await
+                .unwrap();
 
         assert_eq!(response.exit_status, "success");
         assert_eq!(response.run_id, None);
         assert!(!response.session_id.is_empty());
         assert_eq!(response.route.kind, "direct_reply");
-        assert_eq!(response.provider.as_ref().map(|item| item.id.as_str()), Some(provider_id.as_str()));
+        assert_eq!(
+            response.provider.as_ref().map(|item| item.id.as_str()),
+            Some(provider_id.as_str())
+        );
         assert!(!response.final_output.is_empty());
     }
 
@@ -335,7 +376,11 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .save_provider(provider)
+            .await
+            .unwrap();
         state
             .provider_service()
             .set_default_provider(&provider_id)
