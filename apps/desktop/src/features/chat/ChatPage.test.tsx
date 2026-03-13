@@ -617,6 +617,9 @@ describe("ChatPage", () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
 
+    const footer = view.container.querySelector(
+      '[data-testid="chat-composer-footer"]',
+    ) as HTMLElement | null;
     const routeStrip = view.container.querySelector(".chat-route-strip");
     const routeButton = view.container.querySelector(
       '[aria-label="Configure session route"]',
@@ -632,6 +635,9 @@ describe("ChatPage", () => {
     expect(view.container.querySelector(".composer__icon--plus")).toBeTruthy();
     expect(view.container.querySelector(".composer__icon--send")).toBeTruthy();
     expect(routeStrip).toBeFalsy();
+    expect(footer).toBeTruthy();
+    expect(routeButton && footer?.contains(routeButton)).toBe(true);
+    expect(draftButton && footer?.contains(draftButton)).toBe(true);
     expect(routeButton?.className).toContain("composer__token-action--route");
     expect(draftButton?.className).toContain("composer__token-action--draft");
     expect(view.container.querySelector('[aria-label="Composer entry modes"]')).toBeFalsy();

@@ -789,164 +789,6 @@ export function ChatPage() {
           showTeamChooser || showCreateTeamPill ? "composer__bar--pill" : ""
         }`}
       >
-        <div className="composer__menu">
-          <button
-            aria-expanded={entryMenuOpen}
-            aria-haspopup="menu"
-            className="composer__add"
-            onClick={() => {
-              setRouteMenuOpen(false);
-              setEntryMenuOpen((current) => !current);
-            }}
-            type="button"
-          >
-            <span className="composer__visually-hidden">+</span>
-            <ComposerPlusIcon />
-          </button>
-
-          {entryMenuOpen ? (
-            <div
-              aria-label="Composer entry modes"
-              className="composer__entry-menu"
-              role="menu"
-            >
-              <button
-                className="composer__entry-option"
-                onClick={() => handleEntryModeSelect("direct")}
-                type="button"
-              >
-                Direct chat
-              </button>
-              <button
-                className="composer__entry-option"
-                onClick={() => handleEntryModeSelect("choose_team")}
-                type="button"
-              >
-                Choose team
-              </button>
-              <button
-                className="composer__entry-option"
-                onClick={() => handleEntryModeSelect("create_team")}
-                type="button"
-              >
-                Create team
-              </button>
-            </div>
-          ) : null}
-        </div>
-
-        {showTeamChooser ? (
-          <div className="composer__workflow-pill" data-testid="chat-team-chooser">
-            <button
-              aria-expanded={teamPickerOpen}
-            aria-haspopup="listbox"
-            className="composer__workflow-trigger"
-            onClick={() => {
-              setRouteMenuOpen(false);
-              setTeamPickerOpen((current) => !current);
-            }}
-            type="button"
-          >
-              <span className="composer__workflow-trigger-label">
-                {selectedTeam ? selectedTeam.name : "Select team"}
-              </span>
-              <ComposerChevronIcon />
-            </button>
-            <button
-              aria-label="Clear team chooser"
-              className="composer__workflow-clear"
-              onClick={() => {
-                setSelectedTeamId("");
-                setTeamPickerOpen(false);
-                setEntryMode("direct");
-                setRouteMenuOpen(false);
-                setError(null);
-              }}
-              type="button"
-            >
-              <ComposerCloseIcon />
-            </button>
-
-            {teamPickerOpen ? (
-              <div
-                className="composer__workflow-options"
-                data-testid="chat-team-options"
-                role="listbox"
-              >
-                {availableTeams.map((team) => (
-                  <button
-                    className="composer__workflow-option"
-                    data-team-id={team.id}
-                    key={team.id}
-                    onClick={() => {
-                      setSelectedTeamId(team.id);
-                      setTeamPickerOpen(false);
-                      setRouteMenuOpen(false);
-                      setError(null);
-                    }}
-                    type="button"
-                  >
-                    {team.name}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {showCreateTeamPill ? (
-          <div className="composer__workflow-pill composer__workflow-pill--static" data-testid="chat-create-pill">
-            <span className="composer__workflow-trigger-label">Create team</span>
-            <button
-              aria-label="Clear create team"
-              className="composer__workflow-clear"
-              onClick={() => {
-                setTeamPickerOpen(false);
-                setEntryMode("direct");
-                setRouteMenuOpen(false);
-                setError(null);
-              }}
-              type="button"
-            >
-              <ComposerCloseIcon />
-            </button>
-          </div>
-        ) : null}
-
-        <div className="composer__route">
-          <button
-            aria-expanded={routeMenuOpen}
-            aria-haspopup="dialog"
-            aria-label="Configure session route"
-            className="composer__token-action composer__token-action--route"
-            onClick={() => {
-              setEntryMenuOpen(false);
-              setTeamPickerOpen(false);
-              setRouteMenuOpen((current) => !current);
-            }}
-            type="button"
-          >
-            <span className="composer__token-action-copy">
-              <span className="composer__token-action-eyebrow">Route</span>
-              <span className="composer__token-action-value">{routeSummary}</span>
-            </span>
-            <ComposerChevronIcon />
-          </button>
-          {routeControls}
-        </div>
-
-        <button
-          aria-label="Draft in external editor"
-          className="composer__token-action composer__token-action--draft"
-          disabled={isDrafting || isRouting}
-          onClick={() => {
-            void handleOpenExternalDraft();
-          }}
-          type="button"
-        >
-          {isDrafting ? "Drafting..." : "Draft"}
-        </button>
-
         <div className="composer__field">
           <textarea
             className="composer__input"
@@ -964,29 +806,196 @@ export function ChatPage() {
           />
         </div>
 
-        <button
-          aria-label={landing ? "Send to World" : "Send"}
-          className="composer__send"
-          disabled={!providerGate.ready || isRouting || prompt.trim().length === 0}
-          onClick={() => {
-            void handleSend();
-          }}
-          type="button"
-        >
-          {landing ? (
-            <>
-              <span className="composer__visually-hidden">
-                {isRouting ? "..." : "Send"}
-              </span>
-              <ComposerSendIcon />
-            </>
-          ) : (
-            <>
-              <span className="composer__send-label">{isRouting ? "..." : "Send"}</span>
-              {isRouting ? null : <ComposerSendIcon />}
-            </>
-          )}
-        </button>
+        <div className="composer__footer" data-testid="chat-composer-footer">
+          <div className="composer__footer-main">
+            <div className="composer__menu">
+              <button
+                aria-expanded={entryMenuOpen}
+                aria-haspopup="menu"
+                className="composer__add"
+                onClick={() => {
+                  setRouteMenuOpen(false);
+                  setEntryMenuOpen((current) => !current);
+                }}
+                type="button"
+              >
+                <span className="composer__visually-hidden">+</span>
+                <ComposerPlusIcon />
+              </button>
+
+              {entryMenuOpen ? (
+                <div
+                  aria-label="Composer entry modes"
+                  className="composer__entry-menu"
+                  role="menu"
+                >
+                  <button
+                    className="composer__entry-option"
+                    onClick={() => handleEntryModeSelect("direct")}
+                    type="button"
+                  >
+                    Direct chat
+                  </button>
+                  <button
+                    className="composer__entry-option"
+                    onClick={() => handleEntryModeSelect("choose_team")}
+                    type="button"
+                  >
+                    Choose team
+                  </button>
+                  <button
+                    className="composer__entry-option"
+                    onClick={() => handleEntryModeSelect("create_team")}
+                    type="button"
+                  >
+                    Create team
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            {showTeamChooser ? (
+              <div className="composer__workflow-pill" data-testid="chat-team-chooser">
+                <button
+                  aria-expanded={teamPickerOpen}
+                  aria-haspopup="listbox"
+                  className="composer__workflow-trigger"
+                  onClick={() => {
+                    setRouteMenuOpen(false);
+                    setTeamPickerOpen((current) => !current);
+                  }}
+                  type="button"
+                >
+                  <span className="composer__workflow-trigger-label">
+                    {selectedTeam ? selectedTeam.name : "Select team"}
+                  </span>
+                  <ComposerChevronIcon />
+                </button>
+                <button
+                  aria-label="Clear team chooser"
+                  className="composer__workflow-clear"
+                  onClick={() => {
+                    setSelectedTeamId("");
+                    setTeamPickerOpen(false);
+                    setEntryMode("direct");
+                    setRouteMenuOpen(false);
+                    setError(null);
+                  }}
+                  type="button"
+                >
+                  <ComposerCloseIcon />
+                </button>
+
+                {teamPickerOpen ? (
+                  <div
+                    className="composer__workflow-options"
+                    data-testid="chat-team-options"
+                    role="listbox"
+                  >
+                    {availableTeams.map((team) => (
+                      <button
+                        className="composer__workflow-option"
+                        data-team-id={team.id}
+                        key={team.id}
+                        onClick={() => {
+                          setSelectedTeamId(team.id);
+                          setTeamPickerOpen(false);
+                          setRouteMenuOpen(false);
+                          setError(null);
+                        }}
+                        type="button"
+                      >
+                        {team.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {showCreateTeamPill ? (
+              <div
+                className="composer__workflow-pill composer__workflow-pill--static"
+                data-testid="chat-create-pill"
+              >
+                <span className="composer__workflow-trigger-label">Create team</span>
+                <button
+                  aria-label="Clear create team"
+                  className="composer__workflow-clear"
+                  onClick={() => {
+                    setTeamPickerOpen(false);
+                    setEntryMode("direct");
+                    setRouteMenuOpen(false);
+                    setError(null);
+                  }}
+                  type="button"
+                >
+                  <ComposerCloseIcon />
+                </button>
+              </div>
+            ) : null}
+
+            <div className="composer__route">
+              <button
+                aria-expanded={routeMenuOpen}
+                aria-haspopup="dialog"
+                aria-label="Configure session route"
+                className="composer__token-action composer__token-action--route"
+                onClick={() => {
+                  setEntryMenuOpen(false);
+                  setTeamPickerOpen(false);
+                  setRouteMenuOpen((current) => !current);
+                }}
+                type="button"
+              >
+                <span className="composer__token-action-copy">
+                  <span className="composer__token-action-eyebrow">Route</span>
+                  <span className="composer__token-action-value">{routeSummary}</span>
+                </span>
+                <ComposerChevronIcon />
+              </button>
+              {routeControls}
+            </div>
+          </div>
+
+          <div className="composer__footer-actions">
+            <button
+              aria-label="Draft in external editor"
+              className="composer__token-action composer__token-action--draft"
+              disabled={isDrafting || isRouting}
+              onClick={() => {
+                void handleOpenExternalDraft();
+              }}
+              type="button"
+            >
+              {isDrafting ? "Drafting..." : "Draft"}
+            </button>
+
+            <button
+              aria-label={landing ? "Send to World" : "Send"}
+              className="composer__send"
+              disabled={!providerGate.ready || isRouting || prompt.trim().length === 0}
+              onClick={() => {
+                void handleSend();
+              }}
+              type="button"
+            >
+              {landing ? (
+                <>
+                  <span className="composer__visually-hidden">
+                    {isRouting ? "..." : "Send"}
+                  </span>
+                  <ComposerSendIcon />
+                </>
+              ) : (
+                <>
+                  <span className="composer__send-label">{isRouting ? "..." : "Send"}</span>
+                  {isRouting ? null : <ComposerSendIcon />}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
