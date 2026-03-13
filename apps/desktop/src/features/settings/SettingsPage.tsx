@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { RUNTIME_STATUS_REFRESH_EVENT } from "@/hooks/useAppRuntimeStatus";
 import {
   clearProviderSecret,
   importProviderFromEnv,
@@ -138,6 +139,10 @@ function toErrorMessage(caughtError: unknown) {
   return caughtError instanceof Error ? caughtError.message : String(caughtError);
 }
 
+function requestRuntimeStatusRefresh() {
+  window.dispatchEvent(new CustomEvent(RUNTIME_STATUS_REFRESH_EVENT));
+}
+
 export function SettingsPage() {
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("providers");
@@ -268,6 +273,7 @@ export function SettingsPage() {
       });
       setSettings(saved);
       setInitialSettings(saved);
+      requestRuntimeStatusRefresh();
       emitToast({
         message: "Runtime settings saved.",
         tone: "success",
@@ -307,6 +313,7 @@ export function SettingsPage() {
       setInitialProviders(nextInitialProviders);
       setSettings(savedSettings);
       setInitialSettings(savedSettings);
+      requestRuntimeStatusRefresh();
       emitToast({
         message: "Provider changes saved.",
         tone: "success",

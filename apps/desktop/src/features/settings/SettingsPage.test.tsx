@@ -723,4 +723,44 @@ describe("SettingsPage", () => {
       }),
     );
   });
+
+  it("emits a runtime-status refresh event after provider changes save", async () => {
+    const events: Event[] = [];
+    const handleRefresh = (event: Event) => {
+      events.push(event);
+    };
+    window.addEventListener("nuka:runtime-status-refresh", handleRefresh);
+
+    try {
+      const view = await renderIntoDocument(<SettingsPage />);
+      cleanups.push(view.cleanup);
+
+      const providersButton = findButton(view.container, "Providers");
+      expect(providersButton).toBeTruthy();
+
+      await act(async () => {
+        providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      const fallbackSelect = view.container.querySelector(
+        'select[aria-label="Fallback Provider"]',
+      ) as HTMLSelectElement | null;
+      const saveProviders = findButton(view.container, "Save Provider Changes");
+
+      await act(async () => {
+        if (!fallbackSelect) {
+          throw new Error("Fallback provider select missing");
+        }
+        setFormValue(fallbackSelect, "");
+      });
+
+      await act(async () => {
+        saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(events).toHaveLength(1);
+    } finally {
+      window.removeEventListener("nuka:runtime-status-refresh", handleRefresh);
+    }
+  });
 });

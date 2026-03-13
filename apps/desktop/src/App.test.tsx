@@ -444,6 +444,34 @@ describe("App shell", () => {
     expect(view.container.textContent).toContain("No provider configured");
   });
 
+  it("refreshes the sidebar provider card when runtime refresh is requested", async () => {
+    runtimeStatusState.provider.kind = "missing";
+    runtimeStatusState.provider.message = "Provider required";
+    runtimeStatusState.provider.label = null;
+
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.textContent).toContain("No provider configured");
+
+    await act(async () => {
+      runtimeStatusState.provider.kind = "ready";
+      runtimeStatusState.provider.message = "Provider ready";
+      runtimeStatusState.provider.label = "Daiju MiniMax";
+      window.dispatchEvent(new CustomEvent("nuka:runtime-status-refresh"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.textContent).toContain("Daiju MiniMax");
+    expect(view.container.textContent).not.toContain("No provider configured");
+  });
+
   it("keeps chat as the default page before any team run starts", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
