@@ -409,6 +409,18 @@ async function setComposerValue(container: HTMLElement, value: string) {
   });
 }
 
+async function openRouteCard(container: HTMLElement) {
+  const routeButton = container.querySelector(
+    '[aria-label="Configure session route"]',
+  ) as HTMLButtonElement | null;
+
+  await act(async () => {
+    routeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 async function setFieldValue(container: HTMLElement, label: string, value: string) {
   const field = Array.from(container.querySelectorAll("input, textarea")).find(
     (node) => node.getAttribute("aria-label") === label,
@@ -606,6 +618,9 @@ describe("ChatPage", () => {
     cleanups.push(view.cleanup);
 
     const routeStrip = view.container.querySelector(".chat-route-strip");
+    const routeButton = view.container.querySelector(
+      '[aria-label="Configure session route"]',
+    ) as HTMLButtonElement | null;
     const draftButton = Array.from(view.container.querySelectorAll("button")).find(
       (button) => button.textContent?.trim() === "Draft",
     );
@@ -616,11 +631,25 @@ describe("ChatPage", () => {
     expect(view.container.querySelector(".composer__add")).toBeTruthy();
     expect(view.container.querySelector(".composer__icon--plus")).toBeTruthy();
     expect(view.container.querySelector(".composer__icon--send")).toBeTruthy();
-    expect(routeStrip?.className).toContain("chat-route-strip--landing");
+    expect(routeStrip).toBeFalsy();
+    expect(routeButton?.className).toContain("composer__token-action--route");
     expect(draftButton?.className).toContain("composer__token-action--draft");
     expect(view.container.querySelector('[aria-label="Composer entry modes"]')).toBeFalsy();
     expect(findText(view.container, "Provider required")).toBeFalsy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
+  });
+
+  it("opens a compact route card from the composer", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    expect(view.container.querySelector('[data-testid="chat-route-controls"]')).toBeFalsy();
+
+    await openRouteCard(view.container);
+
+    expect(view.container.querySelector('[data-testid="chat-route-controls"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Session provider"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Session model"]')).toBeTruthy();
   });
 
   it("reveals direct chat and real team entry modes from the plus menu", async () => {
@@ -1678,6 +1707,7 @@ describe("ChatPage", () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
 
+    await openRouteCard(view.container);
     await setSelectValue(view.container, "Session provider", "provider-fallback");
     await setFieldValue(view.container, "Session model", "gpt-4.1-mini");
     await setComposerValue(view.container, "Route this directly");
@@ -1735,6 +1765,7 @@ describe("ChatPage", () => {
     await clickButton(view.container, "+");
     await clickButton(view.container, "Choose team");
     await clickTeamOption(view.container, "team-release");
+    await openRouteCard(view.container);
     await setSelectValue(view.container, "Session provider", "provider-broken");
     await setComposerValue(view.container, "Kick off the release");
     await clickButton(view.container, "Send");

@@ -204,6 +204,7 @@ export function ChatPage() {
   const [session, setSession] = useState<ChatRouteResponse | null>(null);
   const [entryMode, setEntryMode] = useState<ComposerEntryMode>("direct");
   const [entryMenuOpen, setEntryMenuOpen] = useState(false);
+  const [routeMenuOpen, setRouteMenuOpen] = useState(false);
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [availableTeams, setAvailableTeams] = useState<TeamRecord[]>([]);
   const [availableProviders, setAvailableProviders] = useState<ProviderRecord[]>([]);
@@ -322,6 +323,7 @@ export function ChatPage() {
   const handleEntryModeSelect = (nextMode: ComposerEntryMode) => {
     setEntryMode(nextMode);
     setEntryMenuOpen(false);
+    setRouteMenuOpen(false);
     setError(null);
     setNotice(null);
 
@@ -337,6 +339,7 @@ export function ChatPage() {
   const handleSessionSelect = (sessionId: string) => {
     workspaceSessions.setActiveSessionId(sessionId);
     setEntryMenuOpen(false);
+    setRouteMenuOpen(false);
     setTeamPickerOpen(false);
     setSelectedTeamId("");
     setEntryMode("direct");
@@ -363,6 +366,7 @@ export function ChatPage() {
     setError(null);
     setNotice(null);
     setEntryMenuOpen(false);
+    setRouteMenuOpen(false);
     setTeamPickerOpen(false);
     setIsRouting(true);
     const routingRequest = buildRoutingRequest(routeDraft);
@@ -537,6 +541,7 @@ export function ChatPage() {
     setError(null);
     setNotice(null);
     setEntryMenuOpen(false);
+    setRouteMenuOpen(false);
     setIsDrafting(true);
 
     try {
@@ -613,11 +618,16 @@ export function ChatPage() {
       activeRouting.fallbackProviderId
     : null;
   const failoverReasonLabel = formatFailoverReason(activeRouting?.failoverReason ?? null);
-  const routeControls = (
-    <div
-      className={`chat-route-strip ${landing ? "chat-route-strip--landing" : "chat-route-strip--active"}`}
-      data-testid="chat-route-controls"
-    >
+  const routeSummary = [
+    routeDraft.requestedProviderId
+      ? providerNameById.get(routeDraft.requestedProviderId) ?? routeDraft.requestedProviderId
+      : "Desktop default",
+    routeDraft.requestedModel.trim() || null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(META_SEPARATOR);
+  const routeControls = routeMenuOpen ? (
+    <div className="composer__route-menu" data-testid="chat-route-controls">
       <label className="chat-route-field">
         <span className="chat-route-field__label">Route</span>
         <select
@@ -656,7 +666,7 @@ export function ChatPage() {
         />
       </label>
     </div>
-  );
+  ) : null;
   const routeState = activeRouting ? (
     <div
       className="chat-route-state"
@@ -773,7 +783,6 @@ export function ChatPage() {
       {notice ? (
         <div className="composer__inline-feedback composer__inline-feedback--notice">{notice}</div>
       ) : null}
-      {routeControls}
 
       <div
         className={`composer__bar ${
@@ -785,7 +794,10 @@ export function ChatPage() {
             aria-expanded={entryMenuOpen}
             aria-haspopup="menu"
             className="composer__add"
-            onClick={() => setEntryMenuOpen((current) => !current)}
+            onClick={() => {
+              setRouteMenuOpen(false);
+              setEntryMenuOpen((current) => !current);
+            }}
             type="button"
           >
             <span className="composer__visually-hidden">+</span>
@@ -827,11 +839,14 @@ export function ChatPage() {
           <div className="composer__workflow-pill" data-testid="chat-team-chooser">
             <button
               aria-expanded={teamPickerOpen}
-              aria-haspopup="listbox"
-              className="composer__workflow-trigger"
-              onClick={() => setTeamPickerOpen((current) => !current)}
-              type="button"
-            >
+            aria-haspopup="listbox"
+            className="composer__workflow-trigger"
+            onClick={() => {
+              setRouteMenuOpen(false);
+              setTeamPickerOpen((current) => !current);
+            }}
+            type="button"
+          >
               <span className="composer__workflow-trigger-label">
                 {selectedTeam ? selectedTeam.name : "Select team"}
               </span>
@@ -844,6 +859,7 @@ export function ChatPage() {
                 setSelectedTeamId("");
                 setTeamPickerOpen(false);
                 setEntryMode("direct");
+                setRouteMenuOpen(false);
                 setError(null);
               }}
               type="button"
@@ -865,6 +881,7 @@ export function ChatPage() {
                     onClick={() => {
                       setSelectedTeamId(team.id);
                       setTeamPickerOpen(false);
+                      setRouteMenuOpen(false);
                       setError(null);
                     }}
                     type="button"
@@ -886,6 +903,7 @@ export function ChatPage() {
               onClick={() => {
                 setTeamPickerOpen(false);
                 setEntryMode("direct");
+                setRouteMenuOpen(false);
                 setError(null);
               }}
               type="button"
@@ -894,6 +912,28 @@ export function ChatPage() {
             </button>
           </div>
         ) : null}
+
+        <div className="composer__route">
+          <button
+            aria-expanded={routeMenuOpen}
+            aria-haspopup="dialog"
+            aria-label="Configure session route"
+            className="composer__token-action composer__token-action--route"
+            onClick={() => {
+              setEntryMenuOpen(false);
+              setTeamPickerOpen(false);
+              setRouteMenuOpen((current) => !current);
+            }}
+            type="button"
+          >
+            <span className="composer__token-action-copy">
+              <span className="composer__token-action-eyebrow">Route</span>
+              <span className="composer__token-action-value">{routeSummary}</span>
+            </span>
+            <ComposerChevronIcon />
+          </button>
+          {routeControls}
+        </div>
 
         <button
           aria-label="Draft in external editor"
