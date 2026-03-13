@@ -2,6 +2,16 @@ use nuka_domain::team::{TeamRun, TeamRunAgent, TeamRunAgentStatus, TeamRunEvent,
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::Row;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamRunCompaction {
+    pub id: String,
+    pub run_id: String,
+    pub summary: String,
+    pub compacted_event_count: usize,
+    pub sequence: i64,
+    pub created_at: String,
+}
+
 pub struct TeamRunRepository {
     pool: sqlx::SqlitePool,
 }
@@ -122,40 +132,78 @@ impl TeamRunRepository {
     }
 
     pub async fn load_run(&self, run_id: &str) -> anyhow::Result<Option<TeamRun>> {
-        let row = sqlx::query(
+        self.load_run_with_mode(run_id, true).await
+    }
+
+    pub async fn load_run_live(&self, run_id: &str) -> anyhow::Result<Option<TeamRun>> {
+        self.load_run_with_mode(run_id, false).await
+    }
+
+    pub async fn compact_events(
+        &self,
+        run_id: &str,
+        event_ids: &[String],
+        sequence: i64,
+        summary: &str,
+    ) -> anyhow::Result<()> {
+        if event_ids.is_empty() {
+            return Ok(());
+        }
+
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query(
             r#"
-            select
-              id, team_id, title, goal, status, current_phase, lead_agent_id,
-              charter_json, created_at, updated_at
-            from team_runs
-            where id = ?1
-            limit 1
+            insert into team_run_compactions (
+              id, run_id, summary, compacted_event_count, sequence, created_at
+            )
+            values (?1, ?2, ?3, ?4, ?5, datetime('now'))
+            "#,
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(run_id)
+        .bind(summary)
+        .bind(event_ids.len() as i64)
+        .bind(sequence)
+        .execute(&mut *tx)
+        .await?;
+
+        for event_id in event_ids {
+            sqlx::query("delete from team_run_events where run_id = ?1 and id = ?2")
+                .bind(run_id)
+                .bind(event_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn list_compactions(&self, run_id: &str) -> anyhow::Result<Vec<TeamRunCompaction>> {
+        let rows = sqlx::query(
+            r#"
+            select id, run_id, summary, compacted_event_count, sequence, created_at
+            from team_run_compactions
+            where run_id = ?1
+            order by sequence asc, created_at asc, rowid asc
             "#,
         )
         .bind(run_id)
-        .fetch_optional(&self.pool)
+        .fetch_all(&self.pool)
         .await?;
 
-        match row {
-            Some(row) => {
-                let id: String = row.get("id");
-                Ok(Some(TeamRun {
-                    id: id.clone(),
-                    team_id: row.get("team_id"),
-                    title: row.get("title"),
-                    goal: row.get("goal"),
-                    status: parse_team_run_status(&row.get::<String, _>("status"))?,
-                    current_phase: row.get("current_phase"),
-                    lead_agent_id: row.get("lead_agent_id"),
-                    charter: decode_json(&row.get::<String, _>("charter_json"))?,
-                    created_at: row.get("created_at"),
-                    updated_at: row.get("updated_at"),
-                    agents: self.load_agents(&id).await?,
-                    events: self.load_events(&id).await?,
-                }))
-            }
-            None => Ok(None),
-        }
+        Ok(rows
+            .into_iter()
+            .map(|row| TeamRunCompaction {
+                id: row.get("id"),
+                run_id: row.get("run_id"),
+                summary: row.get("summary"),
+                compacted_event_count: row.get::<i64, _>("compacted_event_count") as usize,
+                sequence: row.get("sequence"),
+                created_at: row.get("created_at"),
+            })
+            .collect())
     }
 
     pub async fn list_runs(&self) -> anyhow::Result<Vec<TeamRun>> {
@@ -173,24 +221,61 @@ impl TeamRunRepository {
 
         let mut runs = Vec::with_capacity(rows.len());
         for row in rows {
-            let id: String = row.get("id");
-            runs.push(TeamRun {
-                id: id.clone(),
-                team_id: row.get("team_id"),
-                title: row.get("title"),
-                goal: row.get("goal"),
-                status: parse_team_run_status(&row.get::<String, _>("status"))?,
-                current_phase: row.get("current_phase"),
-                lead_agent_id: row.get("lead_agent_id"),
-                charter: decode_json(&row.get::<String, _>("charter_json"))?,
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
-                agents: self.load_agents(&id).await?,
-                events: self.load_events(&id).await?,
-            });
+            runs.push(self.map_run_row(row, true).await?);
         }
 
         Ok(runs)
+    }
+
+    async fn load_run_with_mode(
+        &self,
+        run_id: &str,
+        include_compactions: bool,
+    ) -> anyhow::Result<Option<TeamRun>> {
+        let row = sqlx::query(
+            r#"
+            select
+              id, team_id, title, goal, status, current_phase, lead_agent_id,
+              charter_json, created_at, updated_at
+            from team_runs
+            where id = ?1
+            limit 1
+            "#,
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match row {
+            Some(row) => Ok(Some(self.map_run_row(row, include_compactions).await?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn map_run_row(
+        &self,
+        row: sqlx::sqlite::SqliteRow,
+        include_compactions: bool,
+    ) -> anyhow::Result<TeamRun> {
+        let id: String = row.get("id");
+        Ok(TeamRun {
+            id: id.clone(),
+            team_id: row.get("team_id"),
+            title: row.get("title"),
+            goal: row.get("goal"),
+            status: parse_team_run_status(&row.get::<String, _>("status"))?,
+            current_phase: row.get("current_phase"),
+            lead_agent_id: row.get("lead_agent_id"),
+            charter: decode_json(&row.get::<String, _>("charter_json"))?,
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+            agents: self.load_agents(&id).await?,
+            events: if include_compactions {
+                self.load_events_with_compactions(&id).await?
+            } else {
+                self.load_events(&id).await?
+            },
+        })
     }
 
     async fn load_agents(&self, run_id: &str) -> anyhow::Result<Vec<TeamRunAgent>> {
@@ -265,6 +350,35 @@ impl TeamRunRepository {
                 })
             })
             .collect()
+    }
+
+    async fn load_events_with_compactions(&self, run_id: &str) -> anyhow::Result<Vec<TeamRunEvent>> {
+        let mut events = self
+            .list_compactions(run_id)
+            .await?
+            .into_iter()
+            .map(|compaction| TeamRunEvent {
+                id: compaction.id,
+                run_id: compaction.run_id,
+                kind: "compaction_summary".to_string(),
+                agent_id: None,
+                title: "Compacted context".to_string(),
+                content: compaction.summary,
+                status: Some("completed".to_string()),
+                tool_name: None,
+                tool_call_id: None,
+                tool_target: None,
+                sequence: compaction.sequence,
+                created_at: compaction.created_at,
+            })
+            .collect::<Vec<_>>();
+        events.extend(self.load_events(run_id).await?);
+        events.sort_by(|left, right| {
+            left.sequence
+                .cmp(&right.sequence)
+                .then(left.created_at.cmp(&right.created_at))
+        });
+        Ok(events)
     }
 }
 

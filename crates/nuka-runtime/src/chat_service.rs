@@ -4,6 +4,9 @@ use nuka_integrations::providers::{
     ChatCompletionProvider,
 };
 
+const CHAT_COMPACTION_MESSAGE_THRESHOLD: usize = 4;
+const CHAT_COMPACTION_RECENT_WINDOW: usize = 4;
+
 #[derive(Debug, Clone)]
 pub struct ChatTurnRecord {
     pub session: nuka_domain::chat::ChatSessionSummary,
@@ -154,6 +157,7 @@ impl ChatService {
             content: prompt.to_string(),
         };
         repo.append_message(user_message.clone()).await?;
+        self.maybe_compact_session(&repo, &session.id).await?;
 
         let completion_messages = repo
             .list_messages(&session.id)
@@ -188,8 +192,9 @@ impl ChatService {
                 .unwrap_or_default(),
         };
         repo.append_message(assistant_message.clone()).await?;
+        self.maybe_compact_session(&repo, &session.id).await?;
 
-        session.message_count += 2;
+        session.message_count = repo.list_messages(&session.id).await?.len();
 
         Ok(ChatTurnRecord {
             session,
@@ -237,6 +242,36 @@ impl ChatService {
         load_connection_checks_enabled(&self.pool).await
     }
 
+    async fn maybe_compact_session(
+        &self,
+        repo: &nuka_storage::chat::ChatRepository,
+        session_id: &str,
+    ) -> anyhow::Result<()> {
+        let live_messages = repo.list_live_messages(session_id).await?;
+        if live_messages.len() <= CHAT_COMPACTION_MESSAGE_THRESHOLD {
+            return Ok(());
+        }
+
+        let compact_count = live_messages
+            .len()
+            .saturating_sub(CHAT_COMPACTION_RECENT_WINDOW);
+        if compact_count == 0 {
+            return Ok(());
+        }
+
+        let compacted_messages = &live_messages[..compact_count];
+        let compacted_ids = compacted_messages
+            .iter()
+            .map(|message| message.id.clone())
+            .collect::<Vec<_>>();
+        repo.compact_messages(
+            session_id,
+            &compacted_ids,
+            &summarize_chat_messages(compacted_messages),
+        )
+        .await
+    }
+
     async fn run_provider_preflight(
         &self,
         provider: &nuka_domain::provider::ProviderConfig,
@@ -268,6 +303,42 @@ fn chat_message_to_provider_message(message: nuka_domain::chat::ChatMessage) -> 
         .to_string(),
         content: message.content,
     }
+}
+
+fn summarize_chat_messages(messages: &[nuka_domain::chat::ChatMessage]) -> String {
+    let lines = messages
+        .iter()
+        .map(|message| {
+            format!(
+                "- {}: {}",
+                chat_role_label(&message.role),
+                excerpt(&message.content, 96)
+            )
+        })
+        .collect::<Vec<_>>();
+    format!(
+        "Compacted earlier chat context ({} messages):\n{}",
+        messages.len(),
+        lines.join("\n")
+    )
+}
+
+fn chat_role_label(role: &nuka_domain::chat::ChatMessageRole) -> &'static str {
+    match role {
+        nuka_domain::chat::ChatMessageRole::System => "system",
+        nuka_domain::chat::ChatMessageRole::User => "user",
+        nuka_domain::chat::ChatMessageRole::Assistant => "assistant",
+        nuka_domain::chat::ChatMessageRole::Tool => "tool",
+    }
+}
+
+fn excerpt(content: &str, limit: usize) -> String {
+    let mut excerpt = content.trim().replace('\n', " ");
+    if excerpt.chars().count() > limit {
+        excerpt = excerpt.chars().take(limit).collect::<String>();
+        excerpt.push_str("...");
+    }
+    excerpt
 }
 
 const PROVIDERS_STATE_KEY: &str = "settings.providers";

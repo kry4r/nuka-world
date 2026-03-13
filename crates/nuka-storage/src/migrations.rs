@@ -281,5 +281,34 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     .execute(pool)
     .await?;
 
+    sqlx::query(
+        r#"
+        create table if not exists chat_session_compactions (
+          id text primary key,
+          session_id text not null references chat_sessions(id) on delete cascade,
+          summary text not null,
+          compacted_message_count integer not null,
+          created_at text not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        create table if not exists team_run_compactions (
+          id text primary key,
+          run_id text not null references team_runs(id) on delete cascade,
+          summary text not null,
+          compacted_event_count integer not null,
+          sequence integer not null,
+          created_at text not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
     Ok(())
 }

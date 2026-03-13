@@ -4,6 +4,9 @@ use nuka_integrations::providers::{
     ChatCompletionProvider,
 };
 
+const TEAM_RUN_COMPACTION_EVENT_THRESHOLD: usize = 8;
+const TEAM_RUN_COMPACTION_RECENT_WINDOW: usize = 5;
+
 #[derive(Debug, Clone)]
 pub struct RuntimeAgentSpec {
     pub name: String,
@@ -104,6 +107,7 @@ impl TeamRunService {
         .await?;
 
         let repo = nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone());
+        self.maybe_compact_run_events(&repo, &mut run).await?;
         repo.create_run(run.clone()).await?;
         repo.load_run(&run.id)
             .await?
@@ -121,7 +125,7 @@ impl TeamRunService {
         let provider = self.provider_service.resolve_default_provider().await?;
         let repo = nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone());
         let mut run = repo
-            .load_run(run_id)
+            .load_run_live(run_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("unknown team run: {run_id}"))?;
 
@@ -151,6 +155,7 @@ impl TeamRunService {
         )
         .await?;
 
+        self.maybe_compact_run_events(&repo, &mut run).await?;
         repo.save_run(run.clone()).await?;
         repo.load_run(&run.id)
             .await?
@@ -166,7 +171,7 @@ impl TeamRunService {
 
         let repo = nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone());
         let mut run = repo
-            .load_run(run_id)
+            .load_run_live(run_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("unknown team run: {run_id}"))?;
 
@@ -235,6 +240,44 @@ impl TeamRunService {
 
     async fn connection_checks_enabled(&self) -> anyhow::Result<bool> {
         load_connection_checks_enabled(&self.pool).await
+    }
+
+    async fn maybe_compact_run_events(
+        &self,
+        repo: &nuka_storage::team_runs::TeamRunRepository,
+        run: &mut nuka_domain::team::TeamRun,
+    ) -> anyhow::Result<()> {
+        if run.events.len() <= TEAM_RUN_COMPACTION_EVENT_THRESHOLD {
+            return Ok(());
+        }
+
+        let compact_count = run
+            .events
+            .len()
+            .saturating_sub(TEAM_RUN_COMPACTION_RECENT_WINDOW);
+        if compact_count == 0 {
+            return Ok(());
+        }
+
+        let compacted_events = run.events[..compact_count].to_vec();
+        let compacted_ids = compacted_events
+            .iter()
+            .map(|event| event.id.clone())
+            .collect::<Vec<_>>();
+        let compacted_sequence = compacted_events
+            .last()
+            .map(|event| event.sequence)
+            .unwrap_or_default();
+
+        repo.compact_events(
+            &run.id,
+            &compacted_ids,
+            compacted_sequence,
+            &summarize_team_run_events(&compacted_events),
+        )
+        .await?;
+        run.events = run.events[compact_count..].to_vec();
+        Ok(())
     }
 
     async fn maybe_run_provider_preflight(
@@ -504,6 +547,34 @@ fn select_active_agent_indexes(
 
 fn next_sequence(events: &[nuka_domain::team::TeamRunEvent]) -> i64 {
     events.iter().map(|event| event.sequence).max().unwrap_or(0) + 1
+}
+
+fn summarize_team_run_events(events: &[nuka_domain::team::TeamRunEvent]) -> String {
+    let lines = events
+        .iter()
+        .map(|event| {
+            format!(
+                "- {} / {}: {}",
+                event.kind,
+                event.title,
+                excerpt(&event.content, 96)
+            )
+        })
+        .collect::<Vec<_>>();
+    format!(
+        "Compacted earlier team run context ({} events):\n{}",
+        events.len(),
+        lines.join("\n")
+    )
+}
+
+fn excerpt(content: &str, limit: usize) -> String {
+    let mut excerpt = content.trim().replace('\n', " ");
+    if excerpt.chars().count() > limit {
+        excerpt = excerpt.chars().take(limit).collect::<String>();
+        excerpt.push_str("...");
+    }
+    excerpt
 }
 
 fn sample_seed_team() -> nuka_domain::team::Team {

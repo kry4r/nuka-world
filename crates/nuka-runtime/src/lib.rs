@@ -26,6 +26,7 @@ mod tests {
         knowledge::{KnowledgeCollection, KnowledgeConnector, KnowledgeConnectorKind},
         memory::MemoryScope,
         provider::{ProviderConfig, ProviderKind},
+        team::{Team, TeamAgent, TeamStatus},
         tool::AgentToolBinding,
     };
     use nuka_knowledge::engine::EngineHealth;
@@ -46,11 +47,100 @@ mod tests {
         }
     }
 
+    fn sample_team() -> Team {
+        Team {
+            id: "team-release".to_string(),
+            name: "Release Team".to_string(),
+            goal: "Ship the release cleanly".to_string(),
+            summary: "Coordinates release readiness".to_string(),
+            prompt_constraints: "Stay concise".to_string(),
+            permission_policy: "No destructive tools.".to_string(),
+            success_criteria: "Release ships without regressions.".to_string(),
+            coordination_policy: "Coordinator runs bounded review rounds.".to_string(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            status: TeamStatus::Ready,
+            agents: vec![
+                TeamAgent {
+                    id: "team-agent-coordinator".to_string(),
+                    team_id: "team-release".to_string(),
+                    name: "Coordinator".to_string(),
+                    role: "Coordinator".to_string(),
+                    responsibility: "Drive the agenda".to_string(),
+                    system_prompt: "Coordinate the release team.".to_string(),
+                    tool_bindings: vec![AgentToolBinding::allowed("codex")],
+                    tool_use_policy: Default::default(),
+                    order_hint: 0,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                },
+                TeamAgent {
+                    id: "team-agent-writer".to_string(),
+                    team_id: "team-release".to_string(),
+                    name: "Writer".to_string(),
+                    role: "Writer".to_string(),
+                    responsibility: "Draft the checkpoint".to_string(),
+                    system_prompt: "Draft concise release notes.".to_string(),
+                    tool_bindings: vec![AgentToolBinding::allowed("filesystem")],
+                    tool_use_policy: Default::default(),
+                    order_hint: 1,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                },
+            ],
+            agent_assignments: Vec::new(),
+        }
+    }
+
     #[tokio::test]
     async fn chat_service_requires_default_provider_before_sending() {
         let service = ChatService::new_for_test_without_provider();
         let result = service.send_message("hello", None).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn chat_service_compacts_long_sessions_into_summary_context() {
+        let pool = crate::settings_service::test_pool();
+        let provider_service = ProvidersService::new(pool.clone());
+        let service = ChatService::new_for_test_with_seeded_completion_and_provider_service(
+            pool.clone(),
+            provider_service.clone(),
+        );
+
+        provider_service.save_provider(sample_provider()).await.unwrap();
+        provider_service
+            .set_default_provider("provider-local")
+            .await
+            .unwrap();
+
+        let first = service
+            .send_message("Need a release summary", None)
+            .await
+            .unwrap();
+        let session_id = first.session.id.clone();
+
+        service
+            .send_message("Add the risks and blockers", Some(&session_id))
+            .await
+            .unwrap();
+        service
+            .send_message("Finish with a final recommendation", Some(&session_id))
+            .await
+            .unwrap();
+
+        let repo = nuka_storage::chat::ChatRepository::new(pool.clone());
+        let messages = repo.list_messages(&session_id).await.unwrap();
+        let compactions = repo.list_compactions(&session_id).await.unwrap();
+
+        assert!(!compactions.is_empty());
+        assert!(matches!(
+            messages.first().map(|message| &message.role),
+            Some(nuka_domain::chat::ChatMessageRole::System)
+        ));
+        assert!(messages
+            .iter()
+            .any(|message| message.content.contains("Finish with a final recommendation")));
     }
 
     #[tokio::test]
@@ -188,5 +278,43 @@ mod tests {
         let scopes = service.list_by_workflow("workflow-review").await.unwrap();
         assert_eq!(scopes.len(), 1);
         assert_eq!(scopes[0].agent_id.as_deref(), Some("agent-reviewer"));
+    }
+
+    #[tokio::test]
+    async fn team_run_service_compacts_long_runs_into_summary_events() {
+        let pool = crate::settings_service::test_pool();
+        let provider_service = ProvidersService::new(pool.clone());
+        let service =
+            crate::team_run_service::TeamRunService::new_for_test_with_seeded_completion_and_provider_service(
+                pool.clone(),
+                provider_service.clone(),
+            );
+
+        provider_service.save_provider(sample_provider()).await.unwrap();
+        provider_service
+            .set_default_provider("provider-local")
+            .await
+            .unwrap();
+        nuka_storage::teams::TeamRepository::new(pool.clone())
+            .save_team(sample_team())
+            .await
+            .unwrap();
+
+        let run = service.start_team_run("team-release").await.unwrap();
+        let run = service
+            .continue_team_run(&run.id, "Add the launch checklist and risks")
+            .await
+            .unwrap();
+
+        let repo = nuka_storage::team_runs::TeamRunRepository::new(pool.clone());
+        let loaded = repo.load_run(&run.id).await.unwrap().unwrap();
+        let compactions = repo.list_compactions(&run.id).await.unwrap();
+
+        assert!(!compactions.is_empty());
+        assert_eq!(loaded.events[0].kind, "compaction_summary");
+        assert!(loaded
+            .events
+            .iter()
+            .any(|event| event.kind == "checkpoint_summary"));
     }
 }

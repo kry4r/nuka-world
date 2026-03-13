@@ -394,6 +394,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn chat_repository_surfaces_compaction_artifacts_before_recent_messages() {
+        let db = crate::db::open_in_memory().await.unwrap();
+        crate::migrations::run(&db).await.unwrap();
+
+        let repo = crate::chat::ChatRepository::new(db.clone());
+        repo.create_session(ChatSessionSummary {
+            id: "session-review".to_string(),
+            title: "Review task".to_string(),
+            provider_id: Some("provider-local".to_string()),
+            workflow_id: None,
+            message_count: 0,
+        })
+        .await
+        .unwrap();
+
+        for (id, role, content) in [
+            ("message-1", ChatMessageRole::User, "Need a release summary"),
+            ("message-2", ChatMessageRole::Assistant, "First draft"),
+            ("message-3", ChatMessageRole::User, "Add risks"),
+            ("message-4", ChatMessageRole::Assistant, "Updated draft"),
+        ] {
+            repo.append_message(ChatMessage {
+                id: id.to_string(),
+                session_id: "session-review".to_string(),
+                role,
+                content: content.to_string(),
+            })
+            .await
+            .unwrap();
+        }
+
+        repo.compact_messages(
+            "session-review",
+            &["message-1".to_string(), "message-2".to_string()],
+            "Compacted earlier turns into one summary",
+        )
+        .await
+        .unwrap();
+
+        let messages = repo.list_messages("session-review").await.unwrap();
+        let compactions = repo.list_compactions("session-review").await.unwrap();
+
+        assert_eq!(compactions.len(), 1);
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].role, ChatMessageRole::System);
+        assert!(messages[0]
+            .content
+            .contains("Compacted earlier turns into one summary"));
+        assert_eq!(messages[1].id, "message-3");
+    }
+
+    #[tokio::test]
     async fn saves_and_reads_runtime_state_and_memory_scopes() {
         let db = crate::db::open_in_memory().await.unwrap();
         crate::migrations::run(&db).await.unwrap();
@@ -512,5 +564,78 @@ mod tests {
         let loaded = repo.load_run("run-release").await.unwrap().unwrap();
         assert_eq!(loaded.agents.len(), 2);
         assert!(!loaded.events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn team_run_repository_surfaces_compaction_artifacts_before_recent_events() {
+        let db = crate::db::open_in_memory().await.unwrap();
+        crate::migrations::run(&db).await.unwrap();
+
+        let mut run = sample_run();
+        run.events = vec![
+            TeamRunEvent {
+                id: "event-1".to_string(),
+                run_id: "run-release".to_string(),
+                kind: "round_agenda".to_string(),
+                agent_id: Some("run-agent-coordinator".to_string()),
+                title: "Agenda".to_string(),
+                content: "Plan the release".to_string(),
+                status: Some("completed".to_string()),
+                tool_name: None,
+                tool_call_id: None,
+                tool_target: None,
+                sequence: 1,
+                created_at: "2026-03-11T00:00:00Z".to_string(),
+            },
+            TeamRunEvent {
+                id: "event-2".to_string(),
+                run_id: "run-release".to_string(),
+                kind: "position_card".to_string(),
+                agent_id: Some("run-agent-coordinator".to_string()),
+                title: "Coordinator position".to_string(),
+                content: "Ship after final review".to_string(),
+                status: Some("completed".to_string()),
+                tool_name: None,
+                tool_call_id: None,
+                tool_target: None,
+                sequence: 2,
+                created_at: "2026-03-11T00:01:00Z".to_string(),
+            },
+            TeamRunEvent {
+                id: "event-3".to_string(),
+                run_id: "run-release".to_string(),
+                kind: "checkpoint_summary".to_string(),
+                agent_id: Some("run-agent-coordinator".to_string()),
+                title: "Checkpoint".to_string(),
+                content: "Ready for final edits".to_string(),
+                status: Some("completed".to_string()),
+                tool_name: None,
+                tool_call_id: None,
+                tool_target: None,
+                sequence: 3,
+                created_at: "2026-03-11T00:02:00Z".to_string(),
+            },
+        ];
+
+        let repo = crate::team_runs::TeamRunRepository::new(db.clone());
+        repo.create_run(run).await.unwrap();
+        repo.compact_events(
+            "run-release",
+            &["event-1".to_string(), "event-2".to_string()],
+            2,
+            "Compacted earlier run checkpoints",
+        )
+        .await
+        .unwrap();
+
+        let loaded = repo.load_run("run-release").await.unwrap().unwrap();
+        let compactions = repo.list_compactions("run-release").await.unwrap();
+
+        assert_eq!(compactions.len(), 1);
+        assert_eq!(loaded.events[0].kind, "compaction_summary");
+        assert!(loaded.events[0]
+            .content
+            .contains("Compacted earlier run checkpoints"));
+        assert_eq!(loaded.events[1].id, "event-3");
     }
 }
