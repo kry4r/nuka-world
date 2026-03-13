@@ -632,7 +632,7 @@ export function ChatPage() {
         <span className="chat-route-field__label">Route</span>
         <select
           aria-label="Session provider"
-          className="chat-route-select"
+          className="chat-route-select chat-route-select--flat"
           onChange={(event) =>
             setRouteDraft((current) => ({
               ...current,

@@ -647,8 +647,13 @@ describe("ChatPage", () => {
 
     await openRouteCard(view.container);
 
+    const providerSelect = view.container.querySelector(
+      '[aria-label="Session provider"]',
+    ) as HTMLSelectElement | null;
+
     expect(view.container.querySelector('[data-testid="chat-route-controls"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Session provider"]')).toBeTruthy();
+    expect(providerSelect).toBeTruthy();
+    expect(providerSelect?.className).toContain("chat-route-select--flat");
     expect(view.container.querySelector('[aria-label="Session model"]')).toBeTruthy();
   });
 

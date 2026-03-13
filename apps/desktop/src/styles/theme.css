@@ -2458,6 +2458,21 @@ button {
   outline: none;
 }
 
+.chat-page .chat-route-select--flat {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 24px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #7b7065 50%),
+    linear-gradient(135deg, #7b7065 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 13px,
+    calc(100% - 9px) 13px;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
 .chat-page .composer__workflow-token,
 .chat-page .composer__draft-status,
 .chat-page .composer__inline-feedback {
