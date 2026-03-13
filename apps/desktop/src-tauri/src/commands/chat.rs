@@ -1,10 +1,9 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatRouteResponse {
     pub session: ChatSessionResponse,
-    pub route: ChatRoute,
     pub messages: Vec<ChatMessageResponse>,
     pub provider: Option<ChatProviderResponse>,
     pub context: ChatContextResponse,
@@ -16,7 +15,6 @@ pub struct ChatSessionResponse {
     pub id: String,
     pub title: String,
     pub provider_id: Option<String>,
-    pub workflow_id: Option<String>,
     pub message_count: usize,
 }
 
@@ -59,34 +57,15 @@ pub struct PromptExecutionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct PromptExecutionRoute {
     pub kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workflow_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ChatRoute {
-    DirectReply,
-    ExistingWorkflow { #[serde(rename = "workflowId")] workflow_id: String },
-    NewWorkflow,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ChatModeInput {
-    ChatOnly,
-    CreateWorkflow,
-    SpecificWorkflow { #[serde(rename = "workflowId")] workflow_id: String },
 }
 
 #[tauri::command]
 pub async fn route_world_prompt(
     prompt: String,
     session_id: Option<String>,
-    mode: ChatModeInput,
     state: tauri::State<'_, crate::app_state::AppState>,
 ) -> Result<ChatRouteResponse, String> {
-    route_world_prompt_inner(prompt, session_id, mode, &state)
+    route_world_prompt_inner(prompt, session_id, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -105,60 +84,21 @@ pub async fn execute_prompt_json(
 async fn route_world_prompt_inner(
     prompt: String,
     session_id: Option<String>,
-    mode: ChatModeInput,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<ChatRouteResponse> {
     let prompt_for_memory = prompt.clone();
-    let world_mode: nuka_runtime::world::WorldChatMode = mode.into();
     let turn = match session_id.as_deref() {
-        Some(session_id) => {
-            state
-                .world_runtime()
-                .continue_session(session_id, &prompt, Some(world_mode))
-                .await
-        }
-        None => state.world_runtime().start_session(&prompt, world_mode).await,
+        Some(session_id) => state.world_runtime().continue_session(session_id, &prompt).await,
+        None => state.world_runtime().start_session(&prompt).await,
     }?;
-
-    let route = match turn.route {
-        nuka_runtime::world::WorldRoute::DirectReply => ChatRoute::DirectReply,
-        nuka_runtime::world::WorldRoute::ExistingWorkflow(workflow_id) => {
-            ChatRoute::ExistingWorkflow { workflow_id }
-        }
-        nuka_runtime::world::WorldRoute::NewWorkflow => ChatRoute::NewWorkflow,
-    };
-
-    let (session, messages, provider) = match turn.chat_turn {
-        Some(chat_turn) => (
-            ChatSessionResponse::from(chat_turn.session.clone()),
-            chat_turn
-                .messages
-                .into_iter()
-                .map(ChatMessageResponse::from)
-                .collect(),
-            Some(ChatProviderResponse::from(chat_turn.provider)),
-        ),
-        None => (
-            ChatSessionResponse {
-                id: turn.session.id.clone(),
-                title: prompt.chars().take(48).collect(),
-                provider_id: None,
-                workflow_id: match &turn.session.mode {
-                    nuka_runtime::world::WorldChatMode::SpecificWorkflow(workflow_id) => {
-                        Some(workflow_id.clone())
-                    }
-                    _ => None,
-                },
-                message_count: 1,
-            },
-            vec![ChatMessageResponse {
-                id: format!("{}-user", turn.session.id),
-                role: "user".to_string(),
-                content: prompt,
-            }],
-            None,
-        ),
-    };
+    let chat_turn = turn.chat_turn;
+    let session = ChatSessionResponse::from(chat_turn.session.clone());
+    let messages = chat_turn
+        .messages
+        .into_iter()
+        .map(ChatMessageResponse::from)
+        .collect();
+    let provider = Some(ChatProviderResponse::from(chat_turn.provider));
 
     state
         .memory_service()
@@ -170,7 +110,6 @@ async fn route_world_prompt_inner(
 
     Ok(ChatRouteResponse {
         session,
-        route,
         messages,
         provider,
         context: ChatContextResponse {
@@ -185,7 +124,7 @@ async fn execute_prompt_json_inner(
     session_id: Option<String>,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<PromptExecutionResponse> {
-    let response = route_world_prompt_inner(prompt, session_id, ChatModeInput::ChatOnly, state).await?;
+    let response = route_world_prompt_inner(prompt, session_id, state).await?;
     let final_output = response
         .messages
         .iter()
@@ -199,39 +138,12 @@ async fn execute_prompt_json_inner(
         exit_status: "success".to_string(),
         session_id: response.session.id,
         run_id: None,
-        route: PromptExecutionRoute::from(response.route),
+        route: PromptExecutionRoute {
+            kind: "direct_reply".to_string(),
+        },
         provider: response.provider,
         final_output,
     })
-}
-
-impl From<ChatModeInput> for nuka_runtime::world::WorldChatMode {
-    fn from(value: ChatModeInput) -> Self {
-        match value {
-            ChatModeInput::ChatOnly => Self::ChatOnly,
-            ChatModeInput::CreateWorkflow => Self::CreateWorkflow,
-            ChatModeInput::SpecificWorkflow { workflow_id } => Self::SpecificWorkflow(workflow_id),
-        }
-    }
-}
-
-impl From<ChatRoute> for PromptExecutionRoute {
-    fn from(value: ChatRoute) -> Self {
-        match value {
-            ChatRoute::DirectReply => Self {
-                kind: "direct_reply".to_string(),
-                workflow_id: None,
-            },
-            ChatRoute::ExistingWorkflow { workflow_id } => Self {
-                kind: "existing_workflow".to_string(),
-                workflow_id: Some(workflow_id),
-            },
-            ChatRoute::NewWorkflow => Self {
-                kind: "new_workflow".to_string(),
-                workflow_id: None,
-            },
-        }
-    }
 }
 
 impl From<nuka_domain::chat::ChatSessionSummary> for ChatSessionResponse {
@@ -240,7 +152,6 @@ impl From<nuka_domain::chat::ChatSessionSummary> for ChatSessionResponse {
             id: value.id,
             title: value.title,
             provider_id: value.provider_id,
-            workflow_id: value.workflow_id,
             message_count: value.message_count,
         }
     }
@@ -275,32 +186,13 @@ impl From<nuka_domain::provider::ProviderConfig> for ChatProviderResponse {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn chat_mode_input_deserializes_specific_workflow_from_camel_case_payload() {
-        let mode: super::ChatModeInput = serde_json::from_str(
-            r#"{"kind":"specific_workflow","workflowId":"workflow-release"}"#,
-        )
-        .unwrap();
-
-        assert!(matches!(
-            mode,
-            super::ChatModeInput::SpecificWorkflow { workflow_id }
-            if workflow_id == "workflow-release"
-        ));
-    }
-
     #[tokio::test]
     async fn route_world_prompt_requires_default_provider() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
 
-        let error = super::route_world_prompt_inner(
-            "summarize today's notes".to_string(),
-            None,
-            super::ChatModeInput::ChatOnly,
-            &state,
-        )
-        .await
-        .unwrap_err();
+        let error = super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
+            .await
+            .unwrap_err();
 
         assert!(error.to_string().contains("default provider is not configured"));
     }
@@ -323,14 +215,9 @@ mod tests {
             .await
             .unwrap();
 
-        let response = super::route_world_prompt_inner(
-            "summarize today's notes".to_string(),
-            None,
-            super::ChatModeInput::ChatOnly,
-            &state,
-        )
-        .await
-        .unwrap();
+        let response = super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
+            .await
+            .unwrap();
 
         assert!(!response.session.id.is_empty());
         assert_eq!(response.messages.len(), 2);
@@ -357,14 +244,10 @@ mod tests {
             .await
             .unwrap();
 
-        let response = super::route_world_prompt_inner(
-            "capture the release checklist".to_string(),
-            None,
-            super::ChatModeInput::ChatOnly,
-            &state,
-        )
-        .await
-        .unwrap();
+        let response =
+            super::route_world_prompt_inner("capture the release checklist".to_string(), None, &state)
+                .await
+                .unwrap();
         let pending = state.memory_service().list_pending_candidates().await.unwrap();
 
         assert!(pending.iter().any(|candidate| {
@@ -374,7 +257,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_world_prompt_accepts_mode_value() {
+    async fn route_world_prompt_continues_an_existing_direct_chat_session() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
             "Local",
@@ -391,100 +274,20 @@ mod tests {
             .await
             .unwrap();
 
-        let response = super::route_world_prompt_inner(
-            "draft a release flow".to_string(),
-            None,
-            super::ChatModeInput::CreateWorkflow,
-            &state,
-        )
-        .await
-        .unwrap();
-
-        assert!(matches!(response.route, super::ChatRoute::NewWorkflow));
-    }
-
-    #[tokio::test]
-    async fn route_world_prompt_returns_specific_workflow_route_metadata() {
-        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
-        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
-            "Local",
-            "http://localhost:11434/v1",
-            "",
-            "gpt-oss",
-        );
-        let provider_id = provider.id.clone();
-
-        state.provider_service().save_provider(provider).await.unwrap();
-        state
-            .provider_service()
-            .set_default_provider(&provider_id)
+        let first = super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
             .await
             .unwrap();
-
-        let response = super::route_world_prompt_inner(
-            "focus on the release template".to_string(),
-            None,
-            super::ChatModeInput::SpecificWorkflow {
-                workflow_id: "workflow-release".to_string(),
-            },
-            &state,
-        )
-        .await
-        .unwrap();
-
-        assert!(matches!(
-            response.route,
-            super::ChatRoute::ExistingWorkflow { workflow_id }
-            if workflow_id == "workflow-release"
-        ));
-        assert_eq!(response.session.workflow_id.as_deref(), Some("workflow-release"));
-    }
-
-    #[tokio::test]
-    async fn route_world_prompt_updates_the_route_when_a_chat_session_switches_to_workflow_mode() {
-        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
-        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
-            "Local",
-            "http://localhost:11434/v1",
-            "",
-            "gpt-oss",
-        );
-        let provider_id = provider.id.clone();
-
-        state.provider_service().save_provider(provider).await.unwrap();
-        state
-            .provider_service()
-            .set_default_provider(&provider_id)
-            .await
-            .unwrap();
-
-        let first = super::route_world_prompt_inner(
-            "summarize today's notes".to_string(),
-            None,
-            super::ChatModeInput::ChatOnly,
-            &state,
-        )
-        .await
-        .unwrap();
-
         let next = super::route_world_prompt_inner(
-            "continue in the release workflow".to_string(),
+            "continue the same conversation".to_string(),
             Some(first.session.id.clone()),
-            super::ChatModeInput::SpecificWorkflow {
-                workflow_id: "workflow-release".to_string(),
-            },
             &state,
         )
         .await
         .unwrap();
 
         assert_eq!(next.session.id, first.session.id);
-        assert!(matches!(
-            next.route,
-            super::ChatRoute::ExistingWorkflow { workflow_id }
-            if workflow_id == "workflow-release"
-        ));
-        assert_eq!(next.session.workflow_id.as_deref(), Some("workflow-release"));
+        assert_eq!(next.messages.len(), 2);
+        assert_eq!(next.messages[0].content, "continue the same conversation");
     }
 
     #[tokio::test]

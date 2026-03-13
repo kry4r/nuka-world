@@ -148,10 +148,7 @@ mod tests {
 
         state
             .world_runtime()
-            .start_session(
-                "Summarize the release",
-                nuka_runtime::world::WorldChatMode::ChatOnly,
-            )
+            .start_session("Summarize the release")
             .await
             .unwrap();
         let team = crate::commands::team::create_team_from_goal_inner(
