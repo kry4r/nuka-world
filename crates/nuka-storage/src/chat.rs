@@ -36,13 +36,17 @@ impl ChatRepository {
     }
 
     pub async fn create_session(&self, session: ChatSessionSummary) -> anyhow::Result<()> {
+        let route_json = encode_optional_json(session.routing.as_ref())?;
         sqlx::query(
             r#"
-            insert into chat_sessions (id, title, provider_id, workflow_id, message_count, created_at)
-            values (?1, ?2, ?3, ?4, ?5, datetime('now'))
+            insert into chat_sessions (
+              id, title, provider_id, route_json, workflow_id, message_count, created_at
+            )
+            values (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))
             on conflict(id) do update set
               title = excluded.title,
               provider_id = excluded.provider_id,
+              route_json = excluded.route_json,
               workflow_id = excluded.workflow_id,
               message_count = excluded.message_count
             "#,
@@ -50,6 +54,7 @@ impl ChatRepository {
         .bind(session.id)
         .bind(session.title)
         .bind(session.provider_id)
+        .bind(route_json)
         .bind(session.workflow_id)
         .bind(session.message_count as i64)
         .execute(&self.pool)
@@ -82,21 +87,23 @@ impl ChatRepository {
 
     pub async fn list_sessions(&self) -> anyhow::Result<Vec<ChatSessionSummary>> {
         let rows = sqlx::query(
-            "select id, title, provider_id, workflow_id, message_count from chat_sessions order by created_at asc",
+            "select id, title, provider_id, route_json, workflow_id, message_count from chat_sessions order by created_at asc",
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|row| ChatSessionSummary {
-                id: row.get("id"),
-                title: row.get("title"),
-                provider_id: row.get("provider_id"),
-                workflow_id: row.get("workflow_id"),
-                message_count: row.get::<i64, _>("message_count") as usize,
+        rows.into_iter()
+            .map(|row| {
+                Ok(ChatSessionSummary {
+                    id: row.get("id"),
+                    title: row.get("title"),
+                    provider_id: row.get("provider_id"),
+                    routing: decode_optional_json(row.get("route_json"))?,
+                    workflow_id: row.get("workflow_id"),
+                    message_count: row.get::<i64, _>("message_count") as usize,
+                })
             })
-            .collect())
+            .collect()
     }
 
     pub async fn list_snapshots(
@@ -160,6 +167,7 @@ impl ChatRepository {
             .branch_root_session_id
             .unwrap_or_else(|| source.summary.id.clone());
         let mut tx = self.pool.begin().await?;
+        let route_json = encode_optional_json(source.summary.routing.as_ref())?;
 
         sqlx::query(
             r#"
@@ -181,16 +189,17 @@ impl ChatRepository {
         sqlx::query(
             r#"
             insert into chat_sessions (
-              id, title, provider_id, workflow_id, branch_root_session_id,
+              id, title, provider_id, route_json, workflow_id, branch_root_session_id,
               branch_parent_session_id, branch_source_snapshot_id, branch_anchor_message_id,
               message_count, created_at
             )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             "#,
         )
         .bind(branch_session_id.clone())
         .bind(branch_title)
         .bind(source.summary.provider_id)
+        .bind(route_json)
         .bind(source.summary.workflow_id)
         .bind(branch_root_session_id)
         .bind(source.summary.id)
@@ -341,6 +350,7 @@ impl ChatRepository {
               id,
               title,
               provider_id,
+              route_json,
               workflow_id,
               message_count,
               branch_root_session_id
@@ -353,16 +363,20 @@ impl ChatRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|row| StoredChatSession {
-            summary: ChatSessionSummary {
-                id: row.get("id"),
-                title: row.get("title"),
-                provider_id: row.get("provider_id"),
-                workflow_id: row.get("workflow_id"),
-                message_count: row.get::<i64, _>("message_count") as usize,
-            },
-            branch_root_session_id: row.get("branch_root_session_id"),
-        }))
+        match row {
+            Some(row) => Ok(Some(StoredChatSession {
+                summary: ChatSessionSummary {
+                    id: row.get("id"),
+                    title: row.get("title"),
+                    provider_id: row.get("provider_id"),
+                    routing: decode_optional_json(row.get("route_json"))?,
+                    workflow_id: row.get("workflow_id"),
+                    message_count: row.get::<i64, _>("message_count") as usize,
+                },
+                branch_root_session_id: row.get("branch_root_session_id"),
+            })),
+            None => Ok(None),
+        }
     }
 
     async fn next_branch_number(&self, session_id: &str) -> anyhow::Result<i64> {
@@ -434,4 +448,17 @@ fn parse_role(role: &str) -> anyhow::Result<ChatMessageRole> {
         "tool" => Ok(ChatMessageRole::Tool),
         other => anyhow::bail!("unknown chat role: {other}"),
     }
+}
+
+fn encode_optional_json<T: serde::Serialize>(value: Option<&T>) -> anyhow::Result<Option<String>> {
+    value.map(serde_json::to_string).transpose().map_err(Into::into)
+}
+
+fn decode_optional_json<T: serde::de::DeserializeOwned>(
+    value: Option<String>,
+) -> anyhow::Result<Option<T>> {
+    value
+        .map(|serialized| serde_json::from_str(&serialized))
+        .transpose()
+        .map_err(Into::into)
 }

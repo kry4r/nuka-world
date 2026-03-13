@@ -211,7 +211,7 @@ mod tests {
         )
         .await
         .unwrap();
-        crate::commands::team::start_team_run_inner(team.id, &state)
+        crate::commands::team::start_team_run_inner(team.id, None, &state)
             .await
             .unwrap();
 
@@ -227,6 +227,7 @@ mod tests {
 
         let first = crate::commands::chat::route_world_prompt_inner(
             "Summarize the release".to_string(),
+            None,
             None,
             &state,
         )
@@ -278,7 +279,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let run = crate::commands::team::start_team_run_inner(team.id, &state)
+        let run = crate::commands::team::start_team_run_inner(team.id, None, &state)
             .await
             .unwrap();
         let anchor_title = run.events[0].title.clone();

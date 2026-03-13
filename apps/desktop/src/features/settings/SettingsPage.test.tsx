@@ -223,6 +223,27 @@ describe("SettingsPage", () => {
     expect(findText(view.container, "Replace secret")).toBeTruthy();
   });
 
+  it("shows a compact routing summary for the configured provider chain", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const providersButton = findButton(view.container, "Providers");
+    expect(providersButton).toBeTruthy();
+
+    await act(async () => {
+      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const summary = view.container.querySelector(
+      '[data-testid="settings-provider-routing-summary"]',
+    ) as HTMLElement | null;
+
+    expect(summary).toBeTruthy();
+    expect(summary?.textContent).toContain("Default Local");
+    expect(summary?.textContent).toContain("Fallback Local");
+    expect(summary?.textContent).toContain("Checks on");
+  });
+
   it("clears a saved provider secret explicitly", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);

@@ -127,28 +127,62 @@ impl ChatService {
         prompt: &str,
         session_id: Option<&str>,
     ) -> anyhow::Result<ChatTurnRecord> {
-        let provider = self.prepare_provider_for_prompt(prompt).await?;
+        self.send_message_with_route(prompt, session_id, None).await
+    }
+
+    pub async fn send_message_with_route(
+        &self,
+        prompt: &str,
+        session_id: Option<&str>,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+    ) -> anyhow::Result<ChatTurnRecord> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        self.ensure_seed_provider().await?;
 
         let repo = nuka_storage::chat::ChatRepository::new(self.pool.clone());
-        let mut session = match session_id {
+        let (mut session, initial_route) = match session_id {
             Some(existing_session_id) => repo
                 .list_sessions()
                 .await?
                 .into_iter()
                 .find(|session| session.id == existing_session_id)
+                .map(|session| (session, None))
                 .ok_or_else(|| anyhow::anyhow!("unknown chat session: {existing_session_id}"))?,
             None => {
+                let resolved_route = self
+                    .prepare_provider_for_prompt(prompt, route_request.as_ref())
+                    .await?;
                 let session = nuka_domain::chat::ChatSessionSummary {
                     id: uuid::Uuid::new_v4().to_string(),
                     title: prompt.chars().take(48).collect(),
-                    provider_id: Some(provider.id.clone()),
+                    provider_id: Some(resolved_route.provider.id.clone()),
                     workflow_id: None,
                     message_count: 0,
+                    routing: Some(resolved_route.routing.clone()),
                 };
                 repo.create_session(session.clone()).await?;
-                session
+                (session, Some(resolved_route))
             }
         };
+        let resolved_route = if let Some(resolved_route) = initial_route {
+            resolved_route
+        } else {
+            let requested_route = route_request.or_else(|| {
+                session
+                    .routing
+                    .as_ref()
+                    .map(|routing| nuka_domain::provider::ProviderRouteRequest {
+                        requested_provider_id: routing.requested_provider_id.clone(),
+                        requested_model: routing.requested_model.clone(),
+                    })
+            });
+            self.prepare_provider_for_prompt(prompt, requested_route.as_ref())
+                .await?
+        };
+        let provider = resolved_route.provider.clone();
+        session.provider_id = Some(provider.id.clone());
+        session.routing = Some(resolved_route.routing.clone());
+        repo.create_session(session.clone()).await?;
 
         let user_message = nuka_domain::chat::ChatMessage {
             id: uuid::Uuid::new_v4().to_string(),
@@ -195,6 +229,7 @@ impl ChatService {
         self.maybe_compact_session(&repo, &session.id).await?;
 
         session.message_count = repo.list_messages(&session.id).await?.len();
+        repo.create_session(session.clone()).await?;
 
         Ok(ChatTurnRecord {
             session,
@@ -205,22 +240,10 @@ impl ChatService {
 
     pub async fn prepare_provider_for_prompt(
         &self,
-        prompt: &str,
-    ) -> anyhow::Result<nuka_domain::provider::ProviderConfig> {
-        nuka_storage::migrations::run(&self.pool).await?;
-        self.ensure_seed_provider().await?;
-
-        let provider = self.provider_service.resolve_default_provider().await?;
-
-        self.provider_client.prepare_chat_request(
-            &provider,
-            vec![OpenAiChatMessage::user(prompt.to_string())],
-        )?;
-        if self.connection_checks_enabled().await? {
-            self.run_provider_preflight(&provider).await?;
-        }
-
-        Ok(provider)
+        _prompt: &str,
+        route_request: Option<&nuka_domain::provider::ProviderRouteRequest>,
+    ) -> anyhow::Result<crate::providers::ResolvedProviderRoute> {
+        self.provider_service.resolve_route(route_request).await
     }
 
     async fn ensure_seed_provider(&self) -> anyhow::Result<()> {
@@ -236,10 +259,6 @@ impl ChatService {
         }
 
         Ok(())
-    }
-
-    async fn connection_checks_enabled(&self) -> anyhow::Result<bool> {
-        load_connection_checks_enabled(&self.pool).await
     }
 
     async fn maybe_compact_session(
@@ -270,25 +289,6 @@ impl ChatService {
             &summarize_chat_messages(compacted_messages),
         )
         .await
-    }
-
-    async fn run_provider_preflight(
-        &self,
-        provider: &nuka_domain::provider::ProviderConfig,
-    ) -> anyhow::Result<()> {
-        if is_local_provider(&provider.base_url) {
-            return Ok(());
-        }
-
-        let status = self.provider_service.test_provider_connection(provider).await?;
-        if matches!(status, nuka_domain::provider::ProviderConnectionStatus::Ready) {
-            Ok(())
-        } else {
-            anyhow::bail!(
-                "provider connection check failed: {}",
-                provider_connection_status_label(&status)
-            );
-        }
     }
 }
 
@@ -339,48 +339,4 @@ fn excerpt(content: &str, limit: usize) -> String {
         excerpt.push_str("...");
     }
     excerpt
-}
-
-const PROVIDERS_STATE_KEY: &str = "settings.providers";
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderSettingsState {
-    #[serde(default = "default_connection_checks")]
-    connection_checks: bool,
-}
-
-fn default_connection_checks() -> bool {
-    true
-}
-
-async fn load_connection_checks_enabled(pool: &sqlx::SqlitePool) -> anyhow::Result<bool> {
-    let value = nuka_storage::runtime_state::RuntimeStateRepository::new(pool.clone())
-        .get(PROVIDERS_STATE_KEY)
-        .await?;
-
-    match value {
-        Some(value) => Ok(serde_json::from_str::<ProviderSettingsState>(&value)?.connection_checks),
-        None => Ok(true),
-    }
-}
-
-fn is_local_provider(base_url: &str) -> bool {
-    let normalized = base_url.to_ascii_lowercase();
-    normalized.contains("localhost") || normalized.contains("127.0.0.1")
-}
-
-fn provider_connection_status_label(
-    status: &nuka_domain::provider::ProviderConnectionStatus,
-) -> &'static str {
-    match status {
-        nuka_domain::provider::ProviderConnectionStatus::Unknown => "unknown",
-        nuka_domain::provider::ProviderConnectionStatus::Ready => "ready",
-        nuka_domain::provider::ProviderConnectionStatus::InvalidUrl => "invalid_url",
-        nuka_domain::provider::ProviderConnectionStatus::InvalidToken => "invalid_token",
-        nuka_domain::provider::ProviderConnectionStatus::MissingModel => "missing_model",
-        nuka_domain::provider::ProviderConnectionStatus::UnreachableHost => "unreachable_host",
-        nuka_domain::provider::ProviderConnectionStatus::Timeout => "timeout",
-        nuka_domain::provider::ProviderConnectionStatus::UpstreamFailure => "upstream_failure",
-    }
 }

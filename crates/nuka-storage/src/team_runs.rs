@@ -55,16 +55,17 @@ impl TeamRunRepository {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         run: TeamRun,
     ) -> anyhow::Result<()> {
+        let route_json = encode_optional_json(&run.routing)?;
         sqlx::query(
             r#"
             insert into team_runs (
               id, team_id, title, goal, status, current_phase, lead_agent_id,
-              charter_json, created_at, updated_at
+              route_json, charter_json, created_at, updated_at
             )
             values (
-              ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
-              coalesce(nullif(?9, ''), datetime('now')),
-              coalesce(nullif(?10, ''), datetime('now'))
+              ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+              coalesce(nullif(?10, ''), datetime('now')),
+              coalesce(nullif(?11, ''), datetime('now'))
             )
             on conflict(id) do update set
               title = excluded.title,
@@ -72,6 +73,7 @@ impl TeamRunRepository {
               status = excluded.status,
               current_phase = excluded.current_phase,
               lead_agent_id = excluded.lead_agent_id,
+              route_json = excluded.route_json,
               charter_json = excluded.charter_json,
               updated_at = coalesce(nullif(excluded.updated_at, ''), datetime('now'))
             "#,
@@ -83,6 +85,7 @@ impl TeamRunRepository {
         .bind(team_run_status_as_str(&run.status))
         .bind(run.current_phase)
         .bind(run.lead_agent_id.clone())
+        .bind(route_json)
         .bind(encode_json(&run.charter)?)
         .bind(run.created_at)
         .bind(run.updated_at)
@@ -379,7 +382,7 @@ impl TeamRunRepository {
             r#"
             select
               id, team_id, title, goal, status, current_phase, lead_agent_id,
-              charter_json, created_at, updated_at
+              route_json, charter_json, created_at, updated_at
             from team_runs
             order by updated_at desc, created_at desc
             "#,
@@ -404,7 +407,7 @@ impl TeamRunRepository {
             r#"
             select
               id, team_id, title, goal, status, current_phase, lead_agent_id,
-              charter_json, created_at, updated_at
+              route_json, charter_json, created_at, updated_at
             from team_runs
             where id = ?1
             limit 1
@@ -434,6 +437,7 @@ impl TeamRunRepository {
             status: parse_team_run_status(&row.get::<String, _>("status"))?,
             current_phase: row.get("current_phase"),
             lead_agent_id: row.get("lead_agent_id"),
+            routing: decode_optional_json(row.get("route_json"))?,
             charter: decode_json(&row.get::<String, _>("charter_json"))?,
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
@@ -634,6 +638,17 @@ fn encode_json<T: Serialize>(value: &T) -> anyhow::Result<String> {
 
 fn decode_json<T: DeserializeOwned>(value: &str) -> anyhow::Result<T> {
     Ok(serde_json::from_str(value)?)
+}
+
+fn encode_optional_json<T: Serialize>(value: &Option<T>) -> anyhow::Result<Option<String>> {
+    value.as_ref().map(serde_json::to_string).transpose().map_err(Into::into)
+}
+
+fn decode_optional_json<T: DeserializeOwned>(value: Option<String>) -> anyhow::Result<Option<T>> {
+    value
+        .map(|serialized| serde_json::from_str(&serialized))
+        .transpose()
+        .map_err(Into::into)
 }
 
 async fn current_timestamp(pool: &sqlx::SqlitePool) -> anyhow::Result<String> {

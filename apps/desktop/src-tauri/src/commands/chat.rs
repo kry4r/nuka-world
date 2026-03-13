@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -6,6 +6,7 @@ pub struct ChatRouteResponse {
     pub session: ChatSessionResponse,
     pub messages: Vec<ChatMessageResponse>,
     pub provider: Option<ChatProviderResponse>,
+    pub routing: Option<ProviderRoutingResponse>,
     pub context: ChatContextResponse,
 }
 
@@ -16,6 +17,7 @@ pub struct ChatSessionResponse {
     pub title: String,
     pub provider_id: Option<String>,
     pub message_count: usize,
+    pub routing: Option<ProviderRoutingResponse>,
 }
 
 #[derive(Debug, Serialize)]
@@ -42,6 +44,24 @@ pub struct ChatContextResponse {
     pub attached_knowledge_libraries: Vec<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRoutingInput {
+    pub requested_provider_id: Option<String>,
+    pub requested_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRoutingResponse {
+    pub requested_provider_id: Option<String>,
+    pub requested_model: Option<String>,
+    pub effective_provider_id: String,
+    pub effective_model: String,
+    pub fallback_provider_id: Option<String>,
+    pub failover_reason: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptExecutionResponse {
@@ -50,6 +70,7 @@ pub struct PromptExecutionResponse {
     pub run_id: Option<String>,
     pub route: PromptExecutionRoute,
     pub provider: Option<ChatProviderResponse>,
+    pub routing: Option<ProviderRoutingResponse>,
     pub final_output: String,
 }
 
@@ -63,9 +84,10 @@ pub struct PromptExecutionRoute {
 pub async fn route_world_prompt(
     prompt: String,
     session_id: Option<String>,
+    routing: Option<ProviderRoutingInput>,
     state: tauri::State<'_, crate::app_state::AppState>,
 ) -> Result<ChatRouteResponse, String> {
-    route_world_prompt_inner(prompt, session_id, &state)
+    route_world_prompt_inner(prompt, session_id, routing, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -74,9 +96,10 @@ pub async fn route_world_prompt(
 pub async fn execute_prompt_json(
     prompt: String,
     session_id: Option<String>,
+    routing: Option<ProviderRoutingInput>,
     state: tauri::State<'_, crate::app_state::AppState>,
 ) -> Result<PromptExecutionResponse, String> {
-    execute_prompt_json_inner(prompt, session_id, &state)
+    execute_prompt_json_inner(prompt, session_id, routing, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -84,6 +107,7 @@ pub async fn execute_prompt_json(
 pub(crate) async fn route_world_prompt_inner(
     prompt: String,
     session_id: Option<String>,
+    routing: Option<ProviderRoutingInput>,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<ChatRouteResponse> {
     let prompt_for_memory = prompt.clone();
@@ -91,10 +115,24 @@ pub(crate) async fn route_world_prompt_inner(
         Some(session_id) => {
             state
                 .world_runtime()
-                .continue_session(session_id, &prompt)
+                .continue_session_with_route(
+                    session_id,
+                    &prompt,
+                    routing
+                        .clone()
+                        .map(nuka_domain::provider::ProviderRouteRequest::from),
+                )
                 .await
         }
-        None => state.world_runtime().start_session(&prompt).await,
+        None => {
+            state
+                .world_runtime()
+                .start_session_with_route(
+                    &prompt,
+                    routing.map(nuka_domain::provider::ProviderRouteRequest::from),
+                )
+                .await
+        }
     }?;
     let chat_turn = turn.chat_turn;
     let session = ChatSessionResponse::from(chat_turn.session.clone());
@@ -104,6 +142,11 @@ pub(crate) async fn route_world_prompt_inner(
         .map(ChatMessageResponse::from)
         .collect();
     let provider = Some(ChatProviderResponse::from(chat_turn.provider));
+    let routing = chat_turn
+        .session
+        .routing
+        .clone()
+        .map(ProviderRoutingResponse::from);
 
     state
         .memory_service()
@@ -119,6 +162,7 @@ pub(crate) async fn route_world_prompt_inner(
         session,
         messages,
         provider,
+        routing,
         context: ChatContextResponse {
             attached_agents: Vec::new(),
             attached_knowledge_libraries: Vec::new(),
@@ -129,9 +173,10 @@ pub(crate) async fn route_world_prompt_inner(
 async fn execute_prompt_json_inner(
     prompt: String,
     session_id: Option<String>,
+    routing: Option<ProviderRoutingInput>,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<PromptExecutionResponse> {
-    let response = route_world_prompt_inner(prompt, session_id, state).await?;
+    let response = route_world_prompt_inner(prompt, session_id, routing, state).await?;
     let final_output = response
         .messages
         .iter()
@@ -149,6 +194,7 @@ async fn execute_prompt_json_inner(
             kind: "direct_reply".to_string(),
         },
         provider: response.provider,
+        routing: response.routing,
         final_output,
     })
 }
@@ -160,6 +206,7 @@ impl From<nuka_domain::chat::ChatSessionSummary> for ChatSessionResponse {
             title: value.title,
             provider_id: value.provider_id,
             message_count: value.message_count,
+            routing: value.routing.map(ProviderRoutingResponse::from),
         }
     }
 }
@@ -191,14 +238,71 @@ impl From<nuka_domain::provider::ProviderConfig> for ChatProviderResponse {
     }
 }
 
+impl From<ProviderRoutingInput> for nuka_domain::provider::ProviderRouteRequest {
+    fn from(value: ProviderRoutingInput) -> Self {
+        Self {
+            requested_provider_id: value.requested_provider_id,
+            requested_model: value.requested_model,
+        }
+    }
+}
+
+impl From<nuka_domain::provider::ProviderRouteState> for ProviderRoutingResponse {
+    fn from(value: nuka_domain::provider::ProviderRouteState) -> Self {
+        Self {
+            requested_provider_id: value.requested_provider_id,
+            requested_model: value.requested_model,
+            effective_provider_id: value.effective_provider_id,
+            effective_model: value.effective_model,
+            fallback_provider_id: value.fallback_provider_id,
+            failover_reason: value.failover_reason,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    async fn configure_provider_chain(
+        state: &crate::app_state::AppState,
+        default_provider: nuka_domain::provider::ProviderConfig,
+        fallback_provider: nuka_domain::provider::ProviderConfig,
+    ) {
+        state
+            .provider_service()
+            .save_provider(default_provider.clone())
+            .await
+            .unwrap();
+        state
+            .provider_service()
+            .save_provider(fallback_provider)
+            .await
+            .unwrap();
+        state
+            .provider_service()
+            .set_default_provider(&default_provider.id)
+            .await
+            .unwrap();
+        state
+            .settings_service()
+            .save_state_value(
+                "settings.providers",
+                r#"{"fallbackProviderId":"provider-fallback","connectionChecks":true}"#,
+            )
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn route_world_prompt_requires_default_provider() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
 
         let error =
-            super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
+            super::route_world_prompt_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
                 .await
                 .unwrap_err();
 
@@ -230,7 +334,12 @@ mod tests {
             .unwrap();
 
         let response =
-            super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
+            super::route_world_prompt_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
                 .await
                 .unwrap();
 
@@ -272,6 +381,7 @@ mod tests {
         let response = super::route_world_prompt_inner(
             "capture the release checklist".to_string(),
             None,
+            None,
             &state,
         )
         .await
@@ -311,12 +421,18 @@ mod tests {
             .unwrap();
 
         let first =
-            super::route_world_prompt_inner("summarize today's notes".to_string(), None, &state)
+            super::route_world_prompt_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
                 .await
                 .unwrap();
         let next = super::route_world_prompt_inner(
             "continue the same conversation".to_string(),
             Some(first.session.id.clone()),
+            None,
             &state,
         )
         .await
@@ -350,7 +466,12 @@ mod tests {
             .unwrap();
 
         let response =
-            super::execute_prompt_json_inner("summarize today's notes".to_string(), None, &state)
+            super::execute_prompt_json_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
                 .await
                 .unwrap();
 
@@ -390,6 +511,7 @@ mod tests {
         let response = super::execute_prompt_json_inner(
             "capture the release checklist".to_string(),
             None,
+            None,
             &state,
         )
         .await
@@ -415,5 +537,55 @@ mod tests {
             }
             other => panic!("expected persisted direct chat session, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn route_world_prompt_exposes_effective_routing_metadata_after_fallback() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let broken_provider = nuka_domain::provider::ProviderConfig {
+            id: "provider-broken".to_string(),
+            name: "Broken".to_string(),
+            kind: nuka_domain::provider::ProviderKind::OpenAiCompatible,
+            base_url: "http://127.0.0.1:17882/v1".to_string(),
+            token: String::new(),
+            model: String::new(),
+            enabled: true,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
+        };
+        let fallback_provider = nuka_domain::provider::ProviderConfig {
+            id: "provider-fallback".to_string(),
+            name: "Fallback".to_string(),
+            kind: nuka_domain::provider::ProviderKind::OpenAiCompatible,
+            base_url: "http://127.0.0.1:17882/v1".to_string(),
+            token: String::new(),
+            model: "gpt-oss-fallback".to_string(),
+            enabled: true,
+            secret_ref: None,
+            secret_present: false,
+            secret_updated_at: None,
+        };
+        configure_provider_chain(&state, broken_provider, fallback_provider).await;
+
+        let response =
+            super::route_world_prompt_inner(
+                "summarize today's notes".to_string(),
+                None,
+                None,
+                &state,
+            )
+                .await
+                .unwrap();
+        let response_json = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(response_json["provider"]["id"], "provider-fallback");
+        assert_eq!(response_json["session"]["routing"]["effectiveProviderId"], "provider-fallback");
+        assert_eq!(response_json["session"]["routing"]["effectiveModel"], "gpt-oss-fallback");
+        assert_eq!(response_json["session"]["routing"]["fallbackProviderId"], "provider-fallback");
+        assert_eq!(
+            response_json["session"]["routing"]["failoverReason"],
+            "missing_model"
+        );
     }
 }

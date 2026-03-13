@@ -23,6 +23,24 @@ pub enum ProviderValidationError {
     MissingModel,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRouteRequest {
+    pub requested_provider_id: Option<String>,
+    pub requested_model: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRouteState {
+    pub requested_provider_id: Option<String>,
+    pub requested_model: Option<String>,
+    pub effective_provider_id: String,
+    pub effective_model: String,
+    pub fallback_provider_id: Option<String>,
+    pub failover_reason: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderConfig {
     pub id: String,

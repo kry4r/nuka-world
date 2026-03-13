@@ -181,6 +181,7 @@ mod tests {
             charter: RunCharter::default_for_goal("Ship the release cleanly"),
             created_at: "2026-03-11T00:00:00Z".to_string(),
             updated_at: "2026-03-11T00:00:00Z".to_string(),
+            routing: None,
             agents: vec![
                 TeamRunAgent {
                     id: "run-agent-coordinator".to_string(),
@@ -373,6 +374,7 @@ mod tests {
             provider_id: Some("provider-local".to_string()),
             workflow_id: Some("workflow-review".to_string()),
             message_count: 0,
+            routing: None,
         })
         .await
         .unwrap();
@@ -406,6 +408,7 @@ mod tests {
             provider_id: Some("provider-local".to_string()),
             workflow_id: None,
             message_count: 0,
+            routing: None,
         })
         .await
         .unwrap();
@@ -458,6 +461,7 @@ mod tests {
             provider_id: Some("provider-local".to_string()),
             workflow_id: None,
             message_count: 0,
+            routing: None,
         })
         .await
         .unwrap();

@@ -1,8 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import { NukaLockup } from "@/components/brand/NukaLockup";
-import { routeWorldPrompt, type ChatMessage, type ChatRouteResponse } from "@/lib/chat";
+import {
+  routeWorldPrompt,
+  type ChatMessage,
+  type ChatRouteResponse,
+  type ProviderRoutingRequest,
+  type ProviderRoutingState,
+} from "@/lib/chat";
 import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
+import { listProviders, type ProviderRecord } from "@/lib/providers";
 import { useProviderGate } from "@/hooks/useProviderGate";
 import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
 import { useWorkspaceSessions } from "@/hooks/useWorkspaceSessions";
@@ -43,6 +50,11 @@ type ComposerEntryMode = "direct" | "choose_team" | "create_team";
 
 const META_SEPARATOR = " · ";
 const SESSION_ELLIPSIS = "…";
+
+type ProviderRouteDraft = {
+  requestedProviderId: string;
+  requestedModel: string;
+};
 
 function formatSession(sessionId: string | undefined) {
   if (!sessionId) {
@@ -90,6 +102,33 @@ function composerPlaceholder(landing: boolean, entryMode: ComposerEntryMode) {
     default:
       return "Message World to start a session...";
   }
+}
+
+function buildRoutingRequest(
+  routeDraft: ProviderRouteDraft,
+): ProviderRoutingRequest | undefined {
+  const requestedProviderId = routeDraft.requestedProviderId.trim() || null;
+  const requestedModel = routeDraft.requestedModel.trim() || null;
+
+  if (!requestedProviderId && !requestedModel) {
+    return undefined;
+  }
+
+  return {
+    requestedProviderId,
+    requestedModel,
+  };
+}
+
+function routeDraftFromState(routing: ProviderRoutingState | null): ProviderRouteDraft {
+  return {
+    requestedProviderId: routing?.requestedProviderId ?? "",
+    requestedModel: routing?.requestedModel ?? "",
+  };
+}
+
+function formatFailoverReason(reason: string | null) {
+  return reason ? reason.replace(/_/g, " ") : null;
 }
 
 function ComposerPlusIcon() {
@@ -152,7 +191,12 @@ export function ChatPage() {
   const [entryMenuOpen, setEntryMenuOpen] = useState(false);
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [availableTeams, setAvailableTeams] = useState<TeamRecord[]>([]);
+  const [availableProviders, setAvailableProviders] = useState<ProviderRecord[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [routeDraft, setRouteDraft] = useState<ProviderRouteDraft>({
+    requestedProviderId: "",
+    requestedModel: "",
+  });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isRouting, setIsRouting] = useState(false);
@@ -171,9 +215,17 @@ export function ChatPage() {
   const activeTeamRun = teamRunState ?? workspaceTeamRun;
   const activeSessionRecord = activeDirectSession?.session ?? session?.session ?? null;
   const activeMessages = activeDirectSession?.messages ?? messages;
+  const activeRouting = activeTeamRun?.routing ?? activeSessionRecord?.routing ?? null;
   const selectedTeam = useMemo(
     () => availableTeams.find((team) => team.id === selectedTeamId) ?? null,
     [availableTeams, selectedTeamId],
+  );
+  const providerNameById = useMemo(
+    () =>
+      new Map(
+        availableProviders.map((provider) => [provider.id, provider.name || provider.id]),
+      ),
+    [availableProviders],
   );
   const memoryReviewDock = useMemoryReviewDock(
     "chat",
@@ -204,6 +256,22 @@ export function ChatPage() {
         setAvailableTeams([]);
       });
 
+    void listProviders()
+      .then((providers) => {
+        if (!alive) {
+          return;
+        }
+
+        setAvailableProviders(Array.isArray(providers) ? providers : []);
+      })
+      .catch(() => {
+        if (!alive) {
+          return;
+        }
+
+        setAvailableProviders([]);
+      });
+
     return () => {
       alive = false;
     };
@@ -213,6 +281,15 @@ export function ChatPage() {
     setTeamRunState(workspaceTeamRun);
     setTeamRunError(null);
   }, [workspaceTeamRun]);
+
+  useEffect(() => {
+    setRouteDraft(routeDraftFromState(activeRouting));
+  }, [
+    activeRouting,
+    activeDirectSession?.session.id,
+    activeTeamRun?.id,
+    session?.session.id,
+  ]);
 
   const handleEntryModeSelect = (nextMode: ComposerEntryMode) => {
     setEntryMode(nextMode);
@@ -260,6 +337,7 @@ export function ChatPage() {
     setEntryMenuOpen(false);
     setTeamPickerOpen(false);
     setIsRouting(true);
+    const routingRequest = buildRoutingRequest(routeDraft);
 
     try {
       if (entryMode === "create_team") {
@@ -279,8 +357,12 @@ export function ChatPage() {
       }
 
       if (entryMode === "choose_team") {
-        let run = await startTeamRun(selectedTeamId.trim());
-        run = await continueTeamRun(run.id, value);
+        let run = routingRequest
+          ? await startTeamRun(selectedTeamId.trim(), routingRequest)
+          : await startTeamRun(selectedTeamId.trim());
+        run = routingRequest
+          ? await continueTeamRun(run.id, value, routingRequest)
+          : await continueTeamRun(run.id, value);
         setTeamRunState(run);
         setSelectedTeamId("");
         setEntryMode("direct");
@@ -291,7 +373,9 @@ export function ChatPage() {
         return;
       }
 
-      const response = await routeWorldPrompt(value, activeSessionRecord?.id);
+      const response = routingRequest
+        ? await routeWorldPrompt(value, activeSessionRecord?.id, routingRequest)
+        : await routeWorldPrompt(value, activeSessionRecord?.id);
       setMessages((current) => [...current, ...response.messages]);
       setSession(response);
       void workspaceSessions.refresh({
@@ -314,9 +398,12 @@ export function ChatPage() {
 
     setIsTeamRunBusy(true);
     setTeamRunError(null);
+    const routingRequest = buildRoutingRequest(routeDraft);
 
     try {
-      const updated = await continueTeamRun(activeTeamRun.id, nextPrompt);
+      const updated = routingRequest
+        ? await continueTeamRun(activeTeamRun.id, nextPrompt, routingRequest)
+        : await continueTeamRun(activeTeamRun.id, nextPrompt);
       setTeamRunState(updated);
       void workspaceSessions.refresh({
         id: updated.id,
@@ -441,6 +528,79 @@ export function ChatPage() {
     }
   };
 
+  const effectiveProviderLabel = activeRouting
+    ? providerNameById.get(activeRouting.effectiveProviderId) ??
+      activeRouting.effectiveProviderId
+    : "";
+  const fallbackProviderLabel = activeRouting?.fallbackProviderId
+    ? providerNameById.get(activeRouting.fallbackProviderId) ??
+      activeRouting.fallbackProviderId
+    : null;
+  const failoverReasonLabel = formatFailoverReason(activeRouting?.failoverReason ?? null);
+  const routeControls = (
+    <div className="chat-route-strip" data-testid="chat-route-controls">
+      <label className="chat-route-field">
+        <span className="chat-route-field__label">Route</span>
+        <select
+          aria-label="Session provider"
+          className="chat-route-select"
+          onChange={(event) =>
+            setRouteDraft((current) => ({
+              ...current,
+              requestedProviderId: event.target.value,
+            }))
+          }
+          value={routeDraft.requestedProviderId}
+        >
+          <option value="">Desktop default</option>
+          {availableProviders.map((provider) => (
+            <option key={provider.id} value={provider.id}>
+              {provider.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="chat-route-field">
+        <span className="chat-route-field__label">Model</span>
+        <input
+          aria-label="Session model"
+          className="chat-route-input"
+          onChange={(event) =>
+            setRouteDraft((current) => ({
+              ...current,
+              requestedModel: event.target.value,
+            }))
+          }
+          placeholder="Desktop default"
+          value={routeDraft.requestedModel}
+        />
+      </label>
+    </div>
+  );
+  const routeState = activeRouting ? (
+    <div
+      className="chat-route-state"
+      data-testid={activeTeamRun ? "team-run-routing-state" : "chat-routing-state"}
+    >
+      <span className="chat-route-state__eyebrow">Effective route</span>
+      <div className="chat-route-state__chips">
+        <span className="chat-route-state__chip">{effectiveProviderLabel}</span>
+        <span className="chat-route-state__chip">{activeRouting.effectiveModel}</span>
+        {fallbackProviderLabel ? (
+          <span className="chat-route-state__chip chat-route-state__chip--warning">
+            Fallback {fallbackProviderLabel}
+          </span>
+        ) : null}
+        {failoverReasonLabel ? (
+          <span className="chat-route-state__chip chat-route-state__chip--warning">
+            {failoverReasonLabel}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  ) : null;
+
   const composer = (
     <div
       aria-label="World chat composer"
@@ -462,6 +622,7 @@ export function ChatPage() {
       {notice ? (
         <div className="composer__inline-feedback composer__inline-feedback--notice">{notice}</div>
       ) : null}
+      {routeControls}
 
       <div
         className={`composer__bar ${
@@ -653,14 +814,17 @@ export function ChatPage() {
             className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}
           >
             {activeTeamRun ? (
-              <TeamRunPanel
-                error={teamRunError}
-                isBusy={isTeamRunBusy}
-                onAddAgent={handleAddTeamRunAgent}
-                onBranchEvent={handleBranchTeamRun}
-                onContinue={handleContinueTeamRun}
-                run={activeTeamRun}
-              />
+              <>
+                {routeState}
+                <TeamRunPanel
+                  error={teamRunError}
+                  isBusy={isTeamRunBusy}
+                  onAddAgent={handleAddTeamRunAgent}
+                  onBranchEvent={handleBranchTeamRun}
+                  onContinue={handleContinueTeamRun}
+                  run={activeTeamRun}
+                />
+              </>
             ) : landing ? (
               <div className="chat-landing-stack" data-testid="chat-landing-stack">
                 <div aria-label="World chat landing hero" className="chat-hero">
@@ -682,6 +846,7 @@ export function ChatPage() {
                       Direct chat
                     </span>
                   </div>
+                  {routeState}
                 </header>
 
                 <div className="chat-feed" role="log">

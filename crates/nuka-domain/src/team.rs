@@ -176,6 +176,7 @@ pub struct TeamRun {
     pub charter: RunCharter,
     pub created_at: String,
     pub updated_at: String,
+    pub routing: Option<crate::provider::ProviderRouteState>,
     pub agents: Vec<TeamRunAgent>,
     pub events: Vec<TeamRunEvent>,
 }

@@ -89,12 +89,12 @@ impl WorkflowRuntime {
         let initial_prompt = initial_prompt(workflow_id, &inputs);
         let provider = self
             .chat_service
-            .prepare_provider_for_prompt(&initial_prompt)
+            .prepare_provider_for_prompt(&initial_prompt, None)
             .await?;
         let session = WorkflowSession {
             id: uuid::Uuid::new_v4().to_string(),
             workflow_id: workflow_id.to_string(),
-            events: seed_events(workflow_id, &initial_prompt, &provider),
+            events: seed_events(workflow_id, &initial_prompt, &provider.provider),
             inputs,
             origin,
             status: "active".to_string(),
@@ -115,7 +115,7 @@ impl WorkflowRuntime {
     ) -> anyhow::Result<WorkflowSession> {
         let provider = self
             .chat_service
-            .prepare_provider_for_prompt(prompt)
+            .prepare_provider_for_prompt(prompt, None)
             .await?;
         let mut sessions = self
             .sessions
@@ -131,7 +131,7 @@ impl WorkflowRuntime {
         });
         session.events.push(WorkflowEvent::AssistantMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            content: continue_assistant_message(&provider, &session.workflow_id, prompt),
+            content: continue_assistant_message(&provider.provider, &session.workflow_id, prompt),
         });
         session.events.push(WorkflowEvent::NodeEvent {
             id: uuid::Uuid::new_v4().to_string(),

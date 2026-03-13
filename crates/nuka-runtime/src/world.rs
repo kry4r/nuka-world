@@ -34,7 +34,18 @@ impl WorldRuntime {
     }
 
     pub async fn start_session(&self, prompt: &str) -> anyhow::Result<WorldTurn> {
-        let chat_turn = self.chat_service.send_message(prompt, None).await?;
+        self.start_session_with_route(prompt, None).await
+    }
+
+    pub async fn start_session_with_route(
+        &self,
+        prompt: &str,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+    ) -> anyhow::Result<WorldTurn> {
+        let chat_turn = self
+            .chat_service
+            .send_message_with_route(prompt, None, route_request)
+            .await?;
         let session = crate::session::WorldSession {
             id: chat_turn.session.id.clone(),
         };
@@ -52,9 +63,18 @@ impl WorldRuntime {
         session_id: &str,
         prompt: &str,
     ) -> anyhow::Result<WorldTurn> {
+        self.continue_session_with_route(session_id, prompt, None).await
+    }
+
+    pub async fn continue_session_with_route(
+        &self,
+        session_id: &str,
+        prompt: &str,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+    ) -> anyhow::Result<WorldTurn> {
         let chat_turn = self
             .chat_service
-            .send_message(prompt, Some(session_id))
+            .send_message_with_route(prompt, Some(session_id), route_request)
             .await?;
         let session =
             {

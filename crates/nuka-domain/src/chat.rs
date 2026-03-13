@@ -21,4 +21,5 @@ pub struct ChatSessionSummary {
     pub provider_id: Option<String>,
     pub workflow_id: Option<String>,
     pub message_count: usize,
+    pub routing: Option<crate::provider::ProviderRouteState>,
 }
