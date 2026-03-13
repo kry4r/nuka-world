@@ -234,6 +234,7 @@ export function ChatPage() {
   const [teamRunState, setTeamRunState] = useState<TeamRunRecord | null>(null);
   const [isTeamRunBusy, setIsTeamRunBusy] = useState(false);
   const [isDrafting, setIsDrafting] = useState(false);
+  const activeWorkspaceSessionId = workspaceSessions.activeSessionId;
   const activeDirectSession =
     workspaceSessions.activeSession?.kind === "direct_chat"
       ? workspaceSessions.activeSession
@@ -242,13 +243,17 @@ export function ChatPage() {
     workspaceSessions.activeSession?.kind === "team_run"
       ? workspaceSessions.activeSession.run
       : null;
-  const activeTeamRun = teamRunState ?? workspaceTeamRun;
+  const localDirectSession =
+    !activeWorkspaceSessionId || session?.session.id === activeWorkspaceSessionId ? session : null;
+  const localDirectMessages = localDirectSession ? messages : [];
+  const activeTeamRun =
+    teamRunState && teamRunState.id === activeWorkspaceSessionId ? teamRunState : workspaceTeamRun;
   const activeTeamRunSummary =
     activeTeamRun && workspaceSessions.activeSummary?.kind === "team_run"
       ? workspaceSessions.activeSummary
       : null;
-  const activeSessionRecord = activeDirectSession?.session ?? session?.session ?? null;
-  const activeMessages = activeDirectSession?.messages ?? messages;
+  const activeSessionRecord = activeDirectSession?.session ?? localDirectSession?.session ?? null;
+  const activeMessages = activeDirectSession?.messages ?? localDirectMessages;
   const activeRouting = activeTeamRun?.routing ?? activeSessionRecord?.routing ?? null;
   const activeSessionProvider =
     sessionProvider && session?.session.id === activeSessionRecord?.id
@@ -256,6 +261,11 @@ export function ChatPage() {
       : null;
   const activeTeamRunStatus = activeTeamRunSummary?.status ?? activeTeamRun?.status ?? null;
   const activeBlockedEvent = latestRunEvent(activeTeamRun, "run_blocked");
+  const sessionSwitchPending =
+    !!activeWorkspaceSessionId &&
+    !workspaceSessions.activeSession &&
+    !activeTeamRun &&
+    !localDirectSession;
   const selectedTeam = useMemo(
     () => availableTeams.find((team) => team.id === selectedTeamId) ?? null,
     [availableTeams, selectedTeamId],
@@ -1033,6 +1043,8 @@ export function ChatPage() {
 
                 {composer}
               </div>
+            ) : sessionSwitchPending ? (
+              <div aria-label="Workspace session loading" className="chat-stage__pending" />
             ) : (
               <section aria-label="World conversation surface" className="chat-surface">
                 <header className="chat-surface__header">

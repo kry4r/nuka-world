@@ -1077,6 +1077,86 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Continue Run")).toBeTruthy();
   });
 
+  it("clears stale team-run content immediately while switching to a direct chat tab", async () => {
+    const directDetail = deferredValue<WorkspaceSessionDetail | null>();
+
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "waiting_for_user",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+      {
+        id: "session-direct",
+        kind: "direct_chat",
+        title: "Branch Session",
+        status: "active",
+        updatedAt: "2026-03-11T12:16:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockImplementation(async (sessionId: string, kind: string) => {
+      if (sessionId === "run-release" && kind === "team_run") {
+        return {
+          kind: "team_run",
+          run: sampleRun,
+        };
+      }
+
+      if (sessionId === "session-direct" && kind === "direct_chat") {
+        return directDetail.promise;
+      }
+
+      return null;
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await clickButton(view.container, "Branch Session");
+
+    expect(view.container.querySelector('[aria-label="Team run session"]')).toBeFalsy();
+    expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeFalsy();
+
+    await act(async () => {
+      directDetail.resolve({
+        kind: "direct_chat",
+        session: {
+          id: "session-direct",
+          title: "Branch Session",
+          providerId: "provider-local",
+          messageCount: 2,
+          routing: null,
+        },
+        messages: [
+          {
+            id: "message-user-1",
+            role: "user",
+            content: "Reply with exactly: OK",
+          },
+          {
+            id: "message-assistant-1",
+            role: "assistant",
+            content: "OK",
+          },
+        ],
+      });
+      await directDetail.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeTruthy();
+    expect(findText(view.container, "OK")).toBeTruthy();
+  });
+
   it("renders browser-like uniform session tabs and clean session meta text", async () => {
     listWorkspaceSessionsMock.mockResolvedValueOnce([
       {

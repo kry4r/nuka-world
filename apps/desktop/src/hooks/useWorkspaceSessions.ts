@@ -25,6 +25,14 @@ export function useWorkspaceSessions() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const updateSelection = (nextSelection: WorkspaceSelection | null) => {
+    if (!sameSelection(activeSelection, nextSelection)) {
+      setActiveSession(null);
+    }
+
+    setActiveSelection(nextSelection);
+  };
+
   const refresh = async (preferredSelection?: WorkspaceSelection | null) => {
     setIsLoading(true);
     setError(null);
@@ -55,7 +63,7 @@ export function useWorkspaceSessions() {
         return;
       }
 
-      setActiveSelection(nextSelection);
+      updateSelection(nextSelection);
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setError(message);
@@ -116,7 +124,7 @@ export function useWorkspaceSessions() {
       return;
     }
 
-    setActiveSelection({
+    updateSelection({
       id: nextSession.id,
       kind: nextSession.kind,
     });
