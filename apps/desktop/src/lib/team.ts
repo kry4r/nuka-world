@@ -166,6 +166,14 @@ export async function continueTeamRun(
   return invoke<TeamRunRecord>("continue_team_run", { runId, prompt, routing });
 }
 
+export async function retryTeamRun(runId: string): Promise<TeamRunRecord> {
+  return invoke<TeamRunRecord>("retry_team_run", { runId });
+}
+
+export async function resumeTeamRun(runId: string): Promise<TeamRunRecord> {
+  return invoke<TeamRunRecord>("resume_team_run", { runId });
+}
+
 export async function addTeamRunAgent(
   runId: string,
   agentSpec: RuntimeAgentInput,

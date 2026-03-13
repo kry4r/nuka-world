@@ -18,6 +18,8 @@ import {
   continueTeamRun,
   createTeamFromGoal,
   listTeams,
+  resumeTeamRun,
+  retryTeamRun,
   startTeamRun,
   type TeamRecord,
   type TeamRunRecord,
@@ -50,6 +52,7 @@ type ComposerEntryMode = "direct" | "choose_team" | "create_team";
 
 const META_SEPARATOR = " · ";
 const SESSION_ELLIPSIS = "…";
+const TEAM_RUN_QUEUE_STATUSES = new Set(["queued", "running", "blocked", "stuck"]);
 
 type ProviderRouteDraft = {
   requestedProviderId: string;
@@ -129,6 +132,18 @@ function routeDraftFromState(routing: ProviderRoutingState | null): ProviderRout
 
 function formatFailoverReason(reason: string | null) {
   return reason ? reason.replace(/_/g, " ") : null;
+}
+
+function formatRunStatus(status: string) {
+  return status.replace(/_/g, " ");
+}
+
+function latestRunEvent(run: TeamRunRecord | null, kind: string) {
+  if (!run) {
+    return null;
+  }
+
+  return [...run.events].reverse().find((event) => event.kind === kind) ?? null;
 }
 
 function ComposerPlusIcon() {
@@ -213,12 +228,25 @@ export function ChatPage() {
       ? workspaceSessions.activeSession.run
       : null;
   const activeTeamRun = teamRunState ?? workspaceTeamRun;
+  const activeTeamRunSummary =
+    activeTeamRun && workspaceSessions.activeSummary?.kind === "team_run"
+      ? workspaceSessions.activeSummary
+      : null;
   const activeSessionRecord = activeDirectSession?.session ?? session?.session ?? null;
   const activeMessages = activeDirectSession?.messages ?? messages;
   const activeRouting = activeTeamRun?.routing ?? activeSessionRecord?.routing ?? null;
+  const activeTeamRunStatus = activeTeamRunSummary?.status ?? activeTeamRun?.status ?? null;
+  const activeBlockedEvent = latestRunEvent(activeTeamRun, "run_blocked");
   const selectedTeam = useMemo(
     () => availableTeams.find((team) => team.id === selectedTeamId) ?? null,
     [availableTeams, selectedTeamId],
+  );
+  const queuedTeamRuns = useMemo(
+    () =>
+      workspaceSessions.sessions.filter(
+        (session) => session.kind === "team_run" && TEAM_RUN_QUEUE_STATUSES.has(session.status),
+      ),
+    [workspaceSessions.sessions],
   );
   const providerNameById = useMemo(
     () =>
@@ -453,6 +481,54 @@ export function ChatPage() {
     }
   };
 
+  const handleRetryTeamRun = async () => {
+    if (!activeTeamRun || isTeamRunBusy) {
+      return;
+    }
+
+    setIsTeamRunBusy(true);
+    setTeamRunError(null);
+
+    try {
+      const updated = await retryTeamRun(activeTeamRun.id);
+      setTeamRunState(updated);
+      void workspaceSessions.refresh({
+        id: updated.id,
+        kind: "team_run",
+      });
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setTeamRunError(message);
+    } finally {
+      setIsTeamRunBusy(false);
+    }
+  };
+
+  const handleResumeTeamRun = async () => {
+    if (!activeTeamRun || isTeamRunBusy) {
+      return;
+    }
+
+    setIsTeamRunBusy(true);
+    setTeamRunError(null);
+
+    try {
+      const updated = await resumeTeamRun(activeTeamRun.id);
+      setTeamRunState(updated);
+      void workspaceSessions.refresh({
+        id: updated.id,
+        kind: "team_run",
+      });
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setTeamRunError(message);
+    } finally {
+      setIsTeamRunBusy(false);
+    }
+  };
+
   const handleOpenExternalDraft = async () => {
     if (isDrafting) {
       return;
@@ -600,6 +676,78 @@ export function ChatPage() {
       </div>
     </div>
   ) : null;
+  const runQueue =
+    queuedTeamRuns.length > 0 ? (
+      <section aria-label="Run queue" className="chat-run-queue ui-card">
+        <div className="chat-run-queue__header">
+          <h2>Run queue</h2>
+        </div>
+        <div className="chat-run-queue__list">
+          {queuedTeamRuns.map((sessionItem) => (
+            <button
+              className={`chat-run-queue__item${
+                sessionItem.id === activeTeamRun?.id ? " is-active" : ""
+              }`}
+              key={sessionItem.id}
+              onClick={() => handleSessionSelect(sessionItem.id)}
+              type="button"
+            >
+              <span className="chat-run-queue__title">{sessionItem.title}</span>
+              <span className="chat-run-queue__status">
+                {formatRunStatus(sessionItem.status)}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+    ) : null;
+  const recoveryPanel =
+    activeTeamRun && activeTeamRunStatus === "blocked" ? (
+      <section aria-label="Run recovery" className="chat-run-recovery ui-card">
+        <div className="chat-run-recovery__header">
+          <span className="chat-run-recovery__eyebrow">Recovery</span>
+          <span className="chat-run-recovery__status">blocked</span>
+        </div>
+        <p className="chat-run-recovery__message">
+          {activeBlockedEvent?.content ??
+            "The last round stopped before the checkpoint could complete."}
+        </p>
+        <div className="chat-run-recovery__actions">
+          <button
+            className="settings-button settings-button--accent"
+            disabled={isTeamRunBusy}
+            onClick={() => {
+              void handleRetryTeamRun();
+            }}
+            type="button"
+          >
+            Retry Run
+          </button>
+        </div>
+      </section>
+    ) : activeTeamRun && activeTeamRunStatus === "stuck" ? (
+      <section aria-label="Run recovery" className="chat-run-recovery ui-card">
+        <div className="chat-run-recovery__header">
+          <span className="chat-run-recovery__eyebrow">Recovery</span>
+          <span className="chat-run-recovery__status">stuck</span>
+        </div>
+        <p className="chat-run-recovery__message">
+          The last heartbeat expired before the round completed.
+        </p>
+        <div className="chat-run-recovery__actions">
+          <button
+            className="settings-button settings-button--accent"
+            disabled={isTeamRunBusy}
+            onClick={() => {
+              void handleResumeTeamRun();
+            }}
+            type="button"
+          >
+            Resume Run
+          </button>
+        </div>
+      </section>
+    ) : null;
 
   const composer = (
     <div
@@ -816,6 +964,8 @@ export function ChatPage() {
             {activeTeamRun ? (
               <>
                 {routeState}
+                {runQueue}
+                {recoveryPanel}
                 <TeamRunPanel
                   error={teamRunError}
                   isBusy={isTeamRunBusy}

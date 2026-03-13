@@ -1,5 +1,7 @@
 use sqlx::Row;
 
+const TEAM_RUN_STUCK_TIMEOUT_SQL: &str = "select datetime('now', '-5 minutes')";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceSessionKind {
     DirectChat,
@@ -45,6 +47,9 @@ impl WorkspaceSessionsService {
 
     pub async fn list(&self) -> anyhow::Result<Vec<WorkspaceSessionSummary>> {
         nuka_storage::migrations::run(&self.pool).await?;
+        let team_run_stuck_cutoff: String = sqlx::query_scalar(TEAM_RUN_STUCK_TIMEOUT_SQL)
+            .fetch_one(&self.pool)
+            .await?;
 
         let chat_rows = sqlx::query(
             r#"
@@ -115,7 +120,11 @@ impl WorkspaceSessionsService {
                     id: row.get("id"),
                     kind: WorkspaceSessionKind::TeamRun,
                     title: row.get("title"),
-                    status: row.get("status"),
+                    status: project_team_run_status(
+                        row.get("status"),
+                        row.get("updated_at"),
+                        &team_run_stuck_cutoff,
+                    ),
                     updated_at: row.get("updated_at"),
                     lineage: workspace_lineage_from_row(
                         &row,
@@ -216,5 +225,53 @@ fn workspace_lineage_from_row(
             })
         }
         _ => None,
+    }
+}
+
+fn project_team_run_status(status: String, updated_at: String, stale_cutoff: &str) -> String {
+    let stale = updated_at.as_str() <= stale_cutoff;
+
+    match status.as_str() {
+        "queued" | "active" | "waiting_for_agents" if stale => "stuck".to_string(),
+        "active" | "waiting_for_agents" => "running".to_string(),
+        other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn list_projects_stale_active_team_runs_as_stuck() {
+        let pool = crate::settings_service::test_pool();
+        nuka_storage::migrations::run(&pool).await.unwrap();
+        nuka_storage::team_runs::TeamRunRepository::new(pool.clone())
+            .save_run(nuka_domain::team::TeamRun {
+                id: "run-stale".to_string(),
+                team_id: "team-release".to_string(),
+                title: "Release Team Run".to_string(),
+                goal: "Ship the release".to_string(),
+                status: nuka_domain::team::TeamRunStatus::Active,
+                current_phase: "analysis".to_string(),
+                lead_agent_id: None,
+                charter: nuka_domain::team::RunCharter::default_for_goal("Ship the release"),
+                created_at: "2000-01-01 00:00:00".to_string(),
+                updated_at: "2000-01-01 00:00:00".to_string(),
+                routing: None,
+                agents: Vec::new(),
+                events: Vec::new(),
+            })
+            .await
+            .unwrap();
+
+        let sessions = super::WorkspaceSessionsService::new(pool)
+            .list()
+            .await
+            .unwrap();
+        let run = sessions
+            .into_iter()
+            .find(|session| session.id == "run-stale")
+            .unwrap();
+
+        assert_eq!(run.status, "stuck");
     }
 }

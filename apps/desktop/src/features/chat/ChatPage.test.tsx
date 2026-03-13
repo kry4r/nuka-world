@@ -275,6 +275,8 @@ const {
   startTeamRunMock,
   continueTeamRunMock,
   addTeamRunAgentMock,
+  retryTeamRunMock,
+  resumeTeamRunMock,
 } = vi.hoisted(() => ({
   listTeamsMock: vi.fn<() => Promise<TeamRecord[]>>(async () => [sampleTeam]),
   createTeamFromGoalMock: vi.fn<(goal: string) => Promise<TeamRecord>>(
@@ -306,6 +308,12 @@ const {
     (runId: string, agentSpec: RuntimeAgentInput) => Promise<TeamRunRecord>
   >(async () => {
     throw new Error("unexpected addTeamRunAgent call");
+  }),
+  retryTeamRunMock: vi.fn<(runId: string) => Promise<TeamRunRecord>>(async () => {
+    throw new Error("unexpected retryTeamRun call");
+  }),
+  resumeTeamRunMock: vi.fn<(runId: string) => Promise<TeamRunRecord>>(async () => {
+    throw new Error("unexpected resumeTeamRun call");
   }),
 }));
 
@@ -354,6 +362,10 @@ vi.mock("@/lib/team", () => ({
     continueTeamRunMock(...args),
   addTeamRunAgent: (...args: Parameters<typeof addTeamRunAgentMock>) =>
     addTeamRunAgentMock(...args),
+  retryTeamRun: (...args: Parameters<typeof retryTeamRunMock>) =>
+    retryTeamRunMock(...args),
+  resumeTeamRun: (...args: Parameters<typeof resumeTeamRunMock>) =>
+    resumeTeamRunMock(...args),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -545,6 +557,8 @@ afterEach(async () => {
   startTeamRunMock.mockReset();
   continueTeamRunMock.mockReset();
   addTeamRunAgentMock.mockReset();
+  retryTeamRunMock.mockReset();
+  resumeTeamRunMock.mockReset();
 
   listPendingMemoryCandidatesMock.mockImplementation(async () => []);
   reviewMemoryCandidateMock.mockImplementation(async () => undefined);
@@ -565,6 +579,12 @@ afterEach(async () => {
   });
   addTeamRunAgentMock.mockImplementation(async () => {
     throw new Error("unexpected addTeamRunAgent call");
+  });
+  retryTeamRunMock.mockImplementation(async () => {
+    throw new Error("unexpected retryTeamRun call");
+  });
+  resumeTeamRunMock.mockImplementation(async () => {
+    throw new Error("unexpected resumeTeamRun call");
   });
 
   providerGateState.ready = true;
@@ -1316,6 +1336,142 @@ describe("ChatPage", () => {
       }),
     );
     expect(findText(view.container, "Scribe")).toBeTruthy();
+  });
+
+  it("shows the run queue and retries a blocked run from chat", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "blocked",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+      {
+        id: "run-queued",
+        kind: "team_run",
+        title: "Queued Ops Run",
+        status: "queued",
+        updatedAt: "2026-03-11T12:14:00Z",
+      },
+    ]);
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "team_run",
+      run: {
+        ...sampleRun,
+        status: "blocked",
+        events: [
+          ...sampleRun.events,
+          {
+            id: "event-blocked",
+            runId: "run-release",
+            kind: "run_blocked",
+            agentId: null,
+            title: "Run blocked",
+            content: "provider route resolution failed",
+            status: "blocked",
+            toolName: null,
+            toolCallId: null,
+            toolTarget: null,
+            sequence: 2,
+            createdAt: "2026-03-11T12:15:00Z",
+          },
+        ],
+      },
+    });
+    retryTeamRunMock.mockResolvedValueOnce({
+      ...sampleRun,
+      status: "waiting_for_user",
+      events: [
+        ...sampleRun.events,
+        {
+          id: "event-resumed",
+          runId: "run-release",
+          kind: "run_resumed",
+          agentId: null,
+          title: "Run resumed",
+          content: "Retrying from the last checkpoint.",
+          status: "completed",
+          toolName: null,
+          toolCallId: null,
+          toolTarget: null,
+          sequence: 2,
+          createdAt: "2026-03-11T12:16:00Z",
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Run queue")).toBeTruthy();
+    expect(findText(view.container, "Queued Ops Run")).toBeTruthy();
+    expect(findText(view.container, "Retry Run")).toBeTruthy();
+
+    await clickButton(view.container, "Retry Run");
+
+    expect(retryTeamRunMock).toHaveBeenCalledWith("run-release");
+    expect(findText(view.container, "Run resumed")).toBeTruthy();
+  });
+
+  it("shows resume controls when a run is projected as stuck", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "stuck",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+    ]);
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "team_run",
+      run: {
+        ...sampleRun,
+        status: "active",
+      },
+    });
+    resumeTeamRunMock.mockResolvedValueOnce({
+      ...sampleRun,
+      status: "waiting_for_user",
+      events: [
+        ...sampleRun.events,
+        {
+          id: "event-resumed",
+          runId: "run-release",
+          kind: "run_resumed",
+          agentId: null,
+          title: "Run resumed",
+          content: "Continuing from the last pending instruction.",
+          status: "completed",
+          toolName: null,
+          toolCallId: null,
+          toolTarget: null,
+          sequence: 2,
+          createdAt: "2026-03-11T12:16:00Z",
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Resume Run")).toBeTruthy();
+
+    await clickButton(view.container, "Resume Run");
+
+    expect(resumeTeamRunMock).toHaveBeenCalledWith("run-release");
+    expect(findText(view.container, "Run resumed")).toBeTruthy();
   });
 
   it("switches into conversation state after a direct send without rendering an inspector", async () => {

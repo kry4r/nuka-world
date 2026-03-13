@@ -9,10 +9,12 @@ pub enum TeamStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TeamRunStatus {
+    Queued,
     Active,
     WaitingForAgents,
     WaitingForUser,
     BudgetPaused,
+    Blocked,
     Completed,
     Failed,
 }
@@ -106,11 +108,7 @@ pub struct Team {
 }
 
 impl Team {
-    pub fn new(
-        id: impl Into<String>,
-        name: impl Into<String>,
-        goal: impl Into<String>,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, goal: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             name: name.into(),

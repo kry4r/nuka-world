@@ -62,6 +62,8 @@ pub fn run() {
             commands::team::list_teams,
             commands::team::load_team,
             commands::team::load_team_run,
+            commands::team::resume_team_run,
+            commands::team::retry_team_run,
             commands::team::start_team_run,
             commands::team::update_team,
             commands::workspace::branch_workspace_session,

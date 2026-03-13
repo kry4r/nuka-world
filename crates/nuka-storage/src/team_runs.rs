@@ -588,10 +588,12 @@ impl TeamRunRepository {
 
 fn team_run_status_as_str(status: &TeamRunStatus) -> &'static str {
     match status {
+        TeamRunStatus::Queued => "queued",
         TeamRunStatus::Active => "active",
         TeamRunStatus::WaitingForAgents => "waiting_for_agents",
         TeamRunStatus::WaitingForUser => "waiting_for_user",
         TeamRunStatus::BudgetPaused => "budget_paused",
+        TeamRunStatus::Blocked => "blocked",
         TeamRunStatus::Completed => "completed",
         TeamRunStatus::Failed => "failed",
     }
@@ -599,10 +601,12 @@ fn team_run_status_as_str(status: &TeamRunStatus) -> &'static str {
 
 fn parse_team_run_status(status: &str) -> anyhow::Result<TeamRunStatus> {
     match status {
+        "queued" => Ok(TeamRunStatus::Queued),
         "active" => Ok(TeamRunStatus::Active),
         "waiting_for_agents" => Ok(TeamRunStatus::WaitingForAgents),
         "waiting_for_user" => Ok(TeamRunStatus::WaitingForUser),
         "budget_paused" => Ok(TeamRunStatus::BudgetPaused),
+        "blocked" => Ok(TeamRunStatus::Blocked),
         "completed" => Ok(TeamRunStatus::Completed),
         "failed" => Ok(TeamRunStatus::Failed),
         other => anyhow::bail!("unknown team run status: {other}"),
@@ -641,7 +645,11 @@ fn decode_json<T: DeserializeOwned>(value: &str) -> anyhow::Result<T> {
 }
 
 fn encode_optional_json<T: Serialize>(value: &Option<T>) -> anyhow::Result<Option<String>> {
-    value.as_ref().map(serde_json::to_string).transpose().map_err(Into::into)
+    value
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(Into::into)
 }
 
 fn decode_optional_json<T: DeserializeOwned>(value: Option<String>) -> anyhow::Result<Option<T>> {

@@ -185,10 +185,7 @@ pub async fn update_team(
 }
 
 #[tauri::command]
-pub async fn delete_team(
-    team_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn delete_team(team_id: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
     delete_team_inner(team_id, &state)
         .await
         .map_err(|error| error.to_string())
@@ -223,6 +220,26 @@ pub async fn continue_team_run(
     state: tauri::State<'_, AppState>,
 ) -> Result<TeamRunRecord, String> {
     continue_team_run_inner(run_id, prompt, routing, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn retry_team_run(
+    run_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<TeamRunRecord, String> {
+    retry_team_run_inner(run_id, &state)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn resume_team_run(
+    run_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<TeamRunRecord, String> {
+    resume_team_run_inner(run_id, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -338,6 +355,18 @@ async fn add_team_run_agent_inner(
     ))
 }
 
+async fn retry_team_run_inner(run_id: String, state: &AppState) -> anyhow::Result<TeamRunRecord> {
+    Ok(TeamRunRecord::from(
+        state.team_run_service().retry_team_run(&run_id).await?,
+    ))
+}
+
+async fn resume_team_run_inner(run_id: String, state: &AppState) -> anyhow::Result<TeamRunRecord> {
+    Ok(TeamRunRecord::from(
+        state.team_run_service().resume_team_run(&run_id).await?,
+    ))
+}
+
 impl From<nuka_domain::tool::AgentToolBinding> for ToolBindingRecord {
     fn from(value: nuka_domain::tool::AgentToolBinding) -> Self {
         Self {
@@ -391,7 +420,11 @@ impl From<nuka_domain::team::TeamAgent> for TeamAgentRecord {
             role: value.role,
             responsibility: value.responsibility,
             system_prompt: value.system_prompt,
-            tool_bindings: value.tool_bindings.into_iter().map(ToolBindingRecord::from).collect(),
+            tool_bindings: value
+                .tool_bindings
+                .into_iter()
+                .map(ToolBindingRecord::from)
+                .collect(),
             tool_use_policy: ToolUsePolicyRecord::from(value.tool_use_policy),
             order_hint: value.order_hint,
             created_at: value.created_at,
@@ -470,7 +503,11 @@ impl From<nuka_domain::team::Team> for TeamRecord {
             created_at: value.created_at,
             updated_at: value.updated_at,
             status: team_status_as_str(&value.status).to_string(),
-            agents: value.agents.into_iter().map(TeamAgentRecord::from).collect(),
+            agents: value
+                .agents
+                .into_iter()
+                .map(TeamAgentRecord::from)
+                .collect(),
             agent_assignments: value
                 .agent_assignments
                 .into_iter()
@@ -538,7 +575,11 @@ impl From<nuka_domain::team::TeamRunAgent> for TeamRunAgentRecord {
             role: value.role,
             responsibility: value.responsibility,
             system_prompt: value.system_prompt,
-            tool_bindings: value.tool_bindings.into_iter().map(ToolBindingRecord::from).collect(),
+            tool_bindings: value
+                .tool_bindings
+                .into_iter()
+                .map(ToolBindingRecord::from)
+                .collect(),
             tool_use_policy: ToolUsePolicyRecord::from(value.tool_use_policy),
             status: team_run_agent_status_as_str(&value.status).to_string(),
             current_work: value.current_work,
@@ -580,9 +621,19 @@ impl From<nuka_domain::team::TeamRun> for TeamRunRecord {
             charter: RunCharterRecord::from(value.charter),
             created_at: value.created_at,
             updated_at: value.updated_at,
-            routing: value.routing.map(super::chat::ProviderRoutingResponse::from),
-            agents: value.agents.into_iter().map(TeamRunAgentRecord::from).collect(),
-            events: value.events.into_iter().map(TeamRunEventRecord::from).collect(),
+            routing: value
+                .routing
+                .map(super::chat::ProviderRoutingResponse::from),
+            agents: value
+                .agents
+                .into_iter()
+                .map(TeamRunAgentRecord::from)
+                .collect(),
+            events: value
+                .events
+                .into_iter()
+                .map(TeamRunEventRecord::from)
+                .collect(),
         }
     }
 }
@@ -597,7 +648,10 @@ impl From<RuntimeAgentInput> for nuka_runtime::team_run_service::RuntimeAgentSpe
             tool_bindings: value
                 .tool_bindings
                 .into_iter()
-                .map(|binding| nuka_domain::tool::AgentToolBinding::try_from(binding).expect("runtime agent tool binding should parse"))
+                .map(|binding| {
+                    nuka_domain::tool::AgentToolBinding::try_from(binding)
+                        .expect("runtime agent tool binding should parse")
+                })
                 .collect(),
             tool_use_policy: value.tool_use_policy.into(),
             join_reason: value.join_reason,
@@ -660,10 +714,12 @@ fn parse_team_status(status: &str) -> anyhow::Result<nuka_domain::team::TeamStat
 
 fn team_run_status_as_str(status: &nuka_domain::team::TeamRunStatus) -> &'static str {
     match status {
+        nuka_domain::team::TeamRunStatus::Queued => "queued",
         nuka_domain::team::TeamRunStatus::Active => "active",
         nuka_domain::team::TeamRunStatus::WaitingForAgents => "waiting_for_agents",
         nuka_domain::team::TeamRunStatus::WaitingForUser => "waiting_for_user",
         nuka_domain::team::TeamRunStatus::BudgetPaused => "budget_paused",
+        nuka_domain::team::TeamRunStatus::Blocked => "blocked",
         nuka_domain::team::TeamRunStatus::Completed => "completed",
         nuka_domain::team::TeamRunStatus::Failed => "failed",
     }
@@ -690,7 +746,11 @@ mod tests {
             "gpt-oss",
         );
         let provider_id = provider.id.clone();
-        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .save_provider(provider)
+            .await
+            .unwrap();
         state
             .provider_service()
             .set_default_provider(&provider_id)
@@ -742,7 +802,10 @@ mod tests {
 
         assert_eq!(run.team_id, team.id);
         assert!(team.agent_assignments.len() >= 2);
-        assert!(run.agents.iter().all(|agent| agent.source_agent_id.is_some()));
+        assert!(run
+            .agents
+            .iter()
+            .all(|agent| agent.source_agent_id.is_some()));
         assert!(run
             .agents
             .iter()
@@ -786,9 +849,18 @@ mod tests {
             .unwrap();
         let response_json = serde_json::to_value(&run).unwrap();
 
-        assert_eq!(response_json["routing"]["effectiveProviderId"], "provider-fallback");
-        assert_eq!(response_json["routing"]["effectiveModel"], "gpt-oss-fallback");
-        assert_eq!(response_json["routing"]["fallbackProviderId"], "provider-fallback");
+        assert_eq!(
+            response_json["routing"]["effectiveProviderId"],
+            "provider-fallback"
+        );
+        assert_eq!(
+            response_json["routing"]["effectiveModel"],
+            "gpt-oss-fallback"
+        );
+        assert_eq!(
+            response_json["routing"]["fallbackProviderId"],
+            "provider-fallback"
+        );
         assert_eq!(response_json["routing"]["failoverReason"], "missing_model");
     }
 }

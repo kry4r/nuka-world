@@ -1,12 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use nuka_integrations::providers::{
-    openai::OpenAiCompatibleProvider,
-    types::OpenAiChatMessage,
-};
+use nuka_integrations::providers::{openai::OpenAiCompatibleProvider, types::OpenAiChatMessage};
 
 const TEAM_RUN_COMPACTION_EVENT_THRESHOLD: usize = 12;
 const TEAM_RUN_COMPACTION_RECENT_WINDOW: usize = 5;
+const TEAM_RUN_KICKOFF_PROMPT: &str = "Kick off the team run";
 
 #[derive(Debug, Clone)]
 pub struct RuntimeAgentSpec {
@@ -112,7 +110,6 @@ impl TeamRunService {
         self.ensure_seed_provider().await?;
         self.ensure_seed_team().await?;
 
-        let resolved_route = self.provider_service.resolve_route(route_request.as_ref()).await?;
         let team = nuka_storage::teams::TeamRepository::new(self.pool.clone())
             .load_team(team_id)
             .await?
@@ -123,26 +120,22 @@ impl TeamRunService {
         charter.current_phase = "kickoff".to_string();
 
         let mut run = snapshot_team_into_run(&team, charter);
-        run.routing = Some(resolved_route.routing.clone());
-        self.maybe_run_provider_preflight(&resolved_route.provider, &mut run)
-            .await?;
-        execute_round(
-            &self.provider_client,
-            &resolved_route.provider,
-            self.seed_completion.as_deref(),
-            &self.artifact_root,
-            &mut run,
-            "Kick off the team run",
-        )
-        .await?;
-
         let repo = nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone());
+        queue_instruction(
+            &mut run,
+            TEAM_RUN_KICKOFF_PROMPT,
+            "run_queued",
+            "Run queued",
+        );
         repo.create_run(run.clone()).await?;
-        self.maybe_compact_run_events(&repo, &mut run).await?;
-        repo.save_run(run.clone()).await?;
-        repo.load_run(&run.id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("persisted run disappeared after save"))
+        self.drive_team_run(
+            &repo,
+            &mut run,
+            TEAM_RUN_KICKOFF_PROMPT,
+            route_request,
+            None,
+        )
+        .await
     }
 
     pub async fn continue_team_run(
@@ -150,7 +143,8 @@ impl TeamRunService {
         run_id: &str,
         prompt: &str,
     ) -> anyhow::Result<nuka_domain::team::TeamRun> {
-        self.continue_team_run_with_route(run_id, prompt, None).await
+        self.continue_team_run_with_route(run_id, prompt, None)
+            .await
     }
 
     pub async fn continue_team_run_with_route(
@@ -175,45 +169,10 @@ impl TeamRunService {
                     requested_model: routing.requested_model.clone(),
                 })
         });
-        let resolved_route = self
-            .provider_service
-            .resolve_route(requested_route.as_ref())
-            .await?;
-
-        run.routing = Some(resolved_route.routing.clone());
-        run.status = nuka_domain::team::TeamRunStatus::Active;
-        run.events.push(nuka_domain::team::TeamRunEvent {
-            id: uuid::Uuid::new_v4().to_string(),
-            run_id: run.id.clone(),
-            kind: "user_instruction".to_string(),
-            agent_id: None,
-            title: "User follow-up".to_string(),
-            content: prompt.to_string(),
-            status: Some("queued".to_string()),
-            tool_name: None,
-            tool_call_id: None,
-            tool_target: None,
-            sequence: next_sequence(&run.events),
-            created_at: String::new(),
-        });
-
-        self.maybe_run_provider_preflight(&resolved_route.provider, &mut run)
-            .await?;
-        execute_round(
-            &self.provider_client,
-            &resolved_route.provider,
-            self.seed_completion.as_deref(),
-            &self.artifact_root,
-            &mut run,
-            prompt,
-        )
-        .await?;
-
-        self.maybe_compact_run_events(&repo, &mut run).await?;
+        queue_instruction(&mut run, prompt, "user_instruction", "User follow-up");
         repo.save_run(run.clone()).await?;
-        repo.load_run(&run.id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("persisted run disappeared after update"))
+        self.drive_team_run(&repo, &mut run, prompt, requested_route, None)
+            .await
     }
 
     pub async fn add_runtime_agent(
@@ -277,13 +236,28 @@ impl TeamRunService {
             .await
     }
 
+    pub async fn retry_team_run(&self, run_id: &str) -> anyhow::Result<nuka_domain::team::TeamRun> {
+        self.recover_team_run(run_id, TeamRunRecoveryMode::Retry)
+            .await
+    }
+
+    pub async fn resume_team_run(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<nuka_domain::team::TeamRun> {
+        self.recover_team_run(run_id, TeamRunRecoveryMode::Resume)
+            .await
+    }
+
     async fn ensure_seed_provider(&self) -> anyhow::Result<()> {
         let Some(provider) = &self.seed_provider else {
             return Ok(());
         };
 
         if self.provider_service.list_providers().await?.is_empty() {
-            self.provider_service.save_provider(provider.clone()).await?;
+            self.provider_service
+                .save_provider(provider.clone())
+                .await?;
             self.provider_service
                 .set_default_provider(&provider.id)
                 .await?;
@@ -359,6 +333,243 @@ impl TeamRunService {
 
         Ok(())
     }
+
+    async fn recover_team_run(
+        &self,
+        run_id: &str,
+        mode: TeamRunRecoveryMode,
+    ) -> anyhow::Result<nuka_domain::team::TeamRun> {
+        nuka_storage::migrations::run(&self.pool).await?;
+        self.ensure_seed_provider().await?;
+
+        let repo = nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone());
+        let mut run = repo
+            .load_run_live(run_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("unknown team run: {run_id}"))?;
+        let prompt =
+            latest_recovery_prompt(&run).unwrap_or_else(|| TEAM_RUN_KICKOFF_PROMPT.to_string());
+
+        if !update_latest_instruction_status(&mut run, &["blocked", "active", "queued"], "queued") {
+            queue_instruction(&mut run, &prompt, "run_queued", "Run queued");
+        }
+
+        repo.save_run(run.clone()).await?;
+        self.drive_team_run(&repo, &mut run, &prompt, None, Some(mode))
+            .await
+    }
+
+    async fn drive_team_run(
+        &self,
+        repo: &nuka_storage::team_runs::TeamRunRepository,
+        run: &mut nuka_domain::team::TeamRun,
+        prompt: &str,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+        recovery_mode: Option<TeamRunRecoveryMode>,
+    ) -> anyhow::Result<nuka_domain::team::TeamRun> {
+        let requested_route = route_request.or_else(|| {
+            run.routing
+                .as_ref()
+                .map(|routing| nuka_domain::provider::ProviderRouteRequest {
+                    requested_provider_id: routing.requested_provider_id.clone(),
+                    requested_model: routing.requested_model.clone(),
+                })
+        });
+        let resolved_route = match self
+            .provider_service
+            .resolve_route(requested_route.as_ref())
+            .await
+        {
+            Ok(route) => route,
+            Err(error) => {
+                return self.persist_blocked_run(repo, run, prompt, &error).await;
+            }
+        };
+
+        run.routing = Some(resolved_route.routing.clone());
+        run.status = nuka_domain::team::TeamRunStatus::Active;
+        update_latest_instruction_status(run, &["queued", "blocked", "active"], "active");
+        push_runtime_progress_event(run, prompt, recovery_mode);
+        repo.save_run(run.clone()).await?;
+
+        if let Err(error) = self
+            .maybe_run_provider_preflight(&resolved_route.provider, run)
+            .await
+        {
+            return self.persist_blocked_run(repo, run, prompt, &error).await;
+        }
+        repo.save_run(run.clone()).await?;
+
+        if let Err(error) = execute_round(
+            &self.provider_client,
+            &resolved_route.provider,
+            self.seed_completion.as_deref(),
+            &self.artifact_root,
+            run,
+            prompt,
+        )
+        .await
+        {
+            return self.persist_blocked_run(repo, run, prompt, &error).await;
+        }
+
+        update_latest_instruction_status(run, &["active", "queued"], "completed");
+        self.maybe_compact_run_events(repo, run).await?;
+        repo.save_run(run.clone()).await?;
+        repo.load_run(&run.id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("persisted run disappeared after save"))
+    }
+
+    async fn persist_blocked_run(
+        &self,
+        repo: &nuka_storage::team_runs::TeamRunRepository,
+        run: &mut nuka_domain::team::TeamRun,
+        prompt: &str,
+        error: &anyhow::Error,
+    ) -> anyhow::Result<nuka_domain::team::TeamRun> {
+        run.status = nuka_domain::team::TeamRunStatus::Blocked;
+        run.current_phase = "blocked".to_string();
+        update_latest_instruction_status(run, &["queued", "active"], "blocked");
+
+        for agent in &mut run.agents {
+            if matches!(
+                agent.status,
+                nuka_domain::team::TeamRunAgentStatus::Thinking
+                    | nuka_domain::team::TeamRunAgentStatus::Drafting
+                    | nuka_domain::team::TeamRunAgentStatus::Reviewing
+            ) {
+                agent.status = nuka_domain::team::TeamRunAgentStatus::Blocked;
+                agent.current_work = "Waiting for run recovery".to_string();
+            }
+        }
+
+        run.events.push(nuka_domain::team::TeamRunEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            run_id: run.id.clone(),
+            kind: "run_blocked".to_string(),
+            agent_id: None,
+            title: "Run blocked".to_string(),
+            content: format!("{} ({prompt})", error),
+            status: Some("blocked".to_string()),
+            tool_name: None,
+            tool_call_id: None,
+            tool_target: None,
+            sequence: next_sequence(&run.events),
+            created_at: String::new(),
+        });
+
+        repo.save_run(run.clone()).await?;
+        repo.load_run(&run.id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("persisted blocked run disappeared after save"))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TeamRunRecoveryMode {
+    Retry,
+    Resume,
+}
+
+fn queue_instruction(run: &mut nuka_domain::team::TeamRun, prompt: &str, kind: &str, title: &str) {
+    run.status = nuka_domain::team::TeamRunStatus::Queued;
+    run.current_phase = "queued".to_string();
+    run.events.push(nuka_domain::team::TeamRunEvent {
+        id: uuid::Uuid::new_v4().to_string(),
+        run_id: run.id.clone(),
+        kind: kind.to_string(),
+        agent_id: None,
+        title: title.to_string(),
+        content: prompt.to_string(),
+        status: Some("queued".to_string()),
+        tool_name: None,
+        tool_call_id: None,
+        tool_target: None,
+        sequence: next_sequence(&run.events),
+        created_at: String::new(),
+    });
+}
+
+fn update_latest_instruction_status(
+    run: &mut nuka_domain::team::TeamRun,
+    from_statuses: &[&str],
+    next_status: &str,
+) -> bool {
+    for event in run.events.iter_mut().rev() {
+        if !matches!(event.kind.as_str(), "run_queued" | "user_instruction") {
+            continue;
+        }
+
+        let status = event.status.as_deref().unwrap_or_default();
+        if !from_statuses.iter().any(|candidate| candidate == &status) {
+            continue;
+        }
+
+        event.status = Some(next_status.to_string());
+        return true;
+    }
+
+    false
+}
+
+fn latest_recovery_prompt(run: &nuka_domain::team::TeamRun) -> Option<String> {
+    run.events
+        .iter()
+        .rev()
+        .find(|event| matches!(event.kind.as_str(), "run_queued" | "user_instruction"))
+        .map(|event| event.content.clone())
+}
+
+fn latest_checkpoint_excerpt(run: &nuka_domain::team::TeamRun) -> Option<String> {
+    run.events
+        .iter()
+        .rev()
+        .find(|event| event.kind == "checkpoint_summary")
+        .map(|event| excerpt(&event.content, 96))
+}
+
+fn push_runtime_progress_event(
+    run: &mut nuka_domain::team::TeamRun,
+    prompt: &str,
+    recovery_mode: Option<TeamRunRecoveryMode>,
+) {
+    let (kind, title, content) = match recovery_mode {
+        Some(TeamRunRecoveryMode::Retry) => (
+            "run_resumed",
+            "Run resumed",
+            latest_checkpoint_excerpt(run)
+                .map(|checkpoint| format!("Retrying from checkpoint: {checkpoint}"))
+                .unwrap_or_else(|| format!("Retrying queued prompt: {}", excerpt(prompt, 80))),
+        ),
+        Some(TeamRunRecoveryMode::Resume) => (
+            "run_resumed",
+            "Run resumed",
+            latest_checkpoint_excerpt(run)
+                .map(|checkpoint| format!("Continuing from checkpoint: {checkpoint}"))
+                .unwrap_or_else(|| format!("Continuing pending prompt: {}", excerpt(prompt, 80))),
+        ),
+        None => (
+            "run_heartbeat",
+            "Run heartbeat",
+            format!("Executing prompt: {}", excerpt(prompt, 80)),
+        ),
+    };
+
+    run.events.push(nuka_domain::team::TeamRunEvent {
+        id: uuid::Uuid::new_v4().to_string(),
+        run_id: run.id.clone(),
+        kind: kind.to_string(),
+        agent_id: None,
+        title: title.to_string(),
+        content,
+        status: Some("active".to_string()),
+        tool_name: None,
+        tool_call_id: None,
+        tool_target: None,
+        sequence: next_sequence(&run.events),
+        created_at: String::new(),
+    });
 }
 
 async fn execute_round(
@@ -369,7 +580,8 @@ async fn execute_round(
     run: &mut nuka_domain::team::TeamRun,
     prompt: &str,
 ) -> anyhow::Result<()> {
-    let selected_indexes = select_active_agent_indexes(&run.agents, run.charter.max_active_agents_per_round);
+    let selected_indexes =
+        select_active_agent_indexes(&run.agents, run.charter.max_active_agents_per_round);
     if let Some(index) = selected_indexes.first().copied() {
         run.lead_agent_id = Some(run.agents[index].id.clone());
     }
@@ -528,7 +740,7 @@ fn snapshot_team_into_run(
         team_id: team.id.clone(),
         title: format!("{} Run", team.name),
         goal: team.goal.clone(),
-        status: nuka_domain::team::TeamRunStatus::Active,
+        status: nuka_domain::team::TeamRunStatus::Queued,
         current_phase: charter.current_phase.clone(),
         lead_agent_id: None,
         charter,
@@ -577,7 +789,7 @@ fn snapshot_team_into_run(
             agent_id: None,
             title: "Team run started".to_string(),
             content: format!("Started run from team {}", team.name),
-            status: Some("active".to_string()),
+            status: Some("completed".to_string()),
             tool_name: None,
             tool_call_id: None,
             tool_target: None,
@@ -715,7 +927,9 @@ fn slug(value: &str) -> String {
 }
 
 fn default_artifact_root() -> PathBuf {
-    std::env::temp_dir().join("nuka-world").join("team-run-artifacts")
+    std::env::temp_dir()
+        .join("nuka-world")
+        .join("team-run-artifacts")
 }
 
 fn test_artifact_root() -> PathBuf {
@@ -742,7 +956,9 @@ fn sample_seed_team() -> nuka_domain::team::Team {
                 name: "Coordinator".to_string(),
                 role: "Coordinator".to_string(),
                 responsibility: "Run the agenda and align the team.".to_string(),
-                system_prompt: "Coordinate the meeting, keep rounds bounded, and summarize checkpoints.".to_string(),
+                system_prompt:
+                    "Coordinate the meeting, keep rounds bounded, and summarize checkpoints."
+                        .to_string(),
                 tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed_cli(
                     "cli:git-read",
                     "Inspect repository status",
@@ -759,7 +975,9 @@ fn sample_seed_team() -> nuka_domain::team::Team {
                 role: "Writer".to_string(),
                 responsibility: "Draft the release notes.".to_string(),
                 system_prompt: "Draft concise release notes and final outputs.".to_string(),
-                tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed("mcp:filesystem")],
+                tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed(
+                    "mcp:filesystem",
+                )],
                 tool_use_policy: Default::default(),
                 order_hint: 1,
                 created_at: String::new(),
@@ -846,7 +1064,9 @@ mod tests {
             role: "Reviewer".to_string(),
             responsibility: "Check the final package for missing evidence.".to_string(),
             system_prompt: "Review the output for missing evidence and conflicts.".to_string(),
-            tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed("mcp:filesystem")],
+            tool_bindings: vec![nuka_domain::tool::AgentToolBinding::allowed(
+                "mcp:filesystem",
+            )],
             tool_use_policy: Default::default(),
             join_reason: "Need a dedicated verification pass".to_string(),
         }
@@ -867,7 +1087,10 @@ mod tests {
             .agents
             .iter()
             .all(|agent| agent.source_team_assignment_id.is_some()));
-        assert!(run.events.iter().any(|event| event.kind == "checkpoint_summary"));
+        assert!(run
+            .events
+            .iter()
+            .any(|event| event.kind == "checkpoint_summary"));
     }
 
     #[tokio::test]
@@ -880,9 +1103,15 @@ mod tests {
             .unwrap();
 
         assert_eq!(updated.agents.len(), run.agents.len() + 1);
-        assert_eq!(updated.agents[0].responsibility, run.agents[0].responsibility);
         assert_eq!(
-            updated.agents.last().and_then(|agent| agent.source_agent_id.as_ref()),
+            updated.agents[0].responsibility,
+            run.agents[0].responsibility
+        );
+        assert_eq!(
+            updated
+                .agents
+                .last()
+                .and_then(|agent| agent.source_agent_id.as_ref()),
             None
         );
     }
@@ -900,7 +1129,11 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        runtime.provider_service.save_provider(provider).await.unwrap();
+        runtime
+            .provider_service
+            .save_provider(provider)
+            .await
+            .unwrap();
         runtime
             .provider_service
             .set_default_provider(&provider_id)
@@ -920,6 +1153,139 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn team_run_returns_blocked_state_when_provider_route_fails() {
+        let pool = crate::settings_service::test_pool();
+        nuka_storage::migrations::run(&pool).await.unwrap();
+        let provider_service = crate::providers::ProvidersService::new(pool.clone());
+        let runtime =
+            super::TeamRunService::new_for_test_with_seeded_completion_and_provider_service(
+                pool.clone(),
+                provider_service.clone(),
+            );
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Broken",
+            "https://api.example.com/v1",
+            "",
+            "",
+        );
+        let provider_id = provider.id.clone();
+
+        provider_service.save_provider(provider).await.unwrap();
+        provider_service
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+        nuka_storage::teams::TeamRepository::new(pool)
+            .save_team(super::sample_seed_team())
+            .await
+            .unwrap();
+
+        let run = runtime.start_team_run("team-release").await.unwrap();
+
+        assert_eq!(run.status, nuka_domain::team::TeamRunStatus::Blocked);
+        assert!(run.events.iter().any(|event| event.kind == "run_blocked"));
+    }
+
+    #[tokio::test]
+    async fn blocked_team_run_can_retry_after_provider_fix() {
+        let pool = crate::settings_service::test_pool();
+        nuka_storage::migrations::run(&pool).await.unwrap();
+        let provider_service = crate::providers::ProvidersService::new(pool.clone());
+        let runtime =
+            super::TeamRunService::new_for_test_with_seeded_completion_and_provider_service(
+                pool.clone(),
+                provider_service.clone(),
+            );
+        let broken_provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Broken",
+            "https://api.example.com/v1",
+            "",
+            "",
+        );
+        let provider_id = broken_provider.id.clone();
+
+        provider_service
+            .save_provider(broken_provider)
+            .await
+            .unwrap();
+        provider_service
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+        nuka_storage::teams::TeamRepository::new(pool.clone())
+            .save_team(super::sample_seed_team())
+            .await
+            .unwrap();
+
+        let blocked = runtime.start_team_run("team-release").await.unwrap();
+        assert_eq!(blocked.status, nuka_domain::team::TeamRunStatus::Blocked);
+
+        provider_service
+            .save_provider(nuka_domain::provider::ProviderConfig {
+                id: provider_id,
+                name: "Broken".to_string(),
+                kind: nuka_domain::provider::ProviderKind::OpenAiCompatible,
+                base_url: "http://127.0.0.1:11434/v1".to_string(),
+                token: String::new(),
+                model: "gpt-oss".to_string(),
+                enabled: true,
+                secret_ref: None,
+                secret_present: false,
+                secret_updated_at: None,
+            })
+            .await
+            .unwrap();
+
+        let resumed = runtime.retry_team_run(&blocked.id).await.unwrap();
+
+        assert_eq!(
+            resumed.status,
+            nuka_domain::team::TeamRunStatus::WaitingForUser
+        );
+        assert!(resumed.events.iter().any(|event| {
+            event.kind == "checkpoint_summary" && event.content.contains("Kick off the team run")
+        }));
+    }
+
+    #[tokio::test]
+    async fn stale_active_team_run_can_resume_from_pending_instruction() {
+        let runtime = super::TeamRunService::new_for_test_with_provider();
+        let repo = nuka_storage::team_runs::TeamRunRepository::new(runtime.pool.clone());
+        let mut run = runtime.start_team_run("team-release").await.unwrap();
+
+        run.status = nuka_domain::team::TeamRunStatus::Active;
+        run.updated_at = "2000-01-01 00:00:00".to_string();
+        run.events.push(nuka_domain::team::TeamRunEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            run_id: run.id.clone(),
+            kind: "user_instruction".to_string(),
+            agent_id: None,
+            title: "User follow-up".to_string(),
+            content: "Resume the release validation pass.".to_string(),
+            status: Some("active".to_string()),
+            tool_name: None,
+            tool_call_id: None,
+            tool_target: None,
+            sequence: super::next_sequence(&run.events),
+            created_at: String::new(),
+        });
+        repo.save_run(run.clone()).await.unwrap();
+
+        let resumed = runtime.resume_team_run(&run.id).await.unwrap();
+
+        assert_eq!(
+            resumed.status,
+            nuka_domain::team::TeamRunStatus::WaitingForUser
+        );
+        assert!(resumed.events.iter().any(|event| {
+            event.kind == "checkpoint_summary"
+                && event
+                    .content
+                    .contains("Resume the release validation pass.")
+        }));
+    }
+
+    #[tokio::test]
     async fn team_run_records_real_file_change_events_for_each_round() {
         let runtime = super::TeamRunService::new_for_test_with_provider();
         let run = runtime.start_team_run("team-release").await.unwrap();
@@ -932,7 +1298,9 @@ mod tests {
 
         assert!(!file_changes.is_empty());
         assert!(file_changes.iter().all(|event| event.title == "Round 1"));
-        assert!(file_changes.iter().all(|event| event.status.as_deref() == Some("created")));
+        assert!(file_changes
+            .iter()
+            .all(|event| event.status.as_deref() == Some("created")));
         assert!(file_changes.iter().all(|event| {
             event
                 .tool_target
