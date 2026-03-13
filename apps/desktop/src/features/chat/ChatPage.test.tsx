@@ -1506,31 +1506,28 @@ describe("ChatPage", () => {
         updatedAt: "2026-03-11T12:14:00Z",
       },
     ]);
-    loadWorkspaceSessionMock.mockResolvedValueOnce({
-      kind: "team_run",
-      run: {
-        ...sampleRun,
-        status: "blocked",
-        events: [
-          ...sampleRun.events,
-          {
-            id: "event-blocked",
-            runId: "run-release",
-            kind: "run_blocked",
-            agentId: null,
-            title: "Run blocked",
-            content: "provider route resolution failed",
-            status: "blocked",
-            toolName: null,
-            toolCallId: null,
-            toolTarget: null,
-            sequence: 2,
-            createdAt: "2026-03-11T12:15:00Z",
-          },
-        ],
-      },
-    });
-    retryTeamRunMock.mockResolvedValueOnce({
+    const blockedRun = {
+      ...sampleRun,
+      status: "blocked",
+      events: [
+        ...sampleRun.events,
+        {
+          id: "event-blocked",
+          runId: "run-release",
+          kind: "run_blocked",
+          agentId: null,
+          title: "Run blocked",
+          content: "provider route resolution failed",
+          status: "blocked",
+          toolName: null,
+          toolCallId: null,
+          toolTarget: null,
+          sequence: 2,
+          createdAt: "2026-03-11T12:15:00Z",
+        },
+      ],
+    } as TeamRunRecord;
+    const resumedRun = {
       ...sampleRun,
       status: "waiting_for_user",
       events: [
@@ -1550,7 +1547,18 @@ describe("ChatPage", () => {
           createdAt: "2026-03-11T12:16:00Z",
         },
       ],
-    });
+    } as TeamRunRecord;
+
+    loadWorkspaceSessionMock
+      .mockResolvedValueOnce({
+        kind: "team_run",
+        run: blockedRun,
+      })
+      .mockResolvedValueOnce({
+        kind: "team_run",
+        run: resumedRun,
+      });
+    retryTeamRunMock.mockResolvedValueOnce(resumedRun);
 
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
@@ -1580,14 +1588,11 @@ describe("ChatPage", () => {
         updatedAt: "2026-03-11T12:15:00Z",
       },
     ]);
-    loadWorkspaceSessionMock.mockResolvedValueOnce({
-      kind: "team_run",
-      run: {
-        ...sampleRun,
-        status: "active",
-      },
-    });
-    resumeTeamRunMock.mockResolvedValueOnce({
+    const activeRun = {
+      ...sampleRun,
+      status: "active",
+    } as TeamRunRecord;
+    const resumedRun = {
       ...sampleRun,
       status: "waiting_for_user",
       events: [
@@ -1607,7 +1612,18 @@ describe("ChatPage", () => {
           createdAt: "2026-03-11T12:16:00Z",
         },
       ],
-    });
+    } as TeamRunRecord;
+
+    loadWorkspaceSessionMock
+      .mockResolvedValueOnce({
+        kind: "team_run",
+        run: activeRun,
+      })
+      .mockResolvedValueOnce({
+        kind: "team_run",
+        run: resumedRun,
+      });
+    resumeTeamRunMock.mockResolvedValueOnce(resumedRun);
 
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
@@ -1768,6 +1784,142 @@ describe("ChatPage", () => {
       });
       await pendingSend.promise;
     });
+  });
+
+  it("refreshes the active direct session after continuing an existing branch", async () => {
+    listWorkspaceSessionsMock
+      .mockResolvedValueOnce([
+        {
+          id: "session-branch-1",
+          kind: "direct_chat",
+          title: "Branch Session",
+          status: "active",
+          updatedAt: "2026-03-11T12:05:00Z",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "session-branch-1",
+          kind: "direct_chat",
+          title: "Branch Session",
+          status: "active",
+          updatedAt: "2026-03-11T12:06:00Z",
+        },
+      ]);
+
+    loadWorkspaceSessionMock
+      .mockResolvedValueOnce({
+        kind: "direct_chat",
+        session: {
+          id: "session-branch-1",
+          title: "Branch Session",
+          providerId: "provider-local",
+          messageCount: 2,
+          routing: null,
+        },
+        messages: [
+          {
+            id: "message-user-1",
+            role: "user",
+            content: "Reply with exactly: OK",
+          },
+          {
+            id: "message-assistant-1",
+            role: "assistant",
+            content: "OK",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        kind: "direct_chat",
+        session: {
+          id: "session-branch-1",
+          title: "Branch Session",
+          providerId: "provider-local",
+          messageCount: 4,
+          routing: null,
+        },
+        messages: [
+          {
+            id: "message-user-1",
+            role: "user",
+            content: "Reply with exactly: OK",
+          },
+          {
+            id: "message-assistant-1",
+            role: "assistant",
+            content: "OK",
+          },
+          {
+            id: "message-user-2",
+            role: "user",
+            content: "Continue this branch with exactly: BRANCH OK",
+          },
+          {
+            id: "message-assistant-2",
+            role: "assistant",
+            content: "BRANCH OK",
+          },
+        ],
+      });
+
+    routeWorldPromptMock.mockResolvedValueOnce({
+      session: {
+        id: "session-branch-1",
+        title: "Branch Session",
+        providerId: "provider-local",
+        messageCount: 4,
+        routing: null,
+      },
+      messages: [
+        {
+          id: "message-user-2",
+          role: "user" as const,
+          content: "Continue this branch with exactly: BRANCH OK",
+        },
+        {
+          id: "message-assistant-2",
+          role: "assistant" as const,
+          content: "BRANCH OK",
+        },
+      ],
+      provider: {
+        id: "provider-local",
+        name: "Local",
+        model: "gpt-oss",
+        baseUrl: "http://localhost:11434/v1",
+      },
+      output: "BRANCH OK",
+      exitStatus: "completed",
+      routing: null,
+      context: {
+        attachedAgents: [],
+        attachedKnowledgeLibraries: [],
+      },
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await setComposerValue(view.container, "Continue this branch with exactly: BRANCH OK");
+    await clickButton(view.container, "Send");
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(routeWorldPromptMock).toHaveBeenCalledWith(
+      "Continue this branch with exactly: BRANCH OK",
+      "session-branch-1",
+    );
+    expect(loadWorkspaceSessionMock).toHaveBeenCalledTimes(2);
+    expect(findText(view.container, "BRANCH OK")).toBeTruthy();
   });
 
   it("routes direct chat with session-level provider and model overrides", async () => {

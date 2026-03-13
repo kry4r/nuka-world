@@ -48,9 +48,14 @@ export function useWorkspaceSessions() {
         : null;
 
       setSessions(normalizedSessions);
-      setActiveSelection((current) =>
-        sameSelection(current, nextSelection) ? current : nextSelection,
-      );
+
+      if (nextSelection && sameSelection(activeSelection, nextSelection)) {
+        const nextDetail = await loadWorkspaceSession(nextSelection.id, nextSelection.kind);
+        setActiveSession(nextDetail);
+        return;
+      }
+
+      setActiveSelection(nextSelection);
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setError(message);
