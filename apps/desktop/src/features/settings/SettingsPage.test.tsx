@@ -127,17 +127,19 @@ function setCheckboxValue(element: HTMLInputElement, checked: boolean) {
 }
 
 describe("SettingsPage", () => {
-  it("renders compact settings sections including a minimal shortcuts panel", async () => {
+  it("renders only provider and runtime operations in the compact settings nav", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
     expect(view.container.querySelector('[data-testid="settings-section-nav"]')).toBeTruthy();
     expect(view.container.querySelector('[data-testid="settings-control-surface"]')).toBeTruthy();
-    expect(findText(view.container, "General")).toBeTruthy();
     expect(findText(view.container, "Providers")).toBeTruthy();
-    expect(findText(view.container, "Appearance")).toBeTruthy();
-    expect(findText(view.container, "Shortcuts")).toBeTruthy();
     expect(findText(view.container, "Runtime")).toBeTruthy();
+    expect(findText(view.container, "General")).toBeFalsy();
+    expect(findText(view.container, "Appearance")).toBeFalsy();
+    expect(findText(view.container, "Shortcuts")).toBeFalsy();
+    expect(findText(view.container, "Default Local")).toBeTruthy();
+    expect(findText(view.container, "Fallback Local")).toBeTruthy();
     expect(view.container.textContent).not.toContain("configured");
     expect(view.container.textContent).not.toContain("Application Settings");
   });
@@ -331,65 +333,25 @@ describe("SettingsPage", () => {
     );
   });
 
-  it("renders a minimal shortcuts section without a keyboard editor", async () => {
+  it("omits shortcut chrome from the P0 operations surface", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
-    const shortcutsButton = findButton(view.container, "Shortcuts");
-    expect(shortcutsButton).toBeTruthy();
-
-    await act(async () => {
-      shortcutsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(findText(view.container, "Common shortcuts")).toBeTruthy();
-    expect(findText(view.container, "Restore defaults")).toBeTruthy();
+    expect(findText(view.container, "Shortcuts")).toBeFalsy();
+    expect(findText(view.container, "Common shortcuts")).toBeFalsy();
+    expect(findText(view.container, "Restore defaults")).toBeFalsy();
     expect(view.container.textContent).not.toContain("Keyboard editor");
   });
 
-  it("loads appearance state from the backend and saves through tauri", async () => {
+  it("removes non-operational appearance controls from P0 settings", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
-    const appearanceButton = findButton(view.container, "Appearance");
-    expect(appearanceButton).toBeTruthy();
-
-    await act(async () => {
-      appearanceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(findText(view.container, "Appearance Defaults")).toBeTruthy();
-    expect(findText(view.container, "Interface Font")).toBeTruthy();
-    expect(findText(view.container, "Message Font")).toBeTruthy();
-
-    const interfaceFontSelect = view.container.querySelector(
-      'select[aria-label="Interface Font"]',
-    ) as HTMLSelectElement | null;
-    const saveButton = findButton(view.container, "Save Appearance");
-
-    expect(interfaceFontSelect?.value).toBe("Inter");
-    expect(saveButton?.hasAttribute("disabled")).toBe(true);
-
-    await act(async () => {
-      if (!interfaceFontSelect) {
-        throw new Error("Interface font select missing");
-      }
-      setFormValue(interfaceFontSelect, "IBM Plex Sans");
-    });
-
-    expect(interfaceFontSelect?.value).toBe("IBM Plex Sans");
-    expect(saveButton?.hasAttribute("disabled")).toBe(false);
-
-    await act(async () => {
-      saveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(invokeMock).toHaveBeenCalledWith(
-      "save_settings",
-      expect.objectContaining({
-        payload: expect.objectContaining({ interfaceFont: "IBM Plex Sans" }),
-      }),
-    );
+    expect(findText(view.container, "Appearance")).toBeFalsy();
+    expect(findText(view.container, "Appearance Defaults")).toBeFalsy();
+    expect(findText(view.container, "Interface Font")).toBeFalsy();
+    expect(findText(view.container, "Message Font")).toBeFalsy();
+    expect(findButton(view.container, "Save Appearance")).toBeFalsy();
   });
 
   it("adds a provider draft and saves it through tauri", async () => {

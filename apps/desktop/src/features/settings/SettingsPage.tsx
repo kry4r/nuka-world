@@ -10,10 +10,7 @@ import {
 } from "@/lib/providers";
 
 type SettingsSectionId =
-  | "general"
   | "providers"
-  | "appearance"
-  | "shortcuts"
   | "runtime";
 
 type SettingsPayload = {
@@ -46,20 +43,8 @@ type SettingsSectionDefinition = {
 
 const SECTION_DEFINITIONS: SettingsSectionDefinition[] = [
   {
-    id: "general",
-    label: "General",
-  },
-  {
     id: "providers",
     label: "Providers",
-  },
-  {
-    id: "appearance",
-    label: "Appearance",
-  },
-  {
-    id: "shortcuts",
-    label: "Shortcuts",
   },
   {
     id: "runtime",
@@ -89,37 +74,6 @@ const EMPTY_SETTINGS: SettingsPayload = {
   logging: "Standard",
   notifications: true,
 };
-
-type ShortcutPreferenceState = {
-  globalShortcuts: boolean;
-};
-
-const DEFAULT_SHORTCUT_PREFERENCES: ShortcutPreferenceState = {
-  globalShortcuts: true,
-};
-
-const SHORTCUT_ROWS = [
-  { action: "Open chat", shortcut: "Ctrl+L" },
-  { action: "Toggle team", shortcut: "Ctrl+Shift+W" },
-  { action: "Open settings", shortcut: "Ctrl+," },
-  { action: "Send message", shortcut: "Enter" },
-];
-
-const GENERAL_FIELDS: Array<keyof SettingsPayload> = [
-  "language",
-  "responseLocale",
-  "timeFormat",
-  "density",
-];
-
-const APPEARANCE_FIELDS: Array<keyof SettingsPayload> = [
-  "interfaceFont",
-  "messageFont",
-  "textSize",
-  "motion",
-  "windowChrome",
-  "sidebarDefault",
-];
 
 const RUNTIME_FIELDS: Array<keyof SettingsPayload> = [
   "externalEditorPath",
@@ -181,18 +135,13 @@ function sameProviderRecord(
 
 export function SettingsPage() {
   const [activeSection, setActiveSection] =
-    useState<SettingsSectionId>("general");
+    useState<SettingsSectionId>("providers");
   const [settings, setSettings] = useState<SettingsPayload>(EMPTY_SETTINGS);
   const [initialSettings, setInitialSettings] =
     useState<SettingsPayload>(EMPTY_SETTINGS);
   const [providers, setProviders] = useState<ProviderRecord[]>([]);
   const [initialProviders, setInitialProviders] = useState<ProviderRecord[]>([]);
-  const [shortcutPreferences, setShortcutPreferences] = useState<ShortcutPreferenceState>(
-    DEFAULT_SHORTCUT_PREFERENCES,
-  );
   const [isLoaded, setIsLoaded] = useState(false);
-  const [isSavingGeneral, setIsSavingGeneral] = useState(false);
-  const [isSavingAppearance, setIsSavingAppearance] = useState(false);
   const [isSavingProviders, setIsSavingProviders] = useState(false);
   const [isSavingRuntime, setIsSavingRuntime] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -235,20 +184,6 @@ export function SettingsPage() {
   const activeDefinition =
     SECTION_DEFINITIONS.find((section) => section.id === activeSection) ??
     SECTION_DEFINITIONS[0];
-
-  const generalDirty = useMemo(
-    () =>
-      JSON.stringify(pickSettingsFields(settings, GENERAL_FIELDS)) !==
-      JSON.stringify(pickSettingsFields(initialSettings, GENERAL_FIELDS)),
-    [initialSettings, settings],
-  );
-
-  const appearanceDirty = useMemo(
-    () =>
-      JSON.stringify(pickSettingsFields(settings, APPEARANCE_FIELDS)) !==
-      JSON.stringify(pickSettingsFields(initialSettings, APPEARANCE_FIELDS)),
-    [initialSettings, settings],
-  );
 
   const runtimeDirty = useMemo(
     () =>
@@ -451,183 +386,6 @@ export function SettingsPage() {
     </header>
   );
 
-  const renderGeneralSection = () => (
-    <>
-      {renderSectionHeader("General")}
-
-      <section className="settings-directory__panel">
-        <div className="settings-form-grid">
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Language</span>
-            <select
-              aria-label="Language"
-              className="settings-select"
-              onChange={(event) => updateSetting("language", event.target.value)}
-              value={settings.language}
-            >
-              <option value="English (US)">English (US)</option>
-              <option value="Chinese (Simplified)">Chinese (Simplified)</option>
-              <option value="Japanese">Japanese</option>
-            </select>
-          </label>
-
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Response Locale</span>
-            <select
-              aria-label="Response Locale"
-              className="settings-select"
-              onChange={(event) => updateSetting("responseLocale", event.target.value)}
-              value={settings.responseLocale}
-            >
-              <option value="Follow session">Follow session</option>
-              <option value="Follow app language">Follow app language</option>
-              <option value="English (US)">English (US)</option>
-            </select>
-          </label>
-
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Time Format</span>
-            <select
-              aria-label="Time Format"
-              className="settings-select"
-              onChange={(event) => updateSetting("timeFormat", event.target.value)}
-              value={settings.timeFormat}
-            >
-              <option value="24-hour">24-hour</option>
-              <option value="12-hour">12-hour</option>
-            </select>
-          </label>
-
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Density</span>
-            <select
-              aria-label="Density"
-              className="settings-select"
-              onChange={(event) => updateSetting("density", event.target.value)}
-              value={settings.density}
-            >
-              <option value="Comfortable">Comfortable</option>
-              <option value="Compact">Compact</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="settings-panel__footer">
-          <button
-            className="settings-button settings-button--accent"
-            disabled={!generalDirty || isSavingGeneral}
-            onClick={() => void handleSaveSettings(setIsSavingGeneral)}
-            type="button"
-          >
-            {isSavingGeneral ? "Saving..." : "Save General"}
-          </button>
-        </div>
-      </section>
-    </>
-  );
-
-  const renderAppearanceSection = () => (
-    <>
-      {renderSectionHeader("Appearance Defaults")}
-
-      <section className="settings-directory__panel">
-        <div className="settings-form-grid">
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Interface Font</span>
-            <select
-              aria-label="Interface Font"
-              className="settings-select"
-              onChange={(event) => updateSetting("interfaceFont", event.target.value)}
-              value={settings.interfaceFont}
-            >
-              <option value="Inter">Inter</option>
-              <option value="IBM Plex Sans">IBM Plex Sans</option>
-              <option value="Suisse Intl">Suisse Intl</option>
-            </select>
-          </label>
-
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Message Font</span>
-            <select
-              aria-label="Message Font"
-              className="settings-select"
-              onChange={(event) => updateSetting("messageFont", event.target.value)}
-              value={settings.messageFont}
-            >
-              <option value="Inter Text">Inter Text</option>
-              <option value="IBM Plex Sans">IBM Plex Sans</option>
-              <option value="Geist">Geist</option>
-            </select>
-          </label>
-
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Text Size</span>
-            <select
-              aria-label="Text Size"
-              className="settings-select"
-              onChange={(event) => updateSetting("textSize", event.target.value)}
-              value={settings.textSize}
-            >
-              <option value="14 px">14 px</option>
-              <option value="15 px">15 px</option>
-              <option value="16 px">16 px</option>
-            </select>
-          </label>
-
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Motion</span>
-            <select
-              aria-label="Motion"
-              className="settings-select"
-              onChange={(event) => updateSetting("motion", event.target.value)}
-              value={settings.motion}
-            >
-              <option value="Standard">Standard</option>
-              <option value="Reduced">Reduced</option>
-            </select>
-          </label>
-
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Window Chrome</span>
-            <select
-              aria-label="Window Chrome"
-              className="settings-select"
-              onChange={(event) => updateSetting("windowChrome", event.target.value)}
-              value={settings.windowChrome}
-            >
-              <option value="Minimal glass">Minimal glass</option>
-              <option value="System native">System native</option>
-            </select>
-          </label>
-
-          <label className="settings-form-field">
-            <span className="settings-form-field__label">Sidebar Default</span>
-            <select
-              aria-label="Sidebar Default"
-              className="settings-select"
-              onChange={(event) => updateSetting("sidebarDefault", event.target.value)}
-              value={settings.sidebarDefault}
-            >
-              <option value="Expanded">Expanded</option>
-              <option value="Collapsed">Collapsed</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="settings-panel__footer">
-          <button
-            className="settings-button settings-button--accent"
-            disabled={!appearanceDirty || isSavingAppearance}
-            onClick={() => void handleSaveSettings(setIsSavingAppearance)}
-            type="button"
-          >
-            {isSavingAppearance ? "Saving..." : "Save Appearance"}
-          </button>
-        </div>
-      </section>
-    </>
-  );
-
   const renderProvidersSection = () => (
     <>
       {renderSectionHeader(
@@ -822,51 +580,6 @@ export function SettingsPage() {
     </>
   );
 
-  const renderShortcutsSection = () => (
-    <>
-      {renderSectionHeader("Shortcuts")}
-
-      <section className="settings-directory__panel">
-        <div className="settings-shortcuts__header">
-          <h2>Common shortcuts</h2>
-          <button
-            className="settings-button"
-            onClick={() => setShortcutPreferences(DEFAULT_SHORTCUT_PREFERENCES)}
-            type="button"
-          >
-            Restore defaults
-          </button>
-        </div>
-
-        <div className="settings-shortcuts__list">
-          {SHORTCUT_ROWS.map((shortcut) => (
-            <div className="settings-shortcut-row" key={shortcut.action}>
-              <span>{shortcut.action}</span>
-              <strong>{shortcut.shortcut}</strong>
-            </div>
-          ))}
-        </div>
-
-        <label className="settings-toggle-row">
-          <span className="settings-form-field__copy">
-            <strong>Enable global shortcuts</strong>
-          </span>
-          <input
-            aria-label="Enable global shortcuts"
-            checked={shortcutPreferences.globalShortcuts}
-            className="settings-checkbox"
-            onChange={(event) =>
-              setShortcutPreferences({
-                globalShortcuts: event.target.checked,
-              })
-            }
-            type="checkbox"
-          />
-        </label>
-      </section>
-    </>
-  );
-
   const renderRuntimeSection = () => (
     <>
       {renderSectionHeader("Runtime Controls")}
@@ -1012,10 +725,7 @@ export function SettingsPage() {
           {error ? <div className="settings-inline-error">{error}</div> : null}
           {!isLoaded ? <div className="settings-loading-state">Loading local settings...</div> : null}
 
-          {isLoaded && activeSection === "general" ? renderGeneralSection() : null}
-          {isLoaded && activeSection === "appearance" ? renderAppearanceSection() : null}
           {isLoaded && activeSection === "providers" ? renderProvidersSection() : null}
-          {isLoaded && activeSection === "shortcuts" ? renderShortcutsSection() : null}
           {isLoaded && activeSection === "runtime" ? renderRuntimeSection() : null}
         </section>
       </div>
