@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { PropsWithChildren, ReactNode } from "react";
+import { useEffect, useRef, useState, type PropsWithChildren, type ReactNode } from "react";
+import { normalizeToast, subscribeToToasts, type ToastRecord } from "@/lib/toast";
 import { PageSurface } from "./PageSurface";
 import { Sidebar } from "./Sidebar";
 import type { ShellNavigationItem, ShellPageId } from "./shellNavigation";
@@ -27,6 +28,39 @@ export function AppShell({
   inspector,
 }: AppShellProps) {
   const appWindow = getCurrentWindow();
+  const [toasts, setToasts] = useState<ToastRecord[]>([]);
+  const timeoutIdsRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    const removeToast = (toastId: string) => {
+      setToasts((current) => current.filter((toast) => toast.id !== toastId));
+    };
+
+    const unsubscribe = subscribeToToasts((input) => {
+      const toast = normalizeToast(input);
+      setToasts((current) => [...current, toast]);
+
+      if (toast.durationMs <= 0) {
+        return;
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        removeToast(toast.id);
+        timeoutIdsRef.current = timeoutIdsRef.current.filter((id) => id !== timeoutId);
+      }, toast.durationMs);
+
+      timeoutIdsRef.current.push(timeoutId);
+    });
+
+    return () => {
+      unsubscribe();
+      timeoutIdsRef.current.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      timeoutIdsRef.current = [];
+    };
+  }, []);
+
   const handleTitlebarPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) {
       return;
@@ -96,6 +130,30 @@ export function AppShell({
           ) : null}
         </div>
       </div>
+
+      {toasts.length > 0 ? (
+        <div aria-live="polite" className="app-toast-viewport" data-testid="app-toast-viewport">
+          {toasts.map((toast) => (
+            <section
+              className={`app-toast app-toast--${toast.tone}`}
+              key={toast.id}
+              role={toast.tone === "error" ? "alert" : "status"}
+            >
+              <span className="app-toast__message">{toast.message}</span>
+              <button
+                aria-label="Dismiss notification"
+                className="app-toast__dismiss"
+                onClick={() => {
+                  setToasts((current) => current.filter((item) => item.id !== toast.id));
+                }}
+                type="button"
+              >
+                ×
+              </button>
+            </section>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

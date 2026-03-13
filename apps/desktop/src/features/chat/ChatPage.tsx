@@ -10,6 +10,7 @@ import {
 } from "@/lib/chat";
 import { MemoryReviewDock } from "@/components/memory/MemoryReviewDock";
 import { listProviders, type ProviderRecord } from "@/lib/providers";
+import { emitToast } from "@/lib/toast";
 import { useProviderGate } from "@/hooks/useProviderGate";
 import { useMemoryReviewDock } from "@/hooks/useMemoryReviewDock";
 import { useWorkspaceSessions } from "@/hooks/useWorkspaceSessions";
@@ -549,10 +550,17 @@ export function ChatPage() {
         initialContent: prompt,
       });
       setPrompt(drafted);
+      emitToast({
+        message: "Draft loaded from editor.",
+        tone: "success",
+      });
     } catch (caughtError) {
       const message =
         caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(message);
+      emitToast({
+        message,
+        tone: "error",
+      });
     } finally {
       setIsDrafting(false);
     }

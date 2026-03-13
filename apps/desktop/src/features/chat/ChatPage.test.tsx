@@ -680,17 +680,64 @@ describe("ChatPage", () => {
   it("opens the external editor draft flow and injects the returned content into the composer", async () => {
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
+    const toasts: Array<{ message?: string; tone?: string }> = [];
+    const handleToast = (event: Event) => {
+      toasts.push((event as CustomEvent<{ message?: string; tone?: string }>).detail);
+    };
+    window.addEventListener("nuka:toast", handleToast as EventListener);
 
-    await setComposerValue(view.container, "Initial outline");
-    await clickButton(view.container, "Draft");
+    try {
+      await setComposerValue(view.container, "Initial outline");
+      await clickButton(view.container, "Draft");
 
-    expect(invokeMock).toHaveBeenCalledWith(
-      "open_external_prompt_draft",
-      expect.objectContaining({ initialContent: "Initial outline" }),
-    );
+      expect(invokeMock).toHaveBeenCalledWith(
+        "open_external_prompt_draft",
+        expect.objectContaining({ initialContent: "Initial outline" }),
+      );
 
-    const textarea = view.container.querySelector("textarea") as HTMLTextAreaElement | null;
-    expect(textarea?.value).toContain("Expanded draft from editor");
+      const textarea = view.container.querySelector("textarea") as HTMLTextAreaElement | null;
+      expect(textarea?.value).toContain("Expanded draft from editor");
+      expect(toasts).toContainEqual(
+        expect.objectContaining({
+          message: "Draft loaded from editor.",
+          tone: "success",
+        }),
+      );
+    } finally {
+      window.removeEventListener("nuka:toast", handleToast as EventListener);
+    }
+  });
+
+  it("emits a toast for external draft failures without rendering inline feedback", async () => {
+    invokeMock.mockImplementationOnce(async (command: string) => {
+      if (command === "open_external_prompt_draft") {
+        throw new Error("external editor path is not configured");
+      }
+
+      throw new Error(`unexpected tauri command: ${command}`);
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+    const toasts: Array<{ message?: string; tone?: string }> = [];
+    const handleToast = (event: Event) => {
+      toasts.push((event as CustomEvent<{ message?: string; tone?: string }>).detail);
+    };
+    window.addEventListener("nuka:toast", handleToast as EventListener);
+
+    try {
+      await clickButton(view.container, "Draft");
+
+      expect(toasts).toContainEqual(
+        expect.objectContaining({
+          message: "external editor path is not configured",
+          tone: "error",
+        }),
+      );
+      expect(findText(view.container, "external editor path is not configured")).toBeFalsy();
+    } finally {
+      window.removeEventListener("nuka:toast", handleToast as EventListener);
+    }
   });
 
   it("shows a choose-team pill and loads saved teams from the real team client", async () => {

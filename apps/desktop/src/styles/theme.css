@@ -1976,6 +1976,7 @@ button {
 }
 
 .app-shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2093,6 +2094,71 @@ button {
   min-height: 0;
   height: 100%;
   animation: app-shell-page-enter 180ms ease;
+}
+
+.app-toast-viewport {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  display: flex;
+  width: min(360px, calc(100% - 48px));
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.app-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(206, 193, 176, 0.9);
+  border-radius: 18px;
+  background: rgba(255, 251, 245, 0.98);
+  box-shadow:
+    0 18px 34px rgba(88, 69, 47, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(14px);
+}
+
+.app-toast--success {
+  border-color: rgba(175, 198, 165, 0.92);
+  background: rgba(247, 252, 245, 0.98);
+}
+
+.app-toast--error {
+  border-color: rgba(211, 167, 154, 0.94);
+  background: rgba(252, 243, 240, 0.98);
+}
+
+.app-toast__message {
+  min-width: 0;
+  color: #4a423a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.app-toast__dismiss {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(236, 228, 217, 0.88);
+  color: #6f6458;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.app-toast__dismiss:hover {
+  background: rgba(227, 215, 200, 0.92);
 }
 
 @keyframes app-shell-page-enter {
@@ -3064,6 +3130,12 @@ button {
 }
 
 @media (max-width: 900px) {
+  .app-toast-viewport {
+    right: 18px;
+    bottom: 18px;
+    width: min(320px, calc(100% - 36px));
+  }
+
   .chat-page .chat-stage {
     padding: 24px 20px 20px;
   }

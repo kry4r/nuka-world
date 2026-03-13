@@ -266,6 +266,27 @@ describe("App shell", () => {
     expect(providerCard?.querySelector(".status-badge")).toBeFalsy();
   });
 
+  it("renders a global toast when the app receives a toast event", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent("nuka:toast", {
+          detail: {
+            message: "Draft loaded from editor.",
+            tone: "success",
+          },
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector('[data-testid="app-toast-viewport"]')).toBeTruthy();
+    expect(findText(view.container, "Draft loaded from editor.")).toBeTruthy();
+  });
+
   it("shows a missing-provider card above settings and opens settings from the card action", async () => {
     runtimeStatusState.provider.kind = "missing";
     runtimeStatusState.provider.message = "Provider required";
