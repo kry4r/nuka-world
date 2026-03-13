@@ -51,6 +51,7 @@ pub fn run() {
             commands::providers::save_provider,
             commands::providers::test_provider_connection,
             commands::settings::load_settings,
+            commands::settings::open_external_prompt_draft,
             commands::settings::save_settings,
             commands::tools::integrated_tool_output_policy,
             commands::tools::list_tool_registry,

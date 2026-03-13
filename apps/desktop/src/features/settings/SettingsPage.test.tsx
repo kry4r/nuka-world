@@ -28,6 +28,7 @@ const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
           defaultProviderId: "provider-local",
           fallbackProviderId: "provider-local",
           connectionChecks: true,
+          externalEditorPath: "",
           interfaceFont: "Inter",
           messageFont: "Inter Text",
           textSize: "14 px",
@@ -646,6 +647,46 @@ describe("SettingsPage", () => {
       "save_settings",
       expect.objectContaining({
         payload: expect.objectContaining({ launchAtLogin: true }),
+      }),
+    );
+  });
+
+  it("persists the configured external editor path through runtime settings", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const runtimeButton = findButton(view.container, "Runtime");
+    expect(runtimeButton).toBeTruthy();
+
+    await act(async () => {
+      runtimeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const editorPathInput = view.container.querySelector(
+      'input[aria-label="External editor path"]',
+    ) as HTMLInputElement | null;
+    const saveRuntime = findButton(view.container, "Save Runtime");
+
+    expect(editorPathInput).toBeTruthy();
+
+    await act(async () => {
+      if (!editorPathInput) {
+        throw new Error("External editor path input missing");
+      }
+
+      setFormValue(editorPathInput, "C:\\Tools\\notepad++.exe");
+    });
+
+    await act(async () => {
+      saveRuntime?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_settings",
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          externalEditorPath: "C:\\Tools\\notepad++.exe",
+        }),
       }),
     );
   });

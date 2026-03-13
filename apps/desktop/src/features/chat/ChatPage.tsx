@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import { NukaLockup } from "@/components/brand/NukaLockup";
 import { routeWorldPrompt, type ChatMessage, type ChatRouteResponse } from "@/lib/chat";
@@ -157,6 +158,7 @@ export function ChatPage() {
   const [teamRunState, setTeamRunState] = useState<TeamRunRecord | null>(null);
   const [teamRunError, setTeamRunError] = useState<string | null>(null);
   const [isTeamRunBusy, setIsTeamRunBusy] = useState(false);
+  const [isDrafting, setIsDrafting] = useState(false);
   const activeDirectSession =
     workspaceSessions.activeSession?.kind === "direct_chat"
       ? workspaceSessions.activeSession
@@ -363,6 +365,30 @@ export function ChatPage() {
     }
   };
 
+  const handleOpenExternalDraft = async () => {
+    if (isDrafting) {
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setEntryMenuOpen(false);
+    setIsDrafting(true);
+
+    try {
+      const drafted = await invoke<string>("open_external_prompt_draft", {
+        initialContent: prompt,
+      });
+      setPrompt(drafted);
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(message);
+    } finally {
+      setIsDrafting(false);
+    }
+  };
+
   const composer = (
     <div
       aria-label="World chat composer"
@@ -504,6 +530,18 @@ export function ChatPage() {
             </button>
           </div>
         ) : null}
+
+        <button
+          aria-label="Draft in external editor"
+          className="composer__token-action"
+          disabled={isDrafting || isRouting}
+          onClick={() => {
+            void handleOpenExternalDraft();
+          }}
+          type="button"
+        >
+          {isDrafting ? "Drafting..." : "Draft"}
+        </button>
 
         <div className="composer__field">
           <textarea

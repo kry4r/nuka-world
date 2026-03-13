@@ -13,6 +13,17 @@ import type {
 } from "@/lib/workspace";
 import { findText, renderIntoDocument } from "@/test/render";
 
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(async (command: string, args?: Record<string, unknown>) => {
+    switch (command) {
+      case "open_external_prompt_draft":
+        return `${String(args?.initialContent ?? "")}\nExpanded draft from editor`;
+      default:
+        throw new Error(`unexpected tauri command: ${command}`);
+    }
+  }),
+}));
+
 const sampleTeam: TeamRecord = {
   id: "team-release",
   name: "Release Team",
@@ -247,6 +258,10 @@ vi.mock("@/lib/team", () => ({
     addTeamRunAgentMock(...args),
 }));
 
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+}));
+
 const cleanups: Array<() => Promise<void>> = [];
 
 function getButtonByText(container: HTMLElement, text: string) {
@@ -332,6 +347,15 @@ function deferredValue<T>() {
 }
 
 afterEach(async () => {
+  invokeMock.mockClear();
+  invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+    switch (command) {
+      case "open_external_prompt_draft":
+        return `${String(args?.initialContent ?? "")}\nExpanded draft from editor`;
+      default:
+        throw new Error(`unexpected tauri command: ${command}`);
+    }
+  });
   routeWorldPromptMock.mockReset();
   routeWorldPromptMock.mockImplementation(async (prompt: string, sessionId?: string) => {
     if (prompt === "Broken provider") {
@@ -432,6 +456,22 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Create team")).toBeTruthy();
     expect(findText(view.container, "Choose workflow")).toBeFalsy();
     expect(findText(view.container, "Create workflow")).toBeFalsy();
+  });
+
+  it("opens the external editor draft flow and injects the returned content into the composer", async () => {
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await setComposerValue(view.container, "Initial outline");
+    await clickButton(view.container, "Draft");
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "open_external_prompt_draft",
+      expect.objectContaining({ initialContent: "Initial outline" }),
+    );
+
+    const textarea = view.container.querySelector("textarea") as HTMLTextAreaElement | null;
+    expect(textarea?.value).toContain("Expanded draft from editor");
   });
 
   it("shows a choose-team pill and loads saved teams from the real team client", async () => {
