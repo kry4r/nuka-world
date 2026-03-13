@@ -295,7 +295,7 @@ mod tests {
             super::ProviderInput {
                 id: "provider-live".to_string(),
                 name: "Live".to_string(),
-                base_url: "https://api.example.com/v1".to_string(),
+                base_url: "http://localhost:11434/v1".to_string(),
                 api_key: "sk-live".to_string(),
                 model: "MiniMax-M2.5".to_string(),
                 enabled: true,

@@ -507,8 +507,8 @@ mod tests {
         let service = super::TeamService::new_for_test_with_seeded_completion(pool.clone());
         let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
             "Remote",
-            "https://api.example.com/v1",
-            "",
+            "https://api.invalid/v1",
+            "sk-test",
             "MiniMax-M2.5",
         );
         let provider_id = provider.id.clone();
@@ -531,7 +531,7 @@ mod tests {
 
         assert!(error
             .to_string()
-            .contains("provider connection check failed"));
+            .contains("provider route resolution failed: unreachable_host"));
     }
 
     #[test]

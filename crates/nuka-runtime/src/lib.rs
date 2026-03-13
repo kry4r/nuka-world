@@ -9,8 +9,6 @@ pub mod session;
 pub mod settings_service;
 pub mod team_run_service;
 pub mod team_service;
-pub mod workflow;
-pub mod workflow_world;
 pub mod workspace_sessions;
 pub mod world;
 
@@ -316,5 +314,21 @@ mod tests {
             .events
             .iter()
             .any(|event| event.kind == "checkpoint_summary"));
+    }
+
+    #[test]
+    fn runtime_lib_does_not_export_workflow_runtime_modules() {
+        let lib_rs = std::fs::read_to_string("src/lib.rs").unwrap();
+        let non_test_region = lib_rs
+            .split("#[cfg(test)]")
+            .next()
+            .expect("lib.rs should contain a non-test region");
+
+        for module in ["pub mod workflow;", "pub mod workflow_world;"] {
+            assert!(
+                !non_test_region.contains(module),
+                "unexpected workflow runtime export: {module}"
+            );
+        }
     }
 }
