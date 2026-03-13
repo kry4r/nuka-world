@@ -33,7 +33,7 @@ impl DesktopCredentialSecretStore {
     pub fn new() -> anyhow::Result<Self> {
         #[cfg(target_os = "windows")]
         {
-            keyring::use_windows_native_store(&std::collections::HashMap::new())
+            keyring::use_native_store(false)
                 .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
             return Ok(Self {
@@ -44,6 +44,9 @@ impl DesktopCredentialSecretStore {
 
         #[cfg(not(target_os = "windows"))]
         {
+            keyring::use_native_store(false)
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+
             Ok(Self {
                 #[cfg(test)]
                 backend_kind: SecretStoreBackendKind::PlatformDefault,
@@ -135,6 +138,17 @@ mod tests {
             store.backend_kind(),
             super::SecretStoreBackendKind::WindowsNative
         );
+    }
+
+    #[test]
+    fn desktop_secret_store_configures_a_default_keyring_store() {
+        keyring::release_store();
+
+        let _store = super::DesktopCredentialSecretStore::new().unwrap();
+
+        assert_ne!(keyring::store_info(), "None");
+
+        keyring::release_store();
     }
 
     #[tokio::test]
