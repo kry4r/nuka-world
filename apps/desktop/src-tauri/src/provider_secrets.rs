@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::collections::HashMap;
 
 use keyring_core::Entry;
@@ -15,25 +16,54 @@ pub trait ProviderSecretStore: Send + Sync {
 
 const PROVIDER_SECRET_SERVICE: &str = "nuka-world.desktop.providers";
 
-pub struct WindowsCredentialSecretStore;
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecretStoreBackendKind {
+    WindowsNative,
+    PlatformDefault,
+}
 
-impl WindowsCredentialSecretStore {
+pub struct DesktopCredentialSecretStore {
+    #[cfg(test)]
+    backend_kind: SecretStoreBackendKind,
+}
+
+impl DesktopCredentialSecretStore {
     pub fn new() -> anyhow::Result<Self> {
         #[cfg(target_os = "windows")]
-        keyring::use_windows_native_store(&HashMap::new())
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        {
+            keyring::use_windows_native_store(&std::collections::HashMap::new())
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
-        Ok(Self)
+            return Ok(Self {
+                #[cfg(test)]
+                backend_kind: SecretStoreBackendKind::WindowsNative,
+            });
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            Ok(Self {
+                #[cfg(test)]
+                backend_kind: SecretStoreBackendKind::PlatformDefault,
+            })
+        }
     }
 
     fn entry(&self, provider_id: &str) -> anyhow::Result<Entry> {
         Entry::new(PROVIDER_SECRET_SERVICE, &self.secret_ref(provider_id))
             .map_err(|error| anyhow::anyhow!(error.to_string()))
     }
+
+    #[cfg(test)]
+    fn backend_kind(&self) -> SecretStoreBackendKind {
+        self.backend_kind
+    }
 }
 
 #[async_trait::async_trait]
-impl ProviderSecretStore for WindowsCredentialSecretStore {
+impl ProviderSecretStore for DesktopCredentialSecretStore {
     async fn write(&self, provider_id: &str, secret: &str) -> anyhow::Result<()> {
         self.entry(provider_id)?
             .set_password(secret)
@@ -56,11 +86,13 @@ impl ProviderSecretStore for WindowsCredentialSecretStore {
     }
 }
 
+#[cfg(test)]
 #[derive(Default)]
 pub struct InMemoryProviderSecretStore {
     secrets: tokio::sync::Mutex<HashMap<String, String>>,
 }
 
+#[cfg(test)]
 #[async_trait::async_trait]
 impl ProviderSecretStore for InMemoryProviderSecretStore {
     async fn write(&self, provider_id: &str, secret: &str) -> anyhow::Result<()> {
@@ -84,6 +116,26 @@ impl ProviderSecretStore for InMemoryProviderSecretStore {
 #[cfg(test)]
 mod tests {
     use super::ProviderSecretStore;
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn desktop_secret_store_uses_platform_default_backend_off_windows() {
+        let store = super::DesktopCredentialSecretStore::new().unwrap();
+        assert_eq!(
+            store.backend_kind(),
+            super::SecretStoreBackendKind::PlatformDefault
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn desktop_secret_store_uses_windows_native_backend_on_windows() {
+        let store = super::DesktopCredentialSecretStore::new().unwrap();
+        assert_eq!(
+            store.backend_kind(),
+            super::SecretStoreBackendKind::WindowsNative
+        );
+    }
 
     #[tokio::test]
     async fn in_memory_secret_store_round_trips_provider_secret() {

@@ -46,7 +46,7 @@ async fn build_app_state_from_pool(
         std::sync::Arc::new(crate::provider_secrets::InMemoryProviderSecretStore::default());
     #[cfg(not(test))]
     let provider_secret_store: std::sync::Arc<dyn crate::provider_secrets::ProviderSecretStore> =
-        std::sync::Arc::new(crate::provider_secrets::WindowsCredentialSecretStore::new()?);
+        std::sync::Arc::new(crate::provider_secrets::DesktopCredentialSecretStore::new()?);
 
     migrate_provider_tokens_to_secret_store(&pool, provider_secret_store.as_ref()).await?;
 
