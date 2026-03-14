@@ -43,6 +43,16 @@ The acceptance run must reject any validation step that depends on P1 or P2 beha
 - [ ] Confirm the provider path is not a mock service.
 - [ ] Confirm the workspace used for validation is disposable and can be audited afterward.
 
+### UI Readiness Gate
+
+- [ ] Complete the approved compact UI pass from `docs/plans/2026-03-14-p0-claude-compact-ui-design.md` before any final P0 acceptance run starts.
+- [ ] Verify `Chat` no longer renders duplicated session-type copy or a header strip visually glued to the session rail.
+- [ ] Verify the top tab rail supports overflow handling, compression, and close affordances without clipping or wrapping.
+- [ ] Verify the chat composer is vertically aligned, visually unified, and free of `World` wording.
+- [ ] Verify `Team run` reads as a compact conversation-first surface with secondary state cards instead of oversized equal-weight panels.
+- [ ] Verify `Team`, `Agents`, `Memory`, and `Settings` share the same compact density and control styling baseline at default zoom.
+- [ ] Do not start the required single-instance Tauri MCP acceptance flow until this gate passes.
+
 ### Automated Verification
 
 - [ ] Run the targeted runtime and desktop tests that cover the touched P0 behaviors.

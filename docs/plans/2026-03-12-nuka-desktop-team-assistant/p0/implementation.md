@@ -101,6 +101,14 @@ Primary files:
 
 Primary goal is to expose the new runtime cleanly in the current desktop pages without adding explanatory clutter.
 
+Before the coordinator starts final P0 verification, Track B must also pass a compact UI readiness gate:
+
+- `Chat` header metadata cannot collide with or duplicate the tab rail
+- session tabs must handle overflow cleanly and expose close affordances
+- the composer must align as one compact control surface with no `World` residue
+- `Team run` must read as a compact conversation-first surface rather than oversized dashboard cards
+- `Team`, `Agents`, `Memory`, and `Settings` must share the same density and control baseline at default zoom
+
 Primary files:
 
 - `apps/desktop/src/features/chat/ChatPage.tsx`
@@ -386,6 +394,8 @@ P0 must not close without these checks.
 
 Run the real app and verify all of the following through UI interaction where applicable.
 
+Do not start this verification block until the compact UI readiness gate above passes.
+
 - open `Chat` and start a direct session
 - create a team from `Chat`
 - start the team run and verify the top tabs reflect the new run
@@ -413,4 +423,5 @@ P0 is complete only when:
 - run state becomes visible and recoverable from the current `Chat` page
 - agents can represent broader real-world roles cleanly
 - the desktop remains visually concise at default zoom
+- the compact UI readiness gate has passed before Tauri MCP acceptance begins
 - the full P0 Tauri MCP flow passes on a real app build
