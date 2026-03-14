@@ -11,7 +11,13 @@ pub async fn build_app_state_for_test() -> anyhow::Result<crate::app_state::AppS
         .connect("sqlite::memory:")
         .await?;
 
-    build_app_state_from_pool(pool, test_pageindex_runtime_path(), test_team_run_artifact_root()).await
+    build_app_state_from_pool(
+        pool,
+        test_pageindex_runtime_path(),
+        test_team_run_artifact_root(),
+        test_provider_secret_root(),
+    )
+    .await
 }
 
 pub async fn build_app_state<R: tauri::Runtime>(
@@ -29,24 +35,35 @@ pub async fn build_app_state<R: tauri::Runtime>(
     let pageindex_runtime = resolve_bundled_pageindex_runtime(app)?;
     let team_run_artifact_root = data_dir.join("team-runs");
 
-    build_app_state_from_pool(pool, pageindex_runtime, team_run_artifact_root).await
+    build_app_state_from_pool(
+        pool,
+        pageindex_runtime,
+        team_run_artifact_root,
+        data_dir.join("provider-secrets"),
+    )
+    .await
 }
 
 async fn build_app_state_from_pool(
     pool: sqlx::SqlitePool,
     pageindex_runtime: PathBuf,
     team_run_artifact_root: PathBuf,
+    provider_secret_root: PathBuf,
 ) -> anyhow::Result<crate::app_state::AppState> {
     nuka_storage::migrations::run(&pool).await?;
     #[cfg(test)]
     let _ = &team_run_artifact_root;
+    #[cfg(test)]
+    let _ = &provider_secret_root;
 
     #[cfg(test)]
     let provider_secret_store: std::sync::Arc<dyn crate::provider_secrets::ProviderSecretStore> =
         std::sync::Arc::new(crate::provider_secrets::InMemoryProviderSecretStore::default());
     #[cfg(not(test))]
     let provider_secret_store: std::sync::Arc<dyn crate::provider_secrets::ProviderSecretStore> =
-        std::sync::Arc::new(crate::provider_secrets::DesktopCredentialSecretStore::new()?);
+        std::sync::Arc::new(crate::provider_secrets::DesktopCredentialSecretStore::new_in(
+            provider_secret_root,
+        )?);
 
     migrate_provider_tokens_to_secret_store(&pool, provider_secret_store.as_ref()).await?;
 
@@ -180,6 +197,20 @@ fn test_pageindex_runtime_path() -> PathBuf {
 fn test_team_run_artifact_root() -> PathBuf {
     let unique = format!(
         "nuka-world-team-run-artifacts-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    );
+
+    std::env::temp_dir().join(unique)
+}
+
+#[cfg(test)]
+fn test_provider_secret_root() -> PathBuf {
+    let unique = format!(
+        "nuka-world-provider-secrets-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
