@@ -2120,11 +2120,11 @@ button {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-5);
   height: 100%;
   min-height: 100%;
   overflow: hidden;
-  padding: var(--space-5);
+  padding: calc(var(--space-5) + 28px) var(--space-5) var(--space-5);
 }
 
 .app-shell__body {
@@ -2135,47 +2135,33 @@ button {
   flex: 1;
 }
 
-.app-titlebar {
-  position: relative;
-  display: flex;
-  min-height: 38px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 4px 0 14px;
-  border: 1px solid rgba(214, 202, 187, 0.84);
-  border-radius: 16px;
-  background: rgba(250, 246, 239, 0.9);
-  box-shadow: 0 12px 24px rgba(99, 78, 55, 0.08);
-}
-
-.app-titlebar__drag {
+.app-window-chrome {
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
+  inset: 16px 20px auto;
+  z-index: 12;
+  height: 0;
 }
 
-.app-titlebar__drag--overlay {
-  z-index: 0;
+.app-window-drag-region {
+  position: absolute;
+  inset: -2px 0 auto 0;
+  height: 22px;
+  border-radius: 999px;
 }
 
-.app-titlebar__caption {
-  position: relative;
-  z-index: 1;
-  pointer-events: none;
-  color: #6d6257;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.app-titlebar__actions {
-  position: relative;
-  z-index: 1;
+.app-window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(214, 202, 187, 0.84);
+  border-radius: 14px;
+  background: rgba(250, 246, 239, 0.88);
+  box-shadow: 0 10px 22px rgba(99, 78, 55, 0.08);
+  backdrop-filter: blur(14px);
 }
 
 .app-titlebar__button {
@@ -2240,7 +2226,7 @@ button {
 .app-toast-viewport {
   position: absolute;
   right: 24px;
-  bottom: 24px;
+  top: 24px;
   z-index: 30;
   display: flex;
   width: min(360px, calc(100% - 48px));
@@ -2388,10 +2374,10 @@ button {
 .app-sidebar__settings {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   min-height: 44px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: var(--radius-card);
   color: var(--color-ink-soft);
   text-align: left;
@@ -2420,6 +2406,39 @@ button {
   background: var(--color-state-ready);
 }
 
+.app-sidebar__nav-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(245, 238, 228, 0.9);
+  color: #6d6257;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.app-sidebar__nav-glyph {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+.app-sidebar__nav-item.is-active .app-sidebar__nav-icon,
+.app-sidebar__settings.is-active .app-sidebar__nav-icon,
+.app-sidebar__nav-item:hover .app-sidebar__nav-icon,
+.app-sidebar__settings:hover .app-sidebar__nav-icon {
+  background: rgba(232, 224, 211, 0.92);
+  color: var(--color-ink);
+}
+
 .app-sidebar__nav-label {
   font-size: 13px;
   font-weight: 600;
@@ -2433,8 +2452,8 @@ button {
 .app-sidebar__provider-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 11px 10px;
+  gap: 10px;
+  padding: 12px 12px 11px;
   border: 1px solid rgba(203, 191, 174, 0.78);
   border-radius: 14px;
   background: rgba(249, 244, 236, 0.78);
@@ -2445,14 +2464,6 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-}
-
-.app-sidebar__provider-eyebrow {
-  color: var(--color-ink-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .app-sidebar__provider-status-dot {
@@ -2480,16 +2491,10 @@ button {
 
 .app-sidebar__provider-name {
   color: var(--color-ink);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
-}
-
-.app-sidebar__provider-message {
-  margin: 0;
-  color: var(--color-ink-soft);
-  font-size: 11px;
-  line-height: 1.4;
+  min-width: 0;
 }
 
 .app-sidebar__provider-action {
@@ -3309,7 +3314,7 @@ button {
 @media (max-width: 900px) {
   .app-toast-viewport {
     right: 18px;
-    bottom: 18px;
+    top: 18px;
     width: min(320px, calc(100% - 36px));
   }
 

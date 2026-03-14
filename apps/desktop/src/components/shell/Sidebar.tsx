@@ -8,6 +8,29 @@ type SidebarProps = {
   onNavigate: (id: ShellPageId) => void;
 };
 
+const NAVIGATION_ICON_PATHS: Record<ShellPageId, string[]> = {
+  agents: ["M3.5 12.5c.8-1.9 2.4-3 4.5-3s3.7 1.1 4.5 3", "M8 8a2.25 2.25 0 1 0 0-4.5A2.25 2.25 0 0 0 8 8Z"],
+  chat: ["M3.5 4.5h9v6h-5l-2.5 2v-2H3.5z"],
+  knowledge: ["M4 3.5h7l1.5 1.5v7H4z", "M6 6.5h4", "M6 9h3"],
+  memory: ["M4 5.5h8", "M4 8h8", "M4 10.5h5"],
+  settings: ["M8 4.25v-1", "M8 12.75v-1", "M11.18 5.57l.7-.7", "M4.12 12.63l.7-.7", "M11.75 8h1", "M3.25 8h1", "M11.18 10.43l.7.7", "M4.12 3.37l.7.7", "M8 10.25A2.25 2.25 0 1 0 8 5.75a2.25 2.25 0 0 0 0 4.5Z"],
+  team: ["M3.75 11.75c.6-1.6 1.9-2.5 3.6-2.5 1.1 0 2 .3 2.8.95", "M10.75 10.25c1.1 0 1.95.6 2.5 1.5", "M6.75 6.5a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z", "M11 7.25a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"],
+};
+
+function SidebarIcon({ page }: { page: ShellPageId }) {
+  const paths = NAVIGATION_ICON_PATHS[page];
+
+  return (
+    <span aria-hidden="true" className="app-sidebar__nav-icon">
+      <svg className="app-sidebar__nav-glyph" viewBox="0 0 16 16">
+        {paths.map((path) => (
+          <path d={path} key={path} />
+        ))}
+      </svg>
+    </span>
+  );
+}
+
 export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
   const { error, status } = useAppRuntimeStatus();
   const primaryItems = navigation.filter((item) => item.id !== "settings");
@@ -22,14 +45,6 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
         : providerKind === "checking"
           ? "Checking provider status"
           : "Provider unavailable";
-  const providerMessage =
-    providerKind === "ready"
-      ? null
-      : providerKind === "missing"
-        ? null
-        : providerKind === "checking"
-          ? "Checking current runtime status."
-          : (provider?.message ?? "Open settings to review the current provider.");
   const providerStatusClass =
     providerKind === "ready"
       ? "is-ready"
@@ -58,6 +73,7 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
               type="button"
             >
               <span className="app-sidebar__nav-rail" />
+              <SidebarIcon page={item.id} />
               <span className="app-sidebar__nav-label">{item.label}</span>
             </button>
           );
@@ -69,16 +85,12 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
         data-testid="sidebar-provider-card"
       >
         <div className="app-sidebar__provider-card-header">
-          <span className="app-sidebar__provider-eyebrow">Provider</span>
+          <div className="app-sidebar__provider-name">{providerLabel}</div>
           <span
             aria-hidden="true"
             className={`app-sidebar__provider-status-dot ${providerStatusClass}`}
           />
         </div>
-        <div className="app-sidebar__provider-name">{providerLabel}</div>
-        {providerMessage ? (
-          <p className="app-sidebar__provider-message">{providerMessage}</p>
-        ) : null}
         <button
           className="app-sidebar__provider-action"
           onClick={() => onNavigate("settings")}
@@ -97,6 +109,7 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
           type="button"
         >
           <span className="app-sidebar__nav-rail" />
+          <SidebarIcon page={settingsItem.id} />
           <span className="app-sidebar__settings-copy">
             <span className="app-sidebar__settings-title">{settingsItem.label}</span>
           </span>

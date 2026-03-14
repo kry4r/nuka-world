@@ -61,17 +61,8 @@ export function AppShell({
     };
   }, []);
 
-  const handleTitlebarPointerDown = (event: React.PointerEvent<HTMLElement>) => {
+  const handleWindowDragPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) {
-      return;
-    }
-
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
-      return;
-    }
-
-    if (target.closest(".app-titlebar__actions")) {
       return;
     }
 
@@ -80,17 +71,16 @@ export function AppShell({
 
   return (
     <div className="app-shell">
-      <header
-        className="app-titlebar app-shell__chrome-lock"
-        data-testid="app-titlebar"
-        onPointerDown={handleTitlebarPointerDown}
-      >
+      <div className="app-window-chrome" data-testid="app-window-chrome">
         <div
-          className="app-titlebar__drag app-titlebar__drag--overlay app-shell__chrome-lock"
+          className="app-window-drag-region app-shell__chrome-lock"
           data-tauri-drag-region
+          onPointerDown={handleWindowDragPointerDown}
         />
-        <span className="app-titlebar__caption">Nuka World Desktop</span>
-        <div className="app-titlebar__actions">
+        <div
+          className="app-window-controls app-shell__chrome-lock"
+          data-testid="app-window-controls"
+        >
           <button
             aria-label="Minimize window"
             className="app-titlebar__button"
@@ -116,7 +106,7 @@ export function AppShell({
             <TitlebarIcon path="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5" />
           </button>
         </div>
-      </header>
+      </div>
 
       <div className="app-shell__body">
         <Sidebar activePage={activePage} navigation={navigation} onNavigate={onNavigate} />

@@ -249,8 +249,19 @@ describe("App shell", () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
+    const chatButton = view.container.querySelector(
+      'button[aria-label="Chat"]',
+    ) as HTMLButtonElement | null;
+    const teamButton = view.container.querySelector(
+      'button[aria-label="Team"]',
+    ) as HTMLButtonElement | null;
+
     expect(findText(view.container, "Team")).toBeTruthy();
     expect(view.container.querySelector('button[aria-label="Workflow"]')).toBeFalsy();
+    expect(chatButton?.querySelector(".app-sidebar__nav-icon")).toBeTruthy();
+    expect(chatButton?.querySelector(".app-sidebar__nav-label")?.textContent).toContain("Chat");
+    expect(teamButton?.querySelector(".app-sidebar__nav-icon")).toBeTruthy();
+    expect(teamButton?.querySelector(".app-sidebar__nav-label")?.textContent).toContain("Team");
 
     await clickButton(view.container, "+");
 
@@ -273,10 +284,11 @@ describe("App shell", () => {
 
     expect(providerCard).toBeTruthy();
     expect(providerCard?.nextElementSibling).toBe(settingsButton);
-    expect(findText(view.container, "Provider")).toBeTruthy();
     expect(findText(view.container, "Local Provider")).toBeTruthy();
     expect(findText(view.container, "Ready for chat and team runs.")).toBeFalsy();
     expect(providerCard?.querySelector(".status-badge")).toBeFalsy();
+    expect(providerCard?.querySelector(".app-sidebar__provider-eyebrow")).toBeFalsy();
+    expect(providerCard?.querySelector(".app-sidebar__provider-message")).toBeFalsy();
   });
 
   it("deduplicates runtime status requests across shell consumers on first load", async () => {
@@ -356,11 +368,12 @@ describe("App shell", () => {
     expect(view.container.querySelector('button[aria-label="Open Chat"]')).toBeFalsy();
   });
 
-  it("renders a custom title bar and wires window controls", async () => {
+  it("keeps window chrome lightweight instead of rendering a global shell titlebar", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
     const titlebar = view.container.querySelector('[data-testid="app-titlebar"]');
+    const windowControls = view.container.querySelector('[data-testid="app-window-controls"]');
     const minimizeButton = view.container.querySelector(
       'button[aria-label="Minimize window"]',
     ) as HTMLButtonElement | null;
@@ -371,7 +384,9 @@ describe("App shell", () => {
       'button[aria-label="Close window"]',
     ) as HTMLButtonElement | null;
 
-    expect(titlebar).toBeTruthy();
+    expect(titlebar).toBeFalsy();
+    expect(windowControls).toBeTruthy();
+    expect(findText(view.container, "Nuka World Desktop")).toBeFalsy();
     expect(minimizeButton).toBeTruthy();
     expect(maximizeButton).toBeTruthy();
     expect(closeButton).toBeTruthy();
@@ -392,40 +407,42 @@ describe("App shell", () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const dragRegion = view.container.querySelector(".app-titlebar__drag");
+    const dragRegion = view.container.querySelector(".app-window-drag-region");
     const sidebar = view.container.querySelector(".app-sidebar");
     const sidebarBrand = view.container.querySelector(".app-sidebar__brand");
     const providerCard = view.container.querySelector('[data-testid="sidebar-provider-card"]');
 
-    expect(dragRegion?.className).toContain("app-titlebar__drag--overlay");
+    expect(dragRegion?.className).toContain("app-window-drag-region");
     expect(dragRegion?.className).toContain("app-shell__chrome-lock");
     expect(sidebar?.className).toContain("app-shell__chrome-lock");
     expect(sidebarBrand?.className).toContain("app-shell__chrome-lock");
     expect(providerCard?.className).toContain("app-shell__chrome-lock");
   });
 
-  it("keeps a full-row drag layer behind the titlebar chrome", async () => {
+  it("keeps a drag layer separate from the lightweight window controls", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const titlebar = view.container.querySelector('[data-testid="app-titlebar"]');
-    const dragRegion = view.container.querySelector(".app-titlebar__drag");
+    const windowChrome = view.container.querySelector('[data-testid="app-window-chrome"]');
+    const dragRegion = view.container.querySelector(".app-window-drag-region");
+    const controls = view.container.querySelector('[data-testid="app-window-controls"]');
 
-    expect(titlebar?.firstElementChild).toBe(dragRegion);
+    expect(windowChrome?.firstElementChild).toBe(dragRegion);
+    expect(windowChrome?.lastElementChild).toBe(controls);
     expect(dragRegion?.hasAttribute("data-tauri-drag-region")).toBe(true);
   });
 
-  it("starts native dragging from the titlebar chrome but not from window controls", async () => {
+  it("starts native dragging from the drag region but not from window controls", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const titlebar = view.container.querySelector('[data-testid="app-titlebar"]');
+    const dragRegion = view.container.querySelector(".app-window-drag-region");
     const closeButton = view.container.querySelector(
       'button[aria-label="Close window"]',
     ) as HTMLButtonElement | null;
 
     await act(async () => {
-      titlebar?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      dragRegion?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
       await Promise.resolve();
     });
 
