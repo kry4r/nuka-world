@@ -5,6 +5,7 @@ use nuka_domain::provider::{
 };
 
 pub const PROVIDER_ID: &str = "openai_compatible";
+const DESKTOP_USER_AGENT: &str = "nuka-world-desktop/0.1";
 
 #[derive(Debug, Clone)]
 pub struct OpenAiCompatibleProvider {
@@ -16,6 +17,7 @@ impl Default for OpenAiCompatibleProvider {
         Self {
             client: reqwest::Client::builder()
                 .timeout(default_request_timeout())
+                .user_agent(DESKTOP_USER_AGENT)
                 .build()
                 .expect("openai-compatible reqwest client should build"),
         }
@@ -161,11 +163,64 @@ fn classify_http_failure(status: u16, body: &str) -> ProviderConnectionStatus {
 
 #[cfg(test)]
 mod tests {
+    use crate::providers::ChatCompletionProvider;
+    use std::io::{Read, Write};
+
     #[test]
     fn default_request_timeout_supports_real_team_generation_requests() {
         assert_eq!(
             super::default_request_timeout(),
             std::time::Duration::from_secs(60)
         );
+    }
+
+    #[tokio::test]
+    async fn test_connection_sends_a_desktop_user_agent() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+
+            let mut buffer = [0_u8; 8192];
+            let bytes_read = stream.read(&mut buffer).unwrap();
+            let request = String::from_utf8_lossy(&buffer[..bytes_read]).to_string();
+            let has_expected_user_agent =
+                request.to_ascii_lowercase().contains("user-agent: nuka-world-desktop/0.1");
+            let body = if has_expected_user_agent {
+                r#"{"id":"test","choices":[{"message":{"role":"assistant","content":"pong"}}]}"#
+            } else {
+                r#"{"error":"missing user agent"}"#
+            };
+            let status_line = if has_expected_user_agent {
+                "HTTP/1.1 200 OK"
+            } else {
+                "HTTP/1.1 500 Internal Server Error"
+            };
+            let response = format!(
+                "{status_line}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let config = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local Probe",
+            format!("http://{address}/v1"),
+            "sk-local",
+            "test-model",
+        );
+        let status = super::OpenAiCompatibleProvider::default()
+            .test_connection(&config)
+            .await;
+
+        server.join().unwrap();
+
+        assert_eq!(status, nuka_domain::provider::ProviderConnectionStatus::Ready);
     }
 }
