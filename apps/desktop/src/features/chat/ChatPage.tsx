@@ -68,6 +68,13 @@ function formatSession(sessionId: string | undefined) {
   return `${sessionId.slice(0, 8)}${sessionId.length > 8 ? SESSION_ELLIPSIS : ""}`;
 }
 
+function workspaceSessionKey(
+  sessionId: string,
+  kind: "direct_chat" | "team_run",
+) {
+  return `${kind}:${sessionId}`;
+}
+
 function suggestionsForMode(entryMode: ComposerEntryMode) {
   switch (entryMode) {
     case "create_team":
@@ -94,7 +101,7 @@ function entrySummary(entryMode: ComposerEntryMode, selectedTeam: TeamRecord | n
 
 function composerPlaceholder(landing: boolean, entryMode: ComposerEntryMode) {
   if (!landing) {
-    return "Reply to World...";
+    return "Reply in chat...";
   }
 
   switch (entryMode) {
@@ -104,7 +111,7 @@ function composerPlaceholder(landing: boolean, entryMode: ComposerEntryMode) {
       return "";
     case "direct":
     default:
-      return "Message World to start a session...";
+      return "Start a new chat...";
   }
 }
 
@@ -234,6 +241,7 @@ export function ChatPage() {
   const [teamRunState, setTeamRunState] = useState<TeamRunRecord | null>(null);
   const [isTeamRunBusy, setIsTeamRunBusy] = useState(false);
   const [isDrafting, setIsDrafting] = useState(false);
+  const [dismissedSessionKeys, setDismissedSessionKeys] = useState<string[]>([]);
   const activeWorkspaceSessionId = workspaceSessions.activeSessionId;
   const activeDirectSession =
     workspaceSessions.activeSession?.kind === "direct_chat"
@@ -306,11 +314,17 @@ export function ChatPage() {
       });
     }
 
-    return sessions;
+    const dismissed = new Set(dismissedSessionKeys);
+
+    return sessions.filter(
+      (workspaceSession) =>
+        !dismissed.has(workspaceSessionKey(workspaceSession.id, workspaceSession.kind)),
+    );
   }, [
     activeSessionRecord,
     activeTeamRun,
     activeTeamRunSummary?.status,
+    dismissedSessionKeys,
     workspaceSessions.sessions,
   ]);
   const queuedTeamRuns = useMemo(
@@ -326,7 +340,7 @@ export function ChatPage() {
     activeDirectSession?.session.messageCount ?? session?.session.messageCount ?? null,
   );
 
-  const landing = activeMessages.length === 0 && workspaceSessions.sessions.length === 0 && !activeTeamRun;
+  const landing = activeMessages.length === 0 && visibleSessions.length === 0 && !activeTeamRun;
   const showTeamChooser = entryMode === "choose_team";
   const showCreateTeamPill = entryMode === "create_team";
 
@@ -404,6 +418,42 @@ export function ChatPage() {
     setTeamPickerOpen(false);
     setSelectedTeamId("");
     setEntryMode("direct");
+  };
+
+  const handleSessionClose = (
+    sessionId: string,
+    kind: "direct_chat" | "team_run",
+  ) => {
+    const closingKey = workspaceSessionKey(sessionId, kind);
+    const remaining = visibleSessions.filter(
+      (workspaceSession) =>
+        workspaceSessionKey(workspaceSession.id, workspaceSession.kind) !== closingKey,
+    );
+    const activeKey = activeTeamRun
+      ? workspaceSessionKey(activeTeamRun.id, "team_run")
+      : activeSessionRecord
+        ? workspaceSessionKey(activeSessionRecord.id, "direct_chat")
+        : null;
+
+    setDismissedSessionKeys((current) =>
+      current.includes(closingKey) ? current : [...current, closingKey],
+    );
+
+    if (activeKey !== closingKey) {
+      return;
+    }
+
+    const nextSession = remaining[0] ?? null;
+
+    if (nextSession) {
+      handleSessionSelect(nextSession.id);
+      return;
+    }
+
+    setMessages([]);
+    setSession(null);
+    setSessionProvider(null);
+    setTeamRunState(null);
   };
 
   const handleSend = async (nextPrompt?: string) => {
@@ -802,7 +852,7 @@ export function ChatPage() {
 
   const composer = (
     <div
-      aria-label="World chat composer"
+      aria-label="Chat composer"
       className={`composer composer--chat ${landing ? "composer--landing" : "composer--active"}`}
     >
       <div
@@ -1016,6 +1066,7 @@ export function ChatPage() {
             activeSessionId={
               workspaceSessions.activeSessionId ?? activeTeamRun?.id ?? activeSessionRecord?.id ?? null
             }
+            onClose={handleSessionClose}
             onSelect={handleSessionSelect}
             sessions={visibleSessions}
           />
@@ -1046,16 +1097,15 @@ export function ChatPage() {
             ) : sessionSwitchPending ? (
               <div aria-label="Workspace session loading" className="chat-stage__pending" />
             ) : (
-              <section aria-label="World conversation surface" className="chat-surface">
-                <header className="chat-surface__header">
+              <section aria-label="Chat conversation surface" className="chat-surface">
+                <header className="chat-surface__header" data-testid="chat-session-header">
                   <div className="chat-surface__identity">
-                    <span className="chat-surface__eyebrow">
-                      {entrySummary(entryMode, selectedTeam)}
-                    </span>
+                    <span className="chat-surface__eyebrow">Chat</span>
+                    <strong className="chat-surface__title">
+                      {activeSessionRecord?.title ?? entrySummary(entryMode, selectedTeam)}
+                    </strong>
                     <span className="chat-surface__meta">
                       Session {formatSession(activeSessionRecord?.id)}
-                      {META_SEPARATOR}
-                      Direct chat
                     </span>
                   </div>
                 </header>

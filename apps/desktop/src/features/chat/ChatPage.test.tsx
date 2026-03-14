@@ -1153,11 +1153,11 @@ describe("ChatPage", () => {
       await Promise.resolve();
     });
 
-    expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Chat conversation surface"]')).toBeTruthy();
     expect(findText(view.container, "OK")).toBeTruthy();
   });
 
-  it("renders browser-like uniform session tabs and clean session meta text", async () => {
+  it("renders a compact session rail and chat header", async () => {
     listWorkspaceSessionsMock.mockResolvedValueOnce([
       {
         id: "release-direct-session",
@@ -1203,11 +1203,21 @@ describe("ChatPage", () => {
 
     const tabList = view.container.querySelector(".session-tabs");
     const tabs = Array.from(view.container.querySelectorAll(".session-tab"));
+    const header = view.container.querySelector('[data-testid="chat-session-header"]');
+    const closeButtons = Array.from(
+      view.container.querySelectorAll('[aria-label^="Close session "]'),
+    );
+    const textarea = view.container.querySelector("textarea");
 
-    expect(tabList?.className).toContain("session-tabs--uniform");
+    expect(tabList?.className).toContain("session-tabs--scrollable");
     expect(tabs.length).toBeGreaterThan(1);
-    expect(tabs.every((tab) => tab.className.includes("session-tab--uniform"))).toBe(true);
-    expect(findText(view.container, "Session release-… · Direct chat")).toBeTruthy();
+    expect(tabs.every((tab) => tab.className.includes("session-tab--compact"))).toBe(true);
+    expect(header).toBeTruthy();
+    expect(findText(view.container, "Session release-… · Direct chat")).toBeFalsy();
+    expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeFalsy();
+    expect(view.container.querySelector('[aria-label="Chat conversation surface"]')).toBeTruthy();
+    expect(closeButtons.length).toBeGreaterThan(0);
+    expect(textarea?.getAttribute("placeholder")?.includes("World")).toBe(false);
     expect(view.container.textContent?.includes("璺")).toBe(false);
     expect(view.container.textContent?.includes("鈥")).toBe(false);
   });
@@ -1264,6 +1274,65 @@ describe("ChatPage", () => {
 
     expect(view.container.querySelector(".session-tab__branch")).toBeTruthy();
     expect(findText(view.container, "Design Review Chat / Branch 1")).toBeTruthy();
+  });
+
+  it("closes an inactive session tab from the compact rail", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "release-direct-session",
+        kind: "direct_chat",
+        title: "Design Review Chat",
+        status: "active",
+        updatedAt: "2026-03-11T12:05:00Z",
+      },
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "active",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "direct_chat",
+      session: {
+        id: "release-direct-session",
+        title: "Design Review Chat",
+        providerId: "provider-local",
+        messageCount: 1,
+        routing: null,
+      },
+      messages: [
+        {
+          id: "message-design-1",
+          role: "user",
+          content: "Check the design handoff",
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const closeButton = view.container.querySelector(
+      '[aria-label="Close session Release Team Run"]',
+    ) as HTMLButtonElement | null;
+
+    expect(closeButton).toBeTruthy();
+
+    await act(async () => {
+      closeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Release Team Run")).toBeFalsy();
+    expect(findText(view.container, "Design Review Chat")).toBeTruthy();
   });
 
   it("branches a direct chat from a visible message anchor", async () => {
@@ -1815,7 +1884,7 @@ describe("ChatPage", () => {
       "Summarize today's notes",
       undefined,
     );
-    expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Chat conversation surface"]')).toBeTruthy();
     expect(findText(view.container, "Context Inspector")).toBeFalsy();
     expect(findText(view.container, "Summarize today's notes")).toBeTruthy();
     expect(view.container.querySelector('[aria-label="Suggested next steps"]')).toBeFalsy();
@@ -2185,7 +2254,7 @@ describe("ChatPage", () => {
     expect(draftButton?.className).toContain("composer__icon-action");
     expect(sendButton?.className).toContain("composer__send--circle");
     expect(sendButton?.textContent?.trim()).toBe("");
-    expect(tabList?.className).toContain("session-tabs--attached");
+    expect(tabList?.className).toContain("session-tabs--scrollable");
   });
 
   it("shows deterministic team-run failover state for the active route", async () => {
