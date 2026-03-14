@@ -8,10 +8,44 @@ const sampleTeam = {
   name: "Release Team",
   goal: "Ship the release and publish notes",
   summary: "Coordinates release validation, notes, and final publish readiness.",
-  promptConstraints: "Keep the team concise and evidence-first.",
-  permissionPolicy: "No destructive tools without explicit approval.",
-  successCriteria: "Release notes are reviewed and the release checklist is complete.",
-  coordinationPolicy: "Moderator-led rounds with checkpoint summaries.",
+  promptConstraints: JSON.stringify(
+    [
+      "Keep the team concise and evidence-first.",
+      "Cite release artifacts before conclusions.",
+    ],
+    null,
+    2,
+  ),
+  permissionPolicy: JSON.stringify(
+    {
+      allowedResources: ["/release", "/notes"],
+      deniedActions: ["delete_repo"],
+      maxExecutionTimeMinutes: 20,
+    },
+    null,
+    2,
+  ),
+  successCriteria: JSON.stringify(
+    {
+      notesReviewed: true,
+      checklistComplete: true,
+    },
+    null,
+    2,
+  ),
+  coordinationPolicy: JSON.stringify(
+    {
+      flow: "moderated",
+      feedbackLoop: "Moderator reviews the draft before publish.",
+      errorHandling: "Escalate blockers with evidence.",
+      roleHierarchy: {
+        moderator: "lead",
+        publisher: "writer",
+      },
+    },
+    null,
+    2,
+  ),
   createdAt: "2026-03-11T12:00:00Z",
   updatedAt: "2026-03-11T12:00:00Z",
   status: "draft",
@@ -228,71 +262,28 @@ function captureToasts() {
 }
 
 describe("TeamPage", () => {
-  it("renders provider-generated template policies as structured sections instead of raw json blobs", async () => {
-    const currentImplementation = invokeMock.getMockImplementation();
-    invokeMock.mockImplementationOnce(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "list_teams") {
-        return [
-          {
-            ...sampleTeam,
-            promptConstraints: JSON.stringify(
-              [
-                "Only use saved tools.",
-                "Keep the run bounded to one review round.",
-              ],
-              null,
-              2,
-            ),
-            permissionPolicy: JSON.stringify(
-              {
-                allowedResources: ["/release", "/notes"],
-                deniedActions: ["delete_repo"],
-              },
-              null,
-              2,
-            ),
-            successCriteria: JSON.stringify(
-              {
-                checklistComplete: true,
-                notesReviewed: true,
-              },
-              null,
-              2,
-            ),
-            coordinationPolicy: JSON.stringify(
-              {
-                flow: "moderated",
-                handoff: "Moderator finalizes the summary",
-              },
-              null,
-              2,
-            ),
-          },
-        ];
-      }
-
-      if (!currentImplementation) {
-        throw new Error("default team invoke implementation missing");
-      }
-
-      return currentImplementation(command, args);
-    });
-
+  it("renders policy and coordination editors as direct fields instead of raw json textareas", async () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
 
-    expect(findText(view.container, "Only use saved tools.")).toBeTruthy();
-    expect(findText(view.container, "Keep the run bounded to one review round.")).toBeTruthy();
-    expect(findText(view.container, "Allowed Resources")).toBeTruthy();
-    expect(view.container.textContent).toContain("/release");
-    expect(findText(view.container, "Checklist Complete")).toBeTruthy();
-    expect(view.container.textContent).toContain("moderated");
+    expect(view.container.querySelector('textarea[aria-label="Prompt constraints"]')).toBeFalsy();
+    expect(view.container.querySelector('textarea[aria-label="Permission policy"]')).toBeFalsy();
+    expect(view.container.querySelector('input[aria-label="Prompt constraint 1"]')).toBeTruthy();
+    expect(view.container.querySelector('input[aria-label="Allowed resource 1"]')).toBeTruthy();
+    expect(view.container.querySelector('input[aria-label="Denied action 1"]')).toBeTruthy();
+    expect(view.container.querySelector('input[aria-label="Success criteria key 1"]')).toBeTruthy();
+    expect(view.container.querySelector('input[aria-label="Success criteria value 1"]')).toBeTruthy();
+    expect(view.container.querySelector('input[aria-label="Coordination flow"]')).toBeTruthy();
+    expect(view.container.querySelector('textarea[aria-label="Coordination feedback loop"]')).toBeTruthy();
+    expect(view.container.querySelector('textarea[aria-label="Coordination error handling"]')).toBeTruthy();
+    expect(view.container.querySelector('input[aria-label="Role hierarchy role 1"]')).toBeTruthy();
+    expect(view.container.querySelector('input[aria-label="Role hierarchy value 1"]')).toBeTruthy();
     expect(findText(view.container, "\"allowedResources\"")).toBeFalsy();
     expect(findText(view.container, "\"checklistComplete\"")).toBeFalsy();
     expect(findText(view.container, "\"flow\"")).toBeFalsy();
   });
 
-  it("keeps the page edit-only and saves description, constraints, and assigned agents", async () => {
+  it("keeps the page edit-only and saves structured team policy fields back into the persisted json shape", async () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
     const toastCapture = captureToasts();
@@ -302,8 +293,11 @@ describe("TeamPage", () => {
       expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
 
       await setInputValue(view.container, "Team description", "Tighten the release checklist before launch.");
-      await setInputValue(view.container, "Prompt constraints", "Only cite evidence found in the workspace.");
-      await setInputValue(view.container, "Permission policy", "No destructive tools and no network writes.");
+      await setInputValue(view.container, "Prompt constraint 1", "Only cite evidence found in the workspace.");
+      await setInputValue(view.container, "Allowed resource 1", "/verified-evidence");
+      await setInputValue(view.container, "Denied action 1", "force_push_main");
+      await setInputValue(view.container, "Success criteria value 1", "required");
+      await setInputValue(view.container, "Coordination flow", "sequential");
       await clickButton(view.container, "Remove Publisher");
       await clickButton(view.container, "Add Reviewer");
       await clickButton(view.container, "Save Changes");
@@ -313,8 +307,28 @@ describe("TeamPage", () => {
 
       const updatedTeam = updateCall?.[1]?.team as typeof sampleTeam;
       expect(updatedTeam.summary).toBe("Tighten the release checklist before launch.");
-      expect(updatedTeam.promptConstraints).toBe("Only cite evidence found in the workspace.");
-      expect(updatedTeam.permissionPolicy).toBe("No destructive tools and no network writes.");
+      expect(JSON.parse(updatedTeam.promptConstraints)).toEqual([
+        "Only cite evidence found in the workspace.",
+        "Cite release artifacts before conclusions.",
+      ]);
+      expect(JSON.parse(updatedTeam.permissionPolicy)).toEqual(
+        expect.objectContaining({
+          allowedResources: ["/verified-evidence", "/notes"],
+          deniedActions: ["force_push_main"],
+          maxExecutionTimeMinutes: 20,
+        }),
+      );
+      expect(JSON.parse(updatedTeam.successCriteria)).toEqual(
+        expect.objectContaining({
+          notesReviewed: "required",
+          checklistComplete: true,
+        }),
+      );
+      expect(JSON.parse(updatedTeam.coordinationPolicy)).toEqual(
+        expect.objectContaining({
+          flow: "sequential",
+        }),
+      );
       expect(updatedTeam.agentAssignments.map((assignment) => assignment.agentId)).toEqual([
         "agent-moderator",
         "agent-reviewer",

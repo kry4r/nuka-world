@@ -177,7 +177,12 @@ export function TeamPage() {
   };
 
   const handleFieldChange = (
-    field: "summary" | "promptConstraints" | "permissionPolicy",
+    field:
+      | "summary"
+      | "promptConstraints"
+      | "permissionPolicy"
+      | "successCriteria"
+      | "coordinationPolicy",
     value: string,
   ) => {
     setEditorTeam((current) => {
