@@ -229,6 +229,7 @@ function captureToasts() {
 
 describe("TeamPage", () => {
   it("renders provider-generated template policies as structured sections instead of raw json blobs", async () => {
+    const currentImplementation = invokeMock.getMockImplementation();
     invokeMock.mockImplementationOnce(async (command: string, args?: Record<string, unknown>) => {
       if (command === "list_teams") {
         return [
@@ -270,7 +271,11 @@ describe("TeamPage", () => {
         ];
       }
 
-      return invokeMock.getMockImplementation()?.(command, args);
+      if (!currentImplementation) {
+        throw new Error("default team invoke implementation missing");
+      }
+
+      return currentImplementation(command, args);
     });
 
     const view = await renderIntoDocument(<TeamPage />);

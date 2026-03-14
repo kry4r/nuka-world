@@ -493,9 +493,25 @@ describe("MemoryPage", () => {
         invokeMock.mockImplementation(currentImplementation);
       }
     });
-    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+    (
+      invokeMock as unknown as {
+        mockImplementation: (
+          implementation: (
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>,
+        ) => void;
+      }
+    ).mockImplementation(async (command: string, args?: Record<string, unknown>) => {
       if (command === "list_memory_scopes") {
-        return [
+        const scopeItems: Array<{
+          agentId: string | null;
+          id: string;
+          kind: string;
+          sessionId: string | null;
+          title: string;
+          workflowId: string | null;
+        }> = [
           {
             id: "world",
             title: "World",
@@ -529,9 +545,15 @@ describe("MemoryPage", () => {
             agentId: "agent-reviewer",
           },
         ];
+
+        return scopeItems;
       }
 
-      return currentImplementation?.(command, args);
+      if (!currentImplementation) {
+        throw new Error("default memory invoke implementation missing");
+      }
+
+      return currentImplementation(command, args);
     });
 
     const view = await renderIntoDocument(<MemoryPage />);
