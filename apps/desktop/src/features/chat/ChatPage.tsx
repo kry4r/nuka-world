@@ -729,6 +729,13 @@ export function ChatPage() {
   const activeDirectProviderRecord = activeSessionRecord?.providerId
     ? availableProviders.find((provider) => provider.id === activeSessionRecord.providerId) ?? null
     : null;
+  const activeTitlebar =
+    !landing && !sessionSwitchPending && (activeTeamRun || activeSessionRecord)
+      ? {
+          kind: activeTeamRun ? "Team run" : "Chat",
+          title: activeTeamRun?.title ?? activeSessionRecord?.title ?? entrySummary(entryMode, selectedTeam),
+        }
+      : null;
   const effectiveModelLabel =
     activeRouting?.effectiveModel ??
     activeSessionProvider?.model ??
@@ -877,8 +884,8 @@ export function ChatPage() {
           />
         </div>
 
-        <div className="composer__footer" data-testid="chat-composer-footer">
-          <div className="composer__footer-main">
+        <div className="composer__controls" data-testid="chat-composer-controls">
+          <div className="composer__utilities">
             <div className="composer__menu">
               <button
                 aria-expanded={entryMenuOpen}
@@ -1024,10 +1031,6 @@ export function ChatPage() {
               </button>
               {routeControls}
             </div>
-
-          </div>
-
-          <div className="composer__footer-actions">
             <button
               aria-label="Open external draft"
               className="composer__icon-action composer__icon-action--draft"
@@ -1040,9 +1043,11 @@ export function ChatPage() {
             >
               <ComposerNoteIcon />
             </button>
+          </div>
 
+          <div className="composer__submit">
             <button
-              aria-label={landing ? "Send to World" : "Send"}
+              aria-label="Send"
               className="composer__send composer__send--circle"
               disabled={!providerGate.ready || isRouting || prompt.trim().length === 0}
               onClick={() => {
@@ -1074,6 +1079,18 @@ export function ChatPage() {
           <div
             className={`chat-stage__body ${landing ? "chat-stage__body--landing" : "chat-stage__body--active"}`}
           >
+            {activeTitlebar ? (
+              <div className="chat-session-titlebar" data-testid="chat-session-titlebar">
+                <span className="chat-session-titlebar__kind">{activeTitlebar.kind}</span>
+                <span
+                  className="chat-session-titlebar__title"
+                  title={activeTitlebar.title}
+                >
+                  {activeTitlebar.title}
+                </span>
+              </div>
+            ) : null}
+
             {activeTeamRun ? (
               <>
                 {runQueue}
@@ -1088,7 +1105,7 @@ export function ChatPage() {
               </>
             ) : landing ? (
               <div className="chat-landing-stack" data-testid="chat-landing-stack">
-                <div aria-label="World chat landing hero" className="chat-hero">
+                <div aria-label="Chat landing hero" className="chat-hero">
                   <NukaLockup className="chat-hero__lockup" width={240} />
                 </div>
 
@@ -1098,18 +1115,6 @@ export function ChatPage() {
               <div aria-label="Workspace session loading" className="chat-stage__pending" />
             ) : (
               <section aria-label="Chat conversation surface" className="chat-surface">
-                <header className="chat-surface__header" data-testid="chat-session-header">
-                  <div className="chat-surface__identity">
-                    <span className="chat-surface__eyebrow">Chat</span>
-                    <strong className="chat-surface__title">
-                      {activeSessionRecord?.title ?? entrySummary(entryMode, selectedTeam)}
-                    </strong>
-                    <span className="chat-surface__meta">
-                      Session {formatSession(activeSessionRecord?.id)}
-                    </span>
-                  </div>
-                </header>
-
                 <div className="chat-feed" role="log">
                   <div className="chat-feed__stack">
                     {activeMessages.map((message) => (

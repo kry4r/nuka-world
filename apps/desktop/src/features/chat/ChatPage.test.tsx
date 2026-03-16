@@ -693,7 +693,7 @@ describe("ChatPage", () => {
     cleanups.push(view.cleanup);
 
     const footer = view.container.querySelector(
-      '[data-testid="chat-composer-footer"]',
+      '[data-testid="chat-composer-controls"]',
     ) as HTMLElement | null;
     const routeStrip = view.container.querySelector(".chat-route-strip");
     const routeButton = view.container.querySelector(
@@ -703,11 +703,15 @@ describe("ChatPage", () => {
       '[aria-label="Open external draft"]',
     ) as HTMLButtonElement | null;
     const sendButton = view.container.querySelector(
-      '[aria-label="Send to World"]',
+      '[aria-label="Send"]',
     ) as HTMLButtonElement | null;
+    const utilities = view.container.querySelector(".composer__utilities");
+    const submit = view.container.querySelector(".composer__submit");
 
     expect(view.container.querySelector('[data-testid="chat-landing-stack"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Chat landing hero"]')).toBeTruthy();
+    expect(view.container.querySelector(".session-tabs")).toBeFalsy();
+    expect(view.container.querySelector('[data-testid="chat-session-titlebar"]')).toBeFalsy();
     expect(view.container.querySelector("textarea")).toBeTruthy();
     expect(view.container.querySelector(".composer__add")).toBeTruthy();
     expect(view.container.querySelector(".composer__icon--plus")).toBeTruthy();
@@ -715,8 +719,10 @@ describe("ChatPage", () => {
     expect(view.container.querySelector(".composer__icon--note")).toBeTruthy();
     expect(routeStrip).toBeFalsy();
     expect(footer).toBeTruthy();
-    expect(routeButton && footer?.contains(routeButton)).toBe(true);
-    expect(draftButton && footer?.contains(draftButton)).toBe(true);
+    expect(view.container.querySelector(".composer__footer")).toBeFalsy();
+    expect(routeButton && utilities?.contains(routeButton)).toBe(true);
+    expect(draftButton && utilities?.contains(draftButton)).toBe(true);
+    expect(sendButton && submit?.contains(sendButton)).toBe(true);
     expect(routeButton?.className).toContain("composer__route-trigger");
     expect(draftButton?.className).toContain("composer__icon-action");
     expect(sendButton?.className).toContain("composer__send--circle");
@@ -1157,7 +1163,7 @@ describe("ChatPage", () => {
     expect(findText(view.container, "OK")).toBeTruthy();
   });
 
-  it("renders a compact session rail and chat header", async () => {
+  it("renders a browser-style session rail and lightweight direct-chat titlebar", async () => {
     listWorkspaceSessionsMock.mockResolvedValueOnce([
       {
         id: "release-direct-session",
@@ -1203,23 +1209,67 @@ describe("ChatPage", () => {
 
     const tabList = view.container.querySelector(".session-tabs");
     const tabs = Array.from(view.container.querySelectorAll(".session-tab"));
-    const header = view.container.querySelector('[data-testid="chat-session-header"]');
+    const titlebar = view.container.querySelector('[data-testid="chat-session-titlebar"]');
+    const title = view.container.querySelector(".chat-session-titlebar__title");
     const closeButtons = Array.from(
       view.container.querySelectorAll('[aria-label^="Close session "]'),
     );
     const textarea = view.container.querySelector("textarea");
 
     expect(tabList?.className).toContain("session-tabs--scrollable");
+    expect(tabList?.className).toContain("session-tabs--browser");
     expect(tabs.length).toBeGreaterThan(1);
-    expect(tabs.every((tab) => tab.className.includes("session-tab--compact"))).toBe(true);
-    expect(header).toBeTruthy();
-    expect(findText(view.container, "Session release-… · Direct chat")).toBeFalsy();
+    expect(view.container.querySelector(".session-tab__meta")).toBeFalsy();
+    expect(view.container.querySelector(".session-tab__kind")).toBeFalsy();
+    expect(view.container.querySelectorAll(".session-tab__title-row")).toHaveLength(tabs.length);
+    expect(titlebar).toBeTruthy();
+    expect(titlebar?.textContent).toContain("Chat");
+    expect(title?.textContent).toContain("Design Review Chat");
+    expect(title?.getAttribute("title")).toBe("Design Review Chat");
+    expect(view.container.querySelector(".chat-surface__meta")).toBeFalsy();
+    expect(view.container.textContent?.includes("release-direct-session")).toBe(false);
+    expect(view.container.textContent?.includes("Direct chat")).toBe(false);
     expect(view.container.querySelector('[aria-label="World conversation surface"]')).toBeFalsy();
     expect(view.container.querySelector('[aria-label="Chat conversation surface"]')).toBeTruthy();
     expect(closeButtons.length).toBeGreaterThan(0);
+    expect(closeButtons.every((button) => button.closest(".session-tab-shell"))).toBe(true);
     expect(textarea?.getAttribute("placeholder")?.includes("World")).toBe(false);
     expect(view.container.textContent?.includes("璺")).toBe(false);
     expect(view.container.textContent?.includes("鈥")).toBe(false);
+  });
+
+  it("shows the same lightweight titlebar contract for an active team run", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "active",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "team_run",
+      run: sampleRun,
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const titlebar = view.container.querySelector('[data-testid="chat-session-titlebar"]');
+    const title = view.container.querySelector(".chat-session-titlebar__title");
+
+    expect(titlebar).toBeTruthy();
+    expect(titlebar?.textContent).toContain("Team run");
+    expect(title?.textContent).toContain("Release Team Run");
+    expect(title?.getAttribute("title")).toBe("Release Team Run");
+    expect(view.container.textContent?.includes("run-release")).toBe(false);
   });
 
   it("marks branched sessions in the top tabs", async () => {
@@ -1272,7 +1322,7 @@ describe("ChatPage", () => {
       await Promise.resolve();
     });
 
-    expect(view.container.querySelector(".session-tab__branch")).toBeTruthy();
+    expect(view.container.querySelector(".session-tab__marker--branch")).toBeTruthy();
     expect(findText(view.container, "Design Review Chat / Branch 1")).toBeTruthy();
   });
 
@@ -2246,9 +2296,17 @@ describe("ChatPage", () => {
       '[aria-label="Send"]',
     ) as HTMLButtonElement | null;
     const tabList = view.container.querySelector(".session-tabs");
+    const controls = view.container.querySelector('[data-testid="chat-composer-controls"]');
+    const utilities = view.container.querySelector(".composer__utilities");
+    const submit = view.container.querySelector(".composer__submit");
 
     expect(view.container.querySelector('[aria-label="Suggested next steps"]')).toBeFalsy();
     expect(view.container.querySelector(".chat-route-card")).toBeFalsy();
+    expect(view.container.querySelector(".composer__footer")).toBeFalsy();
+    expect(controls).toBeTruthy();
+    expect(routeButton && utilities?.contains(routeButton)).toBe(true);
+    expect(draftButton && utilities?.contains(draftButton)).toBe(true);
+    expect(sendButton && submit?.contains(sendButton)).toBe(true);
     expect(routeButton?.textContent).toContain("gpt-oss");
     expect(routeButton?.textContent).not.toContain("Desktop default");
     expect(draftButton?.className).toContain("composer__icon-action");

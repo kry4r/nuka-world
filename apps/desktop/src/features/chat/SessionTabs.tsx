@@ -7,10 +7,6 @@ type SessionTabsProps = {
   sessions: WorkspaceSessionSummary[];
 };
 
-function kindLabel(kind: WorkspaceSessionSummary["kind"]) {
-  return kind === "team_run" ? "Team Run" : "Chat";
-}
-
 export function SessionTabs({
   activeSessionId,
   onClose,
@@ -24,12 +20,15 @@ export function SessionTabs({
   return (
     <div
       aria-label="Workspace sessions"
-      className="session-tabs session-tabs--scrollable"
+      className="session-tabs session-tabs--scrollable session-tabs--browser"
       role="tablist"
     >
       {sessions.map((session) => {
         const active = session.id === activeSessionId;
-        const branch = Boolean(session.lineage);
+        const markers = [
+          session.kind === "team_run" ? "Run" : null,
+          session.lineage ? "Branch" : null,
+        ].filter(Boolean) as string[];
 
         return (
           <div
@@ -41,13 +40,20 @@ export function SessionTabs({
               className={`session-tab session-tab--compact${active ? " is-active" : ""}`}
               onClick={() => onSelect(session.id)}
               role="tab"
+              title={session.title}
               type="button"
             >
-              <span className="session-tab__meta">
-                <span className="session-tab__kind">{kindLabel(session.kind)}</span>
-                {branch ? <span className="session-tab__branch">Branch</span> : null}
+              <span className="session-tab__title-row">
+                <span className="session-tab__title">{session.title}</span>
+                {markers.map((marker) => (
+                  <span
+                    className={`session-tab__marker session-tab__marker--${marker.toLowerCase().replace(/\s+/g, "-")}`}
+                    key={`${session.id}-${marker}`}
+                  >
+                    {marker}
+                  </span>
+                ))}
               </span>
-              <span className="session-tab__title">{session.title}</span>
             </button>
             <button
               aria-label={`Close session ${session.title}`}
