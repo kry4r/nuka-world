@@ -118,7 +118,12 @@ export function useWorkspaceSessions() {
         ) ?? null
       : null;
 
-  const setActiveSessionId = (sessionId: string) => {
+  const setActiveSessionId = (sessionId: string | null) => {
+    if (!sessionId) {
+      updateSelection(null);
+      return;
+    }
+
     const nextSession = sessions.find((session) => session.id === sessionId);
     if (!nextSession) {
       return;

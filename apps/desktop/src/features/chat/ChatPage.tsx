@@ -450,6 +450,7 @@ export function ChatPage() {
       return;
     }
 
+    workspaceSessions.setActiveSessionId(null);
     setMessages([]);
     setSession(null);
     setSessionProvider(null);

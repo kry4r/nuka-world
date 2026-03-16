@@ -1385,6 +1385,58 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Design Review Chat")).toBeTruthy();
   });
 
+  it("returns to the landing state after closing the last active session tab", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "release-direct-session",
+        kind: "direct_chat",
+        title: "Design Review Chat",
+        status: "active",
+        updatedAt: "2026-03-11T12:05:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "direct_chat",
+      session: {
+        id: "release-direct-session",
+        title: "Design Review Chat",
+        providerId: "provider-local",
+        messageCount: 1,
+        routing: null,
+      },
+      messages: [
+        {
+          id: "message-design-1",
+          role: "user",
+          content: "Check the design handoff",
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const closeButton = view.container.querySelector(
+      '[aria-label="Close session Design Review Chat"]',
+    ) as HTMLButtonElement | null;
+
+    await act(async () => {
+      closeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(view.container.querySelector(".session-tabs")).toBeFalsy();
+    expect(view.container.querySelector('[data-testid="chat-session-titlebar"]')).toBeFalsy();
+    expect(view.container.querySelector('[data-testid="chat-landing-stack"]')).toBeTruthy();
+  });
+
   it("branches a direct chat from a visible message anchor", async () => {
     listWorkspaceSessionsMock
       .mockResolvedValueOnce([
