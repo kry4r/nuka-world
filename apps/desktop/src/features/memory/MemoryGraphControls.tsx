@@ -22,18 +22,18 @@ export function MemoryGraphControls({
     <div className="memory-controls">
       <div className="memory-controls__row">
         <label className="memory-controls__field memory-controls__field--search">
-          <span className="memory-controls__label">Search</span>
+          <span className="memory-controls__label">检索</span>
           <input
             aria-label="Search graph"
             className="memory-controls__input"
             onChange={(event) => onSearchQueryChange(event.target.value)}
-            placeholder="Find nodes by title or body"
+            placeholder="按标题或内容搜索节点"
             value={searchQuery}
           />
         </label>
 
         <label className="memory-controls__field">
-          <span className="memory-controls__label">Kind</span>
+          <span className="memory-controls__label">类型</span>
           <FlatSelect
             aria-label="Filter kind"
             className="memory-controls__select"

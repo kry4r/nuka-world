@@ -548,12 +548,33 @@ button {
   position: relative;
   flex: 1;
   height: 100%;
-  min-height: 420px;
-  border-radius: 24px;
-  border: 1px solid rgba(217, 205, 190, 0.78);
-  background: linear-gradient(180deg, rgba(255, 252, 247, 0.96) 0%, rgba(248, 241, 233, 0.94) 100%);
+  min-height: 460px;
+  border-radius: 28px;
+  border: 1px solid rgba(214, 201, 182, 0.86);
+  background:
+    radial-gradient(circle at 16% 16%, rgba(255, 255, 255, 0.86) 0%, rgba(255, 255, 255, 0) 26%),
+    radial-gradient(circle at 84% 14%, rgba(255, 208, 92, 0.16) 0%, rgba(255, 208, 92, 0) 30%),
+    linear-gradient(180deg, rgba(251, 246, 238, 0.98) 0%, rgba(246, 238, 227, 0.98) 48%, rgba(242, 233, 220, 0.98) 100%);
   overflow: hidden;
   touch-action: none;
+}
+
+.memory-graph::before,
+.memory-graph::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.memory-graph::before {
+  background-image: radial-gradient(circle at 1px 1px, rgba(150, 132, 108, 0.18) 1px, transparent 0);
+  background-size: 26px 26px;
+  opacity: 0.78;
+}
+
+.memory-graph::after {
+  background: radial-gradient(circle at center, transparent 38%, rgba(245, 236, 223, 0.72) 100%);
 }
 
 .memory-graph__toolbar {
@@ -561,20 +582,21 @@ button {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  top: 14px;
-  right: 14px;
-  left: 14px;
+  gap: 10px;
+  top: 16px;
+  right: 16px;
+  left: 16px;
   z-index: 2;
 }
 
 .memory-graph__focus-card,
 .memory-graph__dock,
 .memory-graph__stats {
-  border: 1px solid rgba(215, 201, 182, 0.82);
-  background: rgba(255, 252, 247, 0.94);
+  border: 1px solid rgba(220, 205, 184, 0.88);
+  background: rgba(255, 250, 244, 0.78);
+  backdrop-filter: blur(18px);
   box-shadow:
-    0 10px 24px rgba(102, 81, 56, 0.08),
+    0 16px 38px rgba(128, 109, 86, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
 
@@ -583,23 +605,22 @@ button {
   min-width: 0;
   flex-direction: column;
   gap: 4px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: 18px;
 }
 
 .memory-graph__focus-label,
 .memory-graph__dock-label,
 .memory-graph__stats span {
-  color: #766d63;
+  color: #7a6552;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 
 .memory-graph__focus-value {
   min-width: 0;
-  color: #453a30;
+  color: #4a392b;
   font-size: 13px;
   font-weight: 700;
   line-height: 1.4;
@@ -609,8 +630,8 @@ button {
   display: inline-flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 7px;
   border-radius: 999px;
 }
 
@@ -620,27 +641,26 @@ button {
   min-height: 28px;
   padding: 0 10px;
   border-radius: var(--radius-pill);
-  background: rgba(248, 241, 233, 0.92);
+  background: rgba(255, 245, 235, 0.92);
 }
 
 .memory-graph__dock {
   position: absolute;
   z-index: 2;
   display: flex;
-  flex-direction: column;
   gap: 8px;
-  padding: 10px;
+  padding: 10px 12px;
   border-radius: 20px;
 }
 
 .memory-graph__dock--lens {
-  left: 14px;
-  bottom: 14px;
+  left: 16px;
+  bottom: 16px;
 }
 
 .memory-graph__dock--viewport {
-  right: 14px;
-  bottom: 14px;
+  right: 16px;
+  bottom: 16px;
 }
 
 .memory-graph__dock-actions,
@@ -662,10 +682,10 @@ button {
   justify-content: center;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid rgba(217, 205, 190, 0.82);
+  border: 1px solid rgba(220, 206, 186, 0.92);
   border-radius: var(--radius-pill);
-  background: rgba(255, 252, 247, 0.98);
-  color: var(--color-text);
+  background: rgba(255, 251, 245, 0.94);
+  color: #544334;
   font-size: 11px;
   font-weight: 600;
 }
@@ -679,8 +699,8 @@ button {
 .memory-graph__chip.is-active,
 .memory-graph__chip.is-accent,
 .memory-node-detail__action.is-primary {
-  background: #eadccf;
-  border-color: rgba(182, 157, 122, 0.82);
+  background: rgba(255, 243, 224, 0.96);
+  border-color: rgba(230, 174, 83, 0.5);
 }
 
 .memory-node-detail__action.is-danger {
@@ -711,68 +731,95 @@ button {
 .memory-graph__node {
   position: absolute;
   display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 0;
-  border-radius: 18px;
   background: transparent;
-  color: #3d342d;
-  text-align: left;
+  color: var(--memory-node-label-color);
+  text-align: center;
   box-shadow: none;
+  overflow: visible;
 }
 
 .memory-graph__node:focus-visible {
-  outline: 2px solid rgba(182, 157, 122, 0.82);
+  outline: 2px solid rgba(126, 176, 246, 0.82);
   outline-offset: 2px;
 }
 
-.memory-graph__node-dot {
-  width: 14px;
-  height: 14px;
-  margin-top: 4px;
-  flex: 0 0 auto;
+.memory-graph__node-hit {
+  position: absolute;
+  inset: 14px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--memory-node-border) 70%, white 30%);
-  background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.48) 24%, transparent 46%),
-    color-mix(in srgb, var(--memory-node-background) 86%, white 14%);
+  background: radial-gradient(circle, var(--memory-node-aura) 0%, rgba(255, 255, 255, 0) 72%);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.memory-graph__node-dot {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--memory-node-fill);
+  border: 2px solid var(--memory-node-ring);
   box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--memory-node-background) 18%, transparent),
-    0 0 16px color-mix(in srgb, var(--memory-node-background) 50%, transparent);
+    0 0 0 6px var(--memory-node-aura),
+    0 0 18px var(--memory-node-glow);
 }
 
-.memory-graph__node-label-stack {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
+.memory-graph__node:hover .memory-graph__node-hit,
+.memory-graph__node[aria-pressed="true"] .memory-graph__node-hit {
+  transform: scale(1.08);
 }
 
-.memory-graph__node-eyebrow,
-.memory-graph__node-badge {
-  color: var(--memory-node-badge-color);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+.memory-graph__node[data-node-emphasis="muted"] .memory-graph__node-hit {
+  opacity: 0.56;
 }
 
-.memory-graph__node-eyebrow {
-  color: var(--memory-node-eyebrow-color);
-}
-
-.memory-graph__node-title {
-  font-size: 15px;
+.memory-graph__node-label {
+  position: absolute;
+  max-width: 152px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid var(--memory-node-label-border);
+  border-radius: 999px;
+  background: var(--memory-node-label-background);
+  color: var(--memory-node-label-color);
+  font-size: 12px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow:
+    0 12px 28px rgba(128, 109, 86, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
 
-.memory-graph__node-badge {
-  margin-left: auto;
-  align-self: flex-start;
+.memory-graph__node[data-label-placement="right"] .memory-graph__node-label {
+  top: 50%;
+  left: calc(50% + 18px);
+  transform: translateY(-50%);
+}
+
+.memory-graph__node[data-label-placement="left"] .memory-graph__node-label {
+  top: 50%;
+  right: calc(50% + 18px);
+  transform: translateY(-50%);
+}
+
+.memory-graph__node[data-label-placement="top"] .memory-graph__node-label {
+  bottom: calc(50% + 18px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.memory-graph__node[data-label-placement="bottom"] .memory-graph__node-label {
+  top: calc(50% + 18px);
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .memory-page__body,

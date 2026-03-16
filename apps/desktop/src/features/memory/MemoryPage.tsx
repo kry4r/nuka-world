@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import {
   createMemoryEdge,
@@ -17,12 +17,12 @@ import { MemoryNodeInspector } from "./MemoryNodeInspector";
 const defaultView = { x: 72, y: 52 };
 const defaultZoom = 1;
 const MEMORY_KIND_OPTIONS = [
-  { label: "All kinds", value: "all" },
-  { label: "Workflow", value: "workflow" },
-  { label: "Session", value: "session" },
-  { label: "Agent", value: "agent" },
-  { label: "Message", value: "message" },
-  { label: "Fact", value: "fact" },
+  { label: "全部", value: "all" },
+  { label: "工作流", value: "workflow" },
+  { label: "对话", value: "session" },
+  { label: "智能体", value: "agent" },
+  { label: "回复", value: "message" },
+  { label: "要点", value: "fact" },
 ] as const;
 
 export function MemoryPage() {
@@ -59,10 +59,8 @@ export function MemoryPage() {
           return;
         }
 
-        startTransition(() => {
-          setScopes(items);
-          setScopesLoaded(true);
-        });
+        setScopes(items);
+        setScopesLoaded(true);
       })
       .catch((reason) => {
         if (!alive) {
@@ -96,26 +94,24 @@ export function MemoryPage() {
         }
 
         const nextSelectedNodeId = nextGraph.nodes[0]?.id ?? null;
-        const nextLayout = buildLayout(nextGraph.nodes);
+        const nextLayout = buildLayout(nextGraph.nodes, nextGraph.edges, nextSelectedNodeId);
         const nextPoint = nextSelectedNodeId ? nextLayout.get(nextSelectedNodeId) : null;
         const nextViewport =
           nextGraph.nodes.length <= 2
-            ? fitGraph(nextGraph.nodes)
+            ? fitGraph(nextGraph.nodes, nextGraph.edges, nextSelectedNodeId)
             : nextPoint
               ? { pan: centerPan(nextPoint, defaultZoom), zoom: defaultZoom }
               : null;
 
-        startTransition(() => {
-          setGraph(nextGraph);
-          setSelectedNodeId(nextSelectedNodeId);
-          if (nextViewport) {
-            setPan(nextViewport.pan);
-            setZoom(nextViewport.zoom);
-          } else {
-            setPan(defaultView);
-            setZoom(defaultZoom);
-          }
-        });
+        setGraph(nextGraph);
+        setSelectedNodeId(nextSelectedNodeId);
+        if (nextViewport) {
+          setPan(nextViewport.pan);
+          setZoom(nextViewport.zoom);
+        } else {
+          setPan(defaultView);
+          setZoom(defaultZoom);
+        }
       })
       .catch((reason) => {
         if (!alive) {
@@ -152,7 +148,10 @@ export function MemoryPage() {
   const ownerSections = useMemo(() => buildOwnerSections(scopes), [scopes]);
 
   useEffect(() => {
-    const preferredScopeId = scopeOptions[0]?.id ?? null;
+    const preferredScopeId =
+      ownerSections.flatMap((section) => section.owners)[0]?.id ??
+      scopeOptions[0]?.id ??
+      null;
 
     if (!preferredScopeId) {
       if (selectedScopeId !== null) {
@@ -164,13 +163,16 @@ export function MemoryPage() {
     if (!selectedScopeId || !scopeOptions.some((scope) => scope.id === selectedScopeId)) {
       setSelectedScopeId(preferredScopeId);
     }
-  }, [scopeOptions, selectedScopeId]);
+  }, [ownerSections, scopeOptions, selectedScopeId]);
 
   const visibleState = useMemo(
     () => buildVisibleGraph(graph, selectedNodeId, searchQuery, filterKind),
     [filterKind, graph, searchQuery, selectedNodeId],
   );
-  const layout = useMemo(() => buildLayout(visibleState.graph.nodes), [visibleState.graph.nodes]);
+  const layout = useMemo(
+    () => buildLayout(visibleState.graph.nodes, visibleState.graph.edges, selectedNodeId),
+    [selectedNodeId, visibleState.graph.edges, visibleState.graph.nodes],
+  );
   const selectedNode =
     visibleState.graph.nodes.find((node) => node.id === selectedNodeId) ??
     visibleState.graph.nodes[0] ??
@@ -244,10 +246,22 @@ export function MemoryPage() {
       return;
     }
 
-    const { pan: fitPan, zoom: fitZoom } = fitGraph(visibleState.graph.nodes);
+    const { pan: fitPan, zoom: fitZoom } = fitGraph(
+      visibleState.graph.nodes,
+      visibleState.graph.edges,
+      selectedNode?.id ?? selectedNodeId,
+    );
     setPan(fitPan);
     setZoom(fitZoom);
-  }, [filterKind, searchQuery, visibleNodeIdsKey, visibleState.graph.nodes]);
+  }, [
+    filterKind,
+    searchQuery,
+    selectedNode?.id,
+    selectedNodeId,
+    visibleNodeIdsKey,
+    visibleState.graph.edges,
+    visibleState.graph.nodes,
+  ]);
 
   useEffect(() => {
     setTitleDraft(selectedNode?.title ?? "");
@@ -394,7 +408,11 @@ export function MemoryPage() {
       return;
     }
 
-    const { pan: fitPan, zoom: fitZoom } = fitGraph(visibleState.graph.nodes);
+    const { pan: fitPan, zoom: fitZoom } = fitGraph(
+      visibleState.graph.nodes,
+      visibleState.graph.edges,
+      selectedNode?.id ?? selectedNodeId,
+    );
     setPan(fitPan);
     setZoom(fitZoom);
   };
@@ -406,9 +424,9 @@ export function MemoryPage() {
           {ownerSections.map((section) => (
             <section className="memory-owner-rail__section" key={section.title}>
               <span className="memory-owner-rail__heading">{section.title}</span>
-              <div className="memory-owner-rail__list">
+                <div className="memory-owner-rail__list">
                 {section.owners.length === 0 ? (
-                  <span className="memory-owner-rail__empty">No memory yet</span>
+                  <span className="memory-owner-rail__empty">还没有协作团队记忆</span>
                 ) : (
                   section.owners.map((owner) => (
                     <button
@@ -437,13 +455,13 @@ export function MemoryPage() {
         <div className="memory-page__main">
           {loadError ? (
             <section className="memory-empty-state memory-empty-state--error">
-              <span className="memory-page__eyebrow">Memory</span>
-              <h1>Memory graph unavailable</h1>
+              <span className="memory-page__eyebrow">记忆</span>
+              <h1>记忆图暂时不可用</h1>
               <p>{loadError}</p>
             </section>
           ) : (scopesLoaded && scopeOptions.length === 0) || graph.nodes.length === 0 ? (
             <div className="memory-page__empty-copy" data-testid="memory-empty-copy">
-              No graph nodes yet
+              还没有记忆节点
             </div>
           ) : (
             <>
@@ -461,8 +479,8 @@ export function MemoryPage() {
                 <div className="memory-stage__canvas memory-stage__canvas--fill">
                   {visibleState.graph.nodes.length === 0 ? (
                     <Card
-                      description="Adjust the current search or filter to bring matching memory nodes back into view."
-                      title="No graph nodes yet"
+                      description="换个搜索词或筛选条件，把匹配的记忆节点找回来。"
+                      title="还没有记忆节点"
                       tone="soft"
                     />
                   ) : (
@@ -598,45 +616,58 @@ function scopeLabel(scope: MemoryScope) {
 }
 
 function buildOwnerSections(scopes: MemoryScope[]) {
-  const directOwners: Array<{ id: string; label: string }> = [];
+  const directScopes: MemoryScope[] = [];
   const teamOwners: Array<{ id: string; label: string }> = [];
 
   for (const scope of scopes.sort((left, right) => scopePriority(left) - scopePriority(right))) {
-    const owner = {
-      id: scope.id,
-      label: normalizeOwnerLabel(scope),
-    };
-
     if (scope.workflowId?.startsWith("team:")) {
-      teamOwners.push(owner);
+      teamOwners.push({
+        id: scope.id,
+        label: normalizeOwnerLabel(scope),
+      });
       continue;
     }
 
-    directOwners.push(owner);
+    directScopes.push(scope);
   }
+
+  const directOwners =
+    directScopes.length === 0
+      ? []
+      : [
+          {
+            id: selectDirectOwnerScope(directScopes).id,
+            label: "对话",
+          },
+        ];
 
   return [
     {
-      title: "Direct chat",
+      title: "对话",
       owners: directOwners,
     },
     {
-      title: "Teams",
+      title: "协作团队",
       owners: teamOwners,
     },
   ];
 }
 
 function normalizeOwnerLabel(scope: MemoryScope) {
-  if (scope.kind === "session" && !scope.workflowId?.startsWith("team:")) {
-    return "Direct chat";
-  }
-
   if (scope.kind === "workflow" && scope.workflowId?.startsWith("team:")) {
     return scope.title;
   }
 
   return scope.title;
+}
+
+function selectDirectOwnerScope(scopes: MemoryScope[]) {
+  return (
+    scopes.find((scope) => scope.kind === "session") ??
+    scopes.find((scope) => scope.kind === "workflow") ??
+    scopes.find((scope) => scope.kind === "world") ??
+    scopes[0]!
+  );
 }
 
 function upsertEdge(edges: MemoryGraph["edges"], nextEdge: MemoryGraph["edges"][number]) {
@@ -743,8 +774,12 @@ function centerPan(point: { x: number; y: number }, zoom: number) {
   };
 }
 
-function fitGraph(nodes: MemoryGraph["nodes"]) {
-  const layout = buildLayout(nodes);
+function fitGraph(
+  nodes: MemoryGraph["nodes"],
+  edges: MemoryGraph["edges"] = [],
+  focusTargetId: string | null = null,
+) {
+  const layout = buildLayout(nodes, edges, focusTargetId);
   const points = nodes
     .map((node) => layout.get(node.id))
     .filter((point): point is { x: number; y: number } => Boolean(point));

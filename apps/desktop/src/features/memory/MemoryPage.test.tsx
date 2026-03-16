@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/styles/tokens.css";
 import "@/styles/theme.css";
 import { MemoryPage } from "./MemoryPage";
+import { buildLayout } from "./MemoryGraphCanvas";
 import { findText, renderIntoDocument } from "@/test/render";
 
 const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
@@ -243,6 +244,13 @@ function findButton(container: HTMLElement, text: string) {
   );
 }
 
+function distanceBetween(
+  left: { x: number; y: number },
+  right: { x: number; y: number },
+) {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
 function setFormValue(
   element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
   value: string,
@@ -271,13 +279,13 @@ describe("MemoryPage", () => {
 
     const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
 
-    expect(findText(view.container, "Activation")).toBeTruthy();
-    expect(findText(view.container, "Consolidation")).toBeTruthy();
-    expect(findText(view.container, "Schema")).toBeTruthy();
+    expect(findText(view.container, "活跃")).toBeTruthy();
+    expect(findText(view.container, "沉淀")).toBeTruthy();
+    expect(findText(view.container, "结构")).toBeTruthy();
     expect(canvas?.getAttribute("data-workbench-view")).toBe("activation");
 
     await act(async () => {
-      findButton(view.container, "Consolidation")?.dispatchEvent(
+      findButton(view.container, "沉淀")?.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
       );
       await Promise.resolve();
@@ -286,7 +294,7 @@ describe("MemoryPage", () => {
     expect(canvas?.getAttribute("data-workbench-view")).toBe("consolidation");
 
     await act(async () => {
-      findButton(view.container, "Schema")?.dispatchEvent(
+      findButton(view.container, "结构")?.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
       );
       await Promise.resolve();
@@ -375,7 +383,7 @@ describe("MemoryPage", () => {
     const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
 
     expect(canvas?.textContent).toContain("1");
-    expect(canvas?.textContent).toContain("nodes");
+    expect(canvas?.textContent).toContain("节点");
     expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
   });
 
@@ -397,24 +405,91 @@ describe("MemoryPage", () => {
     expect(topControls?.querySelector('select[aria-label="View mode"]')).toBeFalsy();
     expect(topControls?.textContent).not.toContain("Focused graph");
     expect(topControls?.textContent).not.toContain("Full map");
-    expect(topControls?.textContent).not.toContain("Activation");
-    expect(topControls?.textContent).not.toContain("Consolidation");
-    expect(topControls?.textContent).not.toContain("Schema");
-    expect(topControls?.textContent).not.toContain("Zoom out");
-    expect(topControls?.textContent).not.toContain("Zoom in");
-    expect(topControls?.textContent).not.toContain("Fit graph");
-    expect(topControls?.textContent).not.toContain("Focus selection");
+    expect(topControls?.textContent).not.toContain("活跃");
+    expect(topControls?.textContent).not.toContain("沉淀");
+    expect(topControls?.textContent).not.toContain("结构");
+    expect(topControls?.textContent).not.toContain("缩小");
+    expect(topControls?.textContent).not.toContain("放大");
+    expect(topControls?.textContent).not.toContain("适配");
+    expect(topControls?.textContent).not.toContain("回到焦点");
 
-    expect(canvas?.textContent).toContain("Activation");
-    expect(canvas?.textContent).toContain("Consolidation");
-    expect(canvas?.textContent).toContain("Schema");
-    expect(canvas?.textContent).toContain("Zoom out");
-    expect(canvas?.textContent).toContain("Zoom in");
-    expect(canvas?.textContent).toContain("Fit graph");
-    expect(canvas?.textContent).toContain("Focus selection");
+    expect(canvas?.textContent).toContain("活跃");
+    expect(canvas?.textContent).toContain("沉淀");
+    expect(canvas?.textContent).toContain("结构");
+    expect(canvas?.textContent).toContain("缩小");
+    expect(canvas?.textContent).toContain("放大");
+    expect(canvas?.textContent).toContain("适配");
+    expect(canvas?.textContent).toContain("回到焦点");
+    expect(view.container.querySelector('[data-flat-select="true"]')).toBeTruthy();
   });
 
   it("defaults to the first owner in the rail and switches graphs when selecting another owner", async () => {
+    graphState.nodes = [
+      {
+        id: "direct-memory",
+        kind: "fact",
+        scopeId: "workflow:workflow-review",
+        title: "Direct Memory",
+        body: "Shared direct chat context.",
+        traceType: "working",
+        consolidationState: "candidate",
+      },
+      {
+        id: "team-memory",
+        kind: "fact",
+        scopeId: "workflow:team:smoke-validation",
+        title: "Team Memory",
+        body: "Persistent team context.",
+        traceType: "semantic",
+        consolidationState: "approved",
+      },
+    ];
+    graphState.edges = [];
+
+    const currentImplementation = invokeMock.getMockImplementation();
+    cleanups.push(async () => {
+      if (currentImplementation) {
+        invokeMock.mockImplementation(currentImplementation);
+      }
+    });
+    (
+      invokeMock as unknown as {
+        mockImplementation: (
+          implementation: (
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>,
+        ) => void;
+      }
+    ).mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "list_memory_scopes") {
+        return [
+          {
+            id: "workflow:workflow-review",
+            title: "对话",
+            kind: "workflow",
+            workflowId: "workflow-review",
+            sessionId: null,
+            agentId: null,
+          },
+          {
+            id: "workflow:team:smoke-validation",
+            title: "Smoke Validation Team",
+            kind: "workflow",
+            workflowId: "team:smoke-validation",
+            sessionId: null,
+            agentId: null,
+          },
+        ];
+      }
+
+      if (!currentImplementation) {
+        throw new Error("default memory invoke implementation missing");
+      }
+
+      return currentImplementation(command, args);
+    });
+
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
@@ -426,36 +501,36 @@ describe("MemoryPage", () => {
     expect(invokeMock).toHaveBeenCalledWith("load_memory_graph", {
       scopeId: "workflow:workflow-review",
     });
-    expect(findButton(view.container, "Review Memory")).toBeTruthy();
-    expect(findButton(view.container, "Archive Fact")).toBeFalsy();
+    expect(findButton(view.container, "Direct Memory")).toBeTruthy();
+    expect(findButton(view.container, "Team Memory")).toBeFalsy();
 
     const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
     const ownerButtons = ownerRail?.querySelectorAll("button") ?? [];
 
-    expect(ownerRail?.textContent).toContain("Direct chat");
+    expect(ownerRail?.textContent).toContain("对话");
     expect(ownerButtons[0]?.getAttribute("aria-pressed")).toBe("true");
 
     await act(async () => {
-      const archiveOwner = Array.from(ownerButtons).find((node) =>
-        node.textContent?.includes("World"),
+      const teamOwner = Array.from(ownerButtons).find((node) =>
+        node.textContent?.includes("Smoke Validation Team"),
       );
-      if (!archiveOwner) {
-        throw new Error("world owner missing");
+      if (!teamOwner) {
+        throw new Error("team owner missing");
       }
 
-      archiveOwner.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      teamOwner.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
 
     expect(invokeMock).toHaveBeenCalledWith("load_memory_graph", {
-      scopeId: "world",
+      scopeId: "workflow:team:smoke-validation",
     });
-    expect(findButton(view.container, "Review Memory")).toBeFalsy();
-    expect(findButton(view.container, "Archive Fact")).toBeTruthy();
+    expect(findButton(view.container, "Direct Memory")).toBeFalsy();
+    expect(findButton(view.container, "Team Memory")).toBeTruthy();
   });
 
-  it("prioritizes run and team owners in the rail and keeps flat selector styling for the remaining controls", async () => {
+  it("prioritizes run and team owners in the rail", async () => {
     graphState.nodes = [
       {
         id: "run-memory",
@@ -562,23 +637,20 @@ describe("MemoryPage", () => {
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
+      await Promise.resolve();
     });
 
-    const kindSelect = view.container.querySelector(
-      'select[aria-label="Filter kind"]',
-    ) as HTMLSelectElement | null;
     const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
     const teamSection = Array.from(
       ownerRail?.querySelectorAll(".memory-owner-rail__section") ?? [],
-    ).find((node) => node.textContent?.includes("Teams"));
+    ).find((node) => node.textContent?.includes("协作团队"));
     const teamButtons = Array.from(teamSection?.querySelectorAll("button") ?? []);
 
-    expect(ownerRail?.textContent).toContain("Direct chat");
-    expect(ownerRail?.textContent).toContain("Teams");
+    expect(ownerRail?.textContent).toContain("对话");
+    expect(ownerRail?.textContent).toContain("协作团队");
     expect(teamButtons[0]?.textContent).toContain("Smoke Validation Run");
     expect(teamButtons[1]?.textContent).toContain("Smoke Validation Team");
     expect(view.container.querySelector('select[aria-label="Memory scope"]')).toBeFalsy();
-    expect(kindSelect?.parentElement?.className).toContain("flat-select");
   });
 
   it("renders a left owner rail for direct chat and teams instead of a scope dropdown", async () => {
@@ -624,7 +696,7 @@ describe("MemoryPage", () => {
         return [
           {
             id: "session:direct-shared",
-            title: "Direct chat",
+            title: "对话",
             kind: "session",
             workflowId: "direct-chat",
             sessionId: "direct-shared",
@@ -659,13 +731,32 @@ describe("MemoryPage", () => {
     const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
 
     expect(ownerRail).toBeTruthy();
-    expect(ownerRail?.textContent).toContain("Direct chat");
-    expect(ownerRail?.textContent).toContain("Teams");
+    expect(ownerRail?.textContent).toContain("对话");
+    expect(ownerRail?.textContent).toContain("协作团队");
     expect(ownerRail?.textContent).toContain("Smoke Validation Team");
     expect(view.container.querySelector('select[aria-label="Memory scope"]')).toBeFalsy();
   });
 
-  it("uses a light graph surface and overlays graph stats inside the canvas", async () => {
+  it("aliases world-scoped direct memory as 对话 in the owner rail", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
+    const directSection = Array.from(
+      ownerRail?.querySelectorAll(".memory-owner-rail__section") ?? [],
+    ).find((node) => node.textContent?.includes("对话"));
+
+    expect(directSection?.textContent).toContain("对话");
+    expect(ownerRail?.textContent).toContain("还没有协作团队记忆");
+    expect(directSection?.textContent).not.toContain("World");
+  });
+
+  it("uses a graph-native surface and keeps network stats floating inside the canvas", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
@@ -678,11 +769,28 @@ describe("MemoryPage", () => {
     const selectedNode = findButton(view.container, "Review Memory");
 
     expect(canvas?.className).toContain("memory-graph");
+    expect(canvas?.getAttribute("data-canvas-tone")).toBe("network");
     expect(selectedNode?.className).toContain("memory-graph__node");
     expect(view.container.querySelector(".memory-controls__summary")).toBeFalsy();
-    expect(canvas?.textContent).toContain("nodes");
-    expect(canvas?.textContent).toContain("edges");
-    expect(canvas?.textContent).toContain("% zoom");
+    expect(canvas?.textContent).toContain("节点");
+    expect(canvas?.textContent).toContain("连线");
+    expect(canvas?.textContent).toContain("缩放");
+  });
+
+  it("uses high-contrast type colors so workflow and fact nodes stay easy to distinguish", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const workflowNode = findButton(view.container, "Release Workflow") as HTMLElement | undefined;
+    const factNode = findButton(view.container, "Review Memory") as HTMLElement | undefined;
+
+    expect(workflowNode?.style.getPropertyValue("--memory-node-fill")).toBe("#2f8cff");
+    expect(factNode?.style.getPropertyValue("--memory-node-fill")).toBe("#ffd84c");
   });
 
   it("renders graph nodes as dots with short labels and opens node details in a drawer surface", async () => {
@@ -707,6 +815,177 @@ describe("MemoryPage", () => {
     const detail = view.container.querySelector('[data-testid="memory-node-detail"]');
 
     expect(detail?.getAttribute("data-detail-presentation")).toBe("drawer");
+  });
+
+  it("spreads same-kind graph nodes across the canvas instead of stacking them in one far-right column", async () => {
+    graphState.nodes = Array.from({ length: 6 }, (_, index) => ({
+      id: `fact-${index + 1}`,
+      kind: "fact",
+      scopeId: "workflow:workflow-review",
+      title: `Fact ${index + 1}`,
+      body: `Fact body ${index + 1}`,
+      traceType: "working",
+      consolidationState: "candidate",
+    }));
+    graphState.edges = [];
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const nodes = Array.from(view.container.querySelectorAll(".memory-graph__node")) as HTMLElement[];
+    const leftValues = nodes.map((node) => Number.parseInt(node.style.left, 10));
+    const uniqueLeftValues = new Set(leftValues);
+
+    expect(uniqueLeftValues.size).toBeGreaterThan(2);
+    expect(Math.min(...leftValues)).toBeLessThan(520);
+  });
+
+  it("keeps directly connected nodes closer to the focus than disconnected nodes so the graph reads like a cluster", () => {
+    const nodes = [
+      {
+        id: "focus",
+        kind: "workflow",
+        scopeId: "workflow:workflow-review",
+        title: "Focus Workflow",
+        body: "Primary focus node.",
+        traceType: "semantic",
+        consolidationState: "approved",
+      },
+      {
+        id: "orphan-1",
+        kind: "fact",
+        scopeId: "workflow:workflow-review",
+        title: "Orphan One",
+        body: "Disconnected note.",
+        traceType: "working",
+        consolidationState: "candidate",
+      },
+      {
+        id: "orphan-2",
+        kind: "fact",
+        scopeId: "workflow:workflow-review",
+        title: "Orphan Two",
+        body: "Disconnected note.",
+        traceType: "working",
+        consolidationState: "candidate",
+      },
+      {
+        id: "orphan-3",
+        kind: "fact",
+        scopeId: "workflow:workflow-review",
+        title: "Orphan Three",
+        body: "Disconnected note.",
+        traceType: "working",
+        consolidationState: "candidate",
+      },
+      {
+        id: "orphan-4",
+        kind: "fact",
+        scopeId: "workflow:workflow-review",
+        title: "Orphan Four",
+        body: "Disconnected note.",
+        traceType: "working",
+        consolidationState: "candidate",
+      },
+      {
+        id: "orphan-5",
+        kind: "fact",
+        scopeId: "workflow:workflow-review",
+        title: "Orphan Five",
+        body: "Disconnected note.",
+        traceType: "working",
+        consolidationState: "candidate",
+      },
+      {
+        id: "neighbor",
+        kind: "session",
+        scopeId: "workflow:workflow-review",
+        title: "Connected Session",
+        body: "Directly linked to the focus.",
+        traceType: "episodic",
+        consolidationState: "none",
+      },
+      {
+        id: "neighbor-child",
+        kind: "message",
+        scopeId: "workflow:workflow-review",
+        title: "Connected Reply",
+        body: "Second hop from the focus.",
+        traceType: "working",
+        consolidationState: "candidate",
+      },
+    ];
+    const edges = [
+      {
+        id: "edge-focus-neighbor",
+        sourceId: "focus",
+        targetId: "neighbor",
+        relation: "routes_to",
+      },
+      {
+        id: "edge-neighbor-child",
+        sourceId: "neighbor",
+        targetId: "neighbor-child",
+        relation: "produces",
+      },
+    ];
+
+    const layout = buildLayout(nodes as never, edges as never, "focus");
+    const focusPoint = layout.get("focus");
+    const neighborPoint = layout.get("neighbor");
+    const orphanPoint = layout.get("orphan-1");
+
+    expect(focusPoint).toBeTruthy();
+    expect(neighborPoint).toBeTruthy();
+    expect(orphanPoint).toBeTruthy();
+    expect(distanceBetween(focusPoint!, neighborPoint!)).toBeLessThan(
+      distanceBetween(focusPoint!, orphanPoint!),
+    );
+  });
+
+  it("hides most non-focus labels in dense graphs so the canvas does not turn into a wall of overlapping text", async () => {
+    graphState.nodes = Array.from({ length: 18 }, (_, index) => ({
+      id: `memory-${index + 1}`,
+      kind: index === 0 ? "workflow" : "fact",
+      scopeId: "workflow:workflow-review",
+      title: `Long Memory Label ${index + 1}`,
+      body: `Dense graph node ${index + 1}`,
+      traceType: index % 2 === 0 ? "semantic" : "working",
+      consolidationState: "candidate",
+    }));
+    graphState.edges = graphState.nodes.slice(1).map((node, index) => ({
+      id: `edge-${index + 1}`,
+      sourceId: "memory-1",
+      targetId: node.id,
+      relation: "connects",
+    }));
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const nodes = Array.from(
+      view.container.querySelectorAll(".memory-graph__node"),
+    ) as HTMLElement[];
+    const hiddenLabels = nodes.filter(
+      (node) => node.getAttribute("data-label-visibility") === "hidden",
+    );
+    const visibleLabels = nodes.filter(
+      (node) => node.getAttribute("data-label-visibility") === "full",
+    );
+
+    expect(visibleLabels[0]?.textContent).toContain("Long Memory Label 1");
+    expect(hiddenLabels.length).toBeGreaterThan(6);
+    expect(visibleLabels.length).toBeLessThan(nodes.length);
   });
 
   it("keeps the graph canvas primary while node detail opens as an overlay", async () => {
@@ -836,10 +1115,10 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    expect(findText(view.container, "Trace type")).toBeTruthy();
-    expect(findText(view.container, "episodic")).toBeTruthy();
-    expect(findText(view.container, "Consolidation state")).toBeTruthy();
-    expect(findText(view.container, "candidate")).toBeTruthy();
+    expect(findText(view.container, "记录类型")).toBeTruthy();
+    expect(findText(view.container, "过程")).toBeTruthy();
+    expect(findText(view.container, "沉淀状态")).toBeTruthy();
+    expect(findText(view.container, "待整理")).toBeTruthy();
   });
 
   it("shows delete impact details before confirming node removal", async () => {
@@ -858,20 +1137,20 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const deleteButton = findButton(view.container, "Delete node");
+    const deleteButton = findButton(view.container, "删除节点");
 
     await act(async () => {
       deleteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
 
-    expect(findText(view.container, "Delete impact")).toBeTruthy();
-    expect(findText(view.container, "2 connected links will be removed.")).toBeTruthy();
+    expect(findText(view.container, "删除影响")).toBeTruthy();
+    expect(findText(view.container, "会一起移除 2 条关联。")).toBeTruthy();
     expect(findText(view.container, "Release Workflow")).toBeTruthy();
     expect(findText(view.container, "Review Session")).toBeTruthy();
     expect(invokeMock).not.toHaveBeenCalledWith("delete_memory_node", expect.anything());
 
-    const confirmDelete = findButton(view.container, "Confirm delete");
+    const confirmDelete = findButton(view.container, "确认删除");
 
     await act(async () => {
       confirmDelete?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -897,9 +1176,9 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    expect(findText(view.container, "Memory graph unavailable")).toBeTruthy();
+    expect(findText(view.container, "记忆图暂时不可用")).toBeTruthy();
     expect(findText(view.container, "memory graph offline")).toBeTruthy();
-    expect(findText(view.container, "No graph nodes yet")).toBeFalsy();
+    expect(findText(view.container, "还没有记忆节点")).toBeFalsy();
   });
 
   it("shows a no-match empty state when search removes every visible node", async () => {
@@ -923,9 +1202,9 @@ describe("MemoryPage", () => {
       setFormValue(searchInput, "missing node");
     });
 
-    expect(findText(view.container, "No graph nodes yet")).toBeTruthy();
+    expect(findText(view.container, "还没有记忆节点")).toBeTruthy();
     expect(view.container.querySelector('[data-testid="memory-graph-canvas"]')).toBeFalsy();
-    expect(findButton(view.container, "Release Workflow")).toBeTruthy();
+    expect(findButton(view.container, "对话")).toBeTruthy();
     expect(view.container.querySelector('input[aria-label="Node title"]')).toBeFalsy();
   });
 
@@ -965,7 +1244,7 @@ describe("MemoryPage", () => {
 
     const emptyState = view.container.querySelector('[data-testid="memory-empty-copy"]');
 
-    expect(emptyState?.textContent?.trim()).toBe("No graph nodes yet");
+    expect(emptyState?.textContent?.trim()).toBe("还没有记忆节点");
     expect(findText(view.container, "Memory")).toBeFalsy();
     expect(
       findText(view.container, "The graph will appear here once chat, workflows, or agents write local memory."),
@@ -1019,8 +1298,8 @@ describe("MemoryPage", () => {
 
     let canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
     expect(canvas?.getAttribute("data-focus-target-id")).toBe("memory-review");
-    expect(Number(canvas?.getAttribute("data-pan-x") ?? "0")).toBeLessThan(-400);
-    expect(Number(canvas?.getAttribute("data-pan-y") ?? "0")).toBeGreaterThan(120);
+    expect(Math.abs(Number(canvas?.getAttribute("data-pan-x") ?? "0"))).toBeLessThan(24);
+    expect(Math.abs(Number(canvas?.getAttribute("data-pan-y") ?? "0"))).toBeLessThan(120);
 
     const searchInput = view.container.querySelector(
       'input[aria-label="Search graph"]',
@@ -1060,7 +1339,7 @@ describe("MemoryPage", () => {
     });
 
     const relationInput = view.container.querySelector('input[aria-label="Edge relation"]') as HTMLInputElement | null;
-    const createButton = findButton(view.container, "Create link");
+    const createButton = findButton(view.container, "新建连接");
 
     await act(async () => {
       if (!relationInput) {
