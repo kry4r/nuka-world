@@ -402,14 +402,14 @@ export function translate(
   key: TranslationKey,
   params?: Record<string, string | number>,
 ) {
-  const template = messages[locale][key] ?? messages["en-US"][key];
+  const template = String(messages[locale][key] ?? messages["en-US"][key]);
 
   if (!params) {
     return template;
   }
 
   return Object.entries(params).reduce(
-    (content, [paramKey, value]) => content.replaceAll(`{${paramKey}}`, String(value)),
+    (content, [paramKey, value]) => content.split(`{${paramKey}}`).join(String(value)),
     template,
   );
 }
