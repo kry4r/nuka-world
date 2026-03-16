@@ -1238,6 +1238,66 @@ describe("ChatPage", () => {
     expect(view.container.textContent?.includes("鈥")).toBe(false);
   });
 
+  it("reveals the close affordance when a session tab receives keyboard focus", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "release-direct-session",
+        kind: "direct_chat",
+        title: "Design Review Chat",
+        status: "active",
+        updatedAt: "2026-03-11T12:05:00Z",
+      },
+      {
+        id: "run-release",
+        kind: "team_run",
+        title: "Release Team Run",
+        status: "active",
+        updatedAt: "2026-03-11T12:15:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "direct_chat",
+      session: {
+        id: "release-direct-session",
+        title: "Design Review Chat",
+        providerId: "provider-local",
+        messageCount: 1,
+        routing: null,
+      },
+      messages: [
+        {
+          id: "message-design-1",
+          role: "user",
+          content: "Check the design handoff",
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const closeButton = view.container.querySelector(
+      '[aria-label^="Close session "]',
+    ) as HTMLButtonElement | null;
+    const shell = closeButton?.closest(".session-tab-shell");
+
+    expect(shell?.className.includes("is-revealed")).toBe(false);
+
+    await act(async () => {
+      closeButton?.focus();
+      closeButton?.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(shell?.className).toContain("is-revealed");
+  });
+
   it("shows the same lightweight titlebar contract for an active team run", async () => {
     listWorkspaceSessionsMock.mockResolvedValueOnce([
       {

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { WorkspaceSessionSummary } from "@/lib/workspace";
 
 type SessionTabsProps = {
@@ -13,6 +14,8 @@ export function SessionTabs({
   onSelect,
   sessions,
 }: SessionTabsProps) {
+  const [revealedSessionKey, setRevealedSessionKey] = useState<string | null>(null);
+
   if (sessions.length === 0) {
     return null;
   }
@@ -24,6 +27,7 @@ export function SessionTabs({
       role="tablist"
     >
       {sessions.map((session) => {
+        const sessionKey = `${session.kind}:${session.id}`;
         const active = session.id === activeSessionId;
         const markers = [
           session.kind === "team_run" ? "Run" : null,
@@ -32,8 +36,21 @@ export function SessionTabs({
 
         return (
           <div
-            className={`session-tab-shell${active ? " is-active" : ""}`}
-            key={`${session.kind}:${session.id}`}
+            className={`session-tab-shell${active ? " is-active" : ""}${revealedSessionKey === sessionKey ? " is-revealed" : ""}`}
+            key={sessionKey}
+            onBlur={(event) => {
+              const nextTarget = event.relatedTarget;
+              if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+                return;
+              }
+
+              setRevealedSessionKey((current) => (current === sessionKey ? null : current));
+            }}
+            onFocus={() => setRevealedSessionKey(sessionKey)}
+            onMouseEnter={() => setRevealedSessionKey(sessionKey)}
+            onMouseLeave={() =>
+              setRevealedSessionKey((current) => (current === sessionKey ? null : current))
+            }
           >
             <button
               aria-selected={active}
