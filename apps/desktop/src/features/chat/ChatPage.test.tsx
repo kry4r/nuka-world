@@ -1555,6 +1555,140 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Check the branched design path")).toBeTruthy();
   });
 
+  it("renders compacted direct-chat context as an expandable inline notice and keeps assistant markdown readable", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "session-transcript",
+        kind: "direct_chat",
+        title: "Transcript Review",
+        status: "active",
+        updatedAt: "2026-03-11T12:05:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "direct_chat",
+      session: {
+        id: "session-transcript",
+        title: "Transcript Review",
+        providerId: "provider-local",
+        messageCount: 4,
+        routing: null,
+      },
+      messages: [
+        {
+          id: "message-compaction-1",
+          role: "system",
+          content: [
+            "Compacted earlier chat context (4 messages):",
+            "- user: Kick off the release review.",
+            "- assistant: Reviewed the open checklist items.",
+          ].join("\n"),
+        },
+        {
+          id: "message-user-1",
+          role: "user",
+          content: "Show the final checklist.",
+        },
+        {
+          id: "message-assistant-1",
+          role: "assistant",
+          content: [
+            "## Final checklist",
+            "",
+            "- Verify release notes",
+            "- Confirm sign-off",
+            "",
+            "Use `npm test` before shipping.",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const branchButton = view.container.querySelector(
+      'button[aria-label="Branch from this turn"]',
+    ) as HTMLButtonElement | null;
+    const assistantBubble = findText(view.container, "Final checklist")?.closest("article");
+
+    expect(findText(view.container, "Earlier context compacted")).toBeTruthy();
+    expect(findText(view.container, "assistant: Reviewed the open checklist items.")).toBeFalsy();
+    expect(branchButton?.className).toContain("chat-bubble__branch--anchor");
+    expect(assistantBubble?.querySelector("ul")).toBeTruthy();
+    expect(assistantBubble?.querySelector("code")?.textContent).toBe("npm test");
+
+    await clickButton(view.container, "Show compacted summary");
+
+    expect(findText(view.container, "assistant: Reviewed the open checklist items.")).toBeTruthy();
+  });
+
+  it("renders thinking turns as disclosures and groups tool turns into the subdued system layer", async () => {
+    listWorkspaceSessionsMock.mockResolvedValueOnce([
+      {
+        id: "session-thinking",
+        kind: "direct_chat",
+        title: "Thinking Review",
+        status: "active",
+        updatedAt: "2026-03-11T12:05:00Z",
+      },
+    ]);
+
+    loadWorkspaceSessionMock.mockResolvedValueOnce({
+      kind: "direct_chat",
+      session: {
+        id: "session-thinking",
+        title: "Thinking Review",
+        providerId: "provider-local",
+        messageCount: 3,
+        routing: null,
+      },
+      messages: [
+        {
+          id: "message-user-1",
+          role: "user",
+          content: "Audit the release blockers.",
+        },
+        {
+          id: "message-thinking-1",
+          role: "thinking" as unknown as ChatMessage["role"],
+          content: "Cross-check the release checklist before responding.",
+        },
+        {
+          id: "message-tool-1",
+          role: "tool",
+          content: "workspace/diffs/release-notes.md",
+        },
+      ],
+    });
+
+    const view = await renderIntoDocument(<ChatPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "Thinking trace")).toBeTruthy();
+    expect(findText(view.container, "Cross-check the release checklist before responding.")).toBeFalsy();
+
+    await clickButton(view.container, "Show thinking trace");
+
+    const toolBubble = view.container.querySelector(
+      ".chat-bubble--system-tool",
+    ) as HTMLElement | null;
+
+    expect(findText(view.container, "Cross-check the release checklist before responding.")).toBeTruthy();
+    expect(toolBubble?.className).toContain("chat-bubble--system-tool");
+  });
+
   it("branches a team run from a visible event anchor", async () => {
     listWorkspaceSessionsMock
       .mockResolvedValueOnce([
