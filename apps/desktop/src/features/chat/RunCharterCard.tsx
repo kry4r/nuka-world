@@ -28,19 +28,23 @@ export function RunCharterCard({ run }: RunCharterCardProps) {
         <div className="run-charter-card__summary-copy">
           <span className="run-charter-card__eyebrow">Run details</span>
           <strong>{run.title}</strong>
+          <span className="run-charter-card__summary-hint">Show the run context</span>
         </div>
-        <div className="run-charter-card__badges">
-          <span className="status-badge status-badge--soft">{formatRunStatus(run.status)}</span>
-          <span className="status-badge status-badge--soft">
-            {titleCase(run.currentPhase)}
-          </span>
-        </div>
+        <span aria-hidden="true" className="run-charter-card__summary-icon" />
       </summary>
 
       <div className="run-charter-card__body">
         <p className="run-charter-card__goal">{run.goal}</p>
 
         <dl className="run-charter-card__grid">
+          <div className="run-charter-card__metric">
+            <dt>Status</dt>
+            <dd>{formatRunStatus(run.status)}</dd>
+          </div>
+          <div className="run-charter-card__metric">
+            <dt>Phase</dt>
+            <dd>{titleCase(run.currentPhase)}</dd>
+          </div>
           <div className="run-charter-card__metric">
             <dt>Success</dt>
             <dd>{run.charter.successCriteria}</dd>

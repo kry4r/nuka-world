@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { TeamRunEventRecord, TeamRunRecord } from "@/lib/team";
 import { AgentTeamStrip } from "./AgentTeamStrip";
 import { RunCharterCard } from "./RunCharterCard";
@@ -165,7 +165,7 @@ export function TeamRunPanel({
   const [agentName, setAgentName] = useState("");
   const [agentRole, setAgentRole] = useState("");
   const [agentResponsibility, setAgentResponsibility] = useState("");
-  const activeViewBody = useMemo(() => {
+  const activeViewBody = (() => {
     switch (activeView) {
       case "status":
         return <StatusView run={run} />;
@@ -173,6 +173,92 @@ export function TeamRunPanel({
         return (
           <div className="team-run-panel__agents-view">
             <AgentTeamStrip agents={run.agents} leadAgentId={run.leadAgentId} />
+            <section className="team-run-panel__agents-card ui-card">
+              <div className="team-run-panel__agents-card-header">
+                <div className="team-run-panel__agents-card-copy">
+                  <span>Runtime agents</span>
+                  <strong>Invite another worker when this run needs one.</strong>
+                </div>
+              </div>
+              {isAddAgentOpen ? (
+                <div className="team-run-panel__agent-form">
+                  <label className="team-run-panel__field">
+                    <span>Name</span>
+                    <input
+                      aria-label="Agent name"
+                      className="field-input"
+                      disabled={isBusy}
+                      onChange={(event) => setAgentName(event.target.value)}
+                      value={agentName}
+                    />
+                  </label>
+                  <label className="team-run-panel__field">
+                    <span>Role</span>
+                    <input
+                      aria-label="Agent role"
+                      className="field-input"
+                      disabled={isBusy}
+                      onChange={(event) => setAgentRole(event.target.value)}
+                      value={agentRole}
+                    />
+                  </label>
+                  <label className="team-run-panel__field">
+                    <span>Responsibility</span>
+                    <textarea
+                      aria-label="Agent responsibility"
+                      className="composer__input team-run-panel__input"
+                      disabled={isBusy}
+                      onChange={(event) => setAgentResponsibility(event.target.value)}
+                      rows={2}
+                      value={agentResponsibility}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <p className="team-run-panel__agents-card-note">
+                  Keep the footer focused on follow-up instructions. Add runtime agents only
+                  when the session needs another active worker.
+                </p>
+              )}
+              <div className="team-run-panel__actions">
+                {isAddAgentOpen ? (
+                  <button
+                    className="settings-button"
+                    disabled={
+                      isBusy ||
+                      !agentName.trim() ||
+                      !agentRole.trim() ||
+                      !agentResponsibility.trim()
+                    }
+                    onClick={() => {
+                      void Promise.resolve(
+                        onAddAgent({
+                          name: agentName.trim(),
+                          role: agentRole.trim(),
+                          responsibility: agentResponsibility.trim(),
+                        }),
+                      ).then(() => {
+                        setAgentName("");
+                        setAgentRole("");
+                        setAgentResponsibility("");
+                        setIsAddAgentOpen(false);
+                      });
+                    }}
+                    type="button"
+                  >
+                    Invite Agent
+                  </button>
+                ) : null}
+                <button
+                  className="settings-button"
+                  disabled={isBusy}
+                  onClick={() => setIsAddAgentOpen((current) => !current)}
+                  type="button"
+                >
+                  {isAddAgentOpen ? "Close Agent Form" : "Add Agent"}
+                </button>
+              </div>
+            </section>
           </div>
         );
       case "files":
@@ -187,7 +273,7 @@ export function TeamRunPanel({
           </div>
         );
     }
-  }, [activeView, onBranchEvent, run]);
+  })();
 
   return (
     <section aria-label="Team run session" className="team-run-panel">
@@ -207,13 +293,11 @@ export function TeamRunPanel({
               </button>
             ))}
           </div>
-          <div className="team-run-panel__views-summary">
-            <span className="status-badge status-badge--soft">{formatRunStatus(run.status)}</span>
-            <span className="status-badge status-badge--soft">{titleCase(run.currentPhase)}</span>
-          </div>
         </div>
 
-        <div className="team-run-panel__view-body">{activeViewBody}</div>
+        <div className="team-run-panel__view-body">
+          <div className="team-run-panel__view-scroll">{activeViewBody}</div>
+        </div>
       </div>
 
       <div className="team-run-panel__composer ui-card">
@@ -230,79 +314,7 @@ export function TeamRunPanel({
           />
         </label>
 
-        {isAddAgentOpen ? (
-          <div className="team-run-panel__agent-form">
-            <label className="team-run-panel__field">
-              <span>Name</span>
-              <input
-                aria-label="Agent name"
-                className="field-input"
-                disabled={isBusy}
-                onChange={(event) => setAgentName(event.target.value)}
-                value={agentName}
-              />
-            </label>
-            <label className="team-run-panel__field">
-              <span>Role</span>
-              <input
-                aria-label="Agent role"
-                className="field-input"
-                disabled={isBusy}
-                onChange={(event) => setAgentRole(event.target.value)}
-                value={agentRole}
-              />
-            </label>
-            <label className="team-run-panel__field">
-              <span>Responsibility</span>
-              <textarea
-                aria-label="Agent responsibility"
-                className="composer__input team-run-panel__input"
-                disabled={isBusy}
-                onChange={(event) => setAgentResponsibility(event.target.value)}
-                rows={2}
-                value={agentResponsibility}
-              />
-            </label>
-          </div>
-        ) : null}
-
         <div className="team-run-panel__actions">
-          {isAddAgentOpen ? (
-            <button
-              className="settings-button"
-              disabled={
-                isBusy ||
-                !agentName.trim() ||
-                !agentRole.trim() ||
-                !agentResponsibility.trim()
-              }
-              onClick={() => {
-                void Promise.resolve(
-                  onAddAgent({
-                    name: agentName.trim(),
-                    role: agentRole.trim(),
-                    responsibility: agentResponsibility.trim(),
-                  }),
-                ).then(() => {
-                  setAgentName("");
-                  setAgentRole("");
-                  setAgentResponsibility("");
-                  setIsAddAgentOpen(false);
-                });
-              }}
-              type="button"
-            >
-              Invite Agent
-            </button>
-          ) : null}
-          <button
-            className="settings-button"
-            disabled={isBusy}
-            onClick={() => setIsAddAgentOpen((current) => !current)}
-            type="button"
-          >
-            {isAddAgentOpen ? "Close Agent Form" : "Add Agent"}
-          </button>
           <button
             className="settings-button settings-button--accent"
             disabled={isBusy || !followUp.trim()}

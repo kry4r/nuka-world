@@ -1299,19 +1299,21 @@ button {
 }
 
 .team-run-panel__views {
+  flex: 1;
   gap: 14px;
+  min-height: 0;
+  overflow: hidden;
   padding: 14px;
 }
 
 .team-run-panel__views-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 12px;
 }
 
 .team-run-panel__view-tabs,
-.team-run-panel__views-summary,
 .team-run-panel__status-header,
 .team-run-panel__status-item-header {
   display: flex;
@@ -1347,7 +1349,35 @@ button {
 .team-run-panel__conversation-view {
   flex: 1;
   min-height: 0;
+}
+
+.team-run-panel__view-body,
+.team-run-panel__view-scroll,
+.team-run-panel__conversation-view,
+.team-run-panel__agents-card,
+.agent-team-strip__detail-stack,
+.agent-team-strip__detail,
+.run-charter-card,
+.run-charter-card__summary-copy,
+.run-charter-card__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.team-run-panel__view-body {
+  overflow: hidden;
+}
+
+.team-run-panel__view-scroll,
+.team-run-panel__conversation-view {
   gap: 14px;
+}
+
+.team-run-panel__view-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .agent-team-strip {
@@ -1360,7 +1390,7 @@ button {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding: 14px 16px;
   border: 1px solid rgba(217, 205, 190, 0.76);
   border-radius: 18px;
@@ -1397,7 +1427,6 @@ button {
 
 .agent-team-strip__identity {
   min-width: 0;
-  flex-direction: column;
   gap: 4px;
 }
 
@@ -1411,14 +1440,17 @@ button {
 }
 
 .agent-team-strip__identity strong,
+.run-charter-card__summary-copy strong,
 .run-event-feed__item h3 {
   font-size: 15px;
   line-height: 1.35;
 }
 
 .agent-team-strip__identity span,
+.agent-team-strip__detail-label,
 .agent-team-strip__status,
 .run-charter-card__eyebrow,
+.run-charter-card__summary-hint,
 .run-charter-card__metric dt,
 .run-event-feed__kind,
 .run-event-feed__agent,
@@ -1439,9 +1471,67 @@ button {
   line-height: 1.5;
 }
 
+.agent-team-strip__detail-stack {
+  gap: 10px;
+}
+
+.agent-team-strip__detail {
+  gap: 4px;
+}
+
 .run-charter-card__header h2,
 .run-event-feed__item h3 {
   margin: 0;
+}
+
+.run-charter-card {
+  gap: 12px;
+  overflow: hidden;
+}
+
+.run-charter-card__summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.run-charter-card__summary::-webkit-details-marker {
+  display: none;
+}
+
+.run-charter-card__summary::marker {
+  content: "";
+}
+
+.run-charter-card__summary-copy {
+  min-width: 0;
+  gap: 4px;
+}
+
+.run-charter-card__summary-hint {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.run-charter-card__summary-icon {
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border-right: 1.8px solid #766d63;
+  border-bottom: 1.8px solid #766d63;
+  transform: rotate(45deg);
+  transition: transform 160ms ease;
+}
+
+.run-charter-card[open] .run-charter-card__summary-icon {
+  transform: rotate(225deg);
+}
+
+.run-charter-card__body {
+  gap: 12px;
 }
 
 .run-charter-card__grid {
@@ -1467,10 +1557,7 @@ button {
 }
 
 .run-event-feed {
-  flex: 1;
-  min-height: 0;
   gap: 12px;
-  overflow: auto;
 }
 
 .run-event-feed__item {
@@ -1483,9 +1570,16 @@ button {
 
 .run-event-feed__meta-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.run-event-feed__meta-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
 }
 
 .run-event-feed__branch {
@@ -1506,7 +1600,7 @@ button {
   min-width: 28px;
   padding: 0;
   opacity: 0;
-  transition: opacity 160ms ease, transform 160ms ease, background-color 160ms ease;
+  transition: opacity 160ms ease, background-color 160ms ease;
 }
 
 .run-event-feed__branch--anchor.is-visible {
@@ -1516,7 +1610,6 @@ button {
 .run-event-feed__branch--anchor:hover,
 .run-event-feed__branch--anchor:focus-visible {
   background: rgba(231, 223, 211, 0.9);
-  transform: translateY(-1px);
 }
 
 .run-event-feed__branch-icon {
@@ -1529,13 +1622,26 @@ button {
   fill: none;
 }
 
-.run-event-feed__status {
+.run-event-feed__status-light {
   display: inline-flex;
-  align-items: center;
-  min-height: 20px;
-  padding: 0 7px;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
   border-radius: 999px;
-  background: rgba(233, 221, 206, 0.78);
+  background: rgba(179, 168, 154, 0.82);
+  box-shadow: 0 0 0 4px rgba(233, 221, 206, 0.46);
+}
+
+.run-event-feed__status-light--complete {
+  background: #6d9a5f;
+}
+
+.run-event-feed__status-light--pending {
+  background: #c49b5f;
+}
+
+.run-event-feed__status-light--blocked {
+  background: #b86d5e;
 }
 
 .run-event-feed__item.is-thinking {
@@ -1669,6 +1775,7 @@ button {
 }
 
 .team-run-panel__composer {
+  flex: 0 0 auto;
   gap: 12px;
 }
 
@@ -1742,6 +1849,29 @@ button {
 
 .team-run-panel__field {
   gap: 8px;
+}
+
+.team-run-panel__agents-card {
+  gap: 12px;
+}
+
+.team-run-panel__agents-card-header,
+.team-run-panel__agents-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.team-run-panel__agents-card-copy strong {
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.team-run-panel__agents-card-note {
+  margin: 0;
+  color: var(--color-text-soft);
+  line-height: 1.5;
 }
 
 .team-run-panel__input {

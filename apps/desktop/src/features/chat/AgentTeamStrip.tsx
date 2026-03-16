@@ -38,6 +38,14 @@ function humanizeActivityLabel(value: string | null) {
   return value.includes("_") ? titleCase(value) : value;
 }
 
+function agentOriginLabel(agent: TeamRunAgentRecord) {
+  if (!agent.sourceTeamAssignmentId && !agent.sourceTeamAgentId) {
+    return "Runtime agent";
+  }
+
+  return "Team agent";
+}
+
 function workLabel(agent: TeamRunAgentRecord) {
   return agent.currentWork || humanizeActivityLabel(agent.lastToolActivity) || "Standing by";
 }
@@ -59,17 +67,27 @@ export function AgentTeamStrip({ agents, leadAgentId }: AgentTeamStripProps) {
                 <span aria-hidden="true" className="agent-team-strip__avatar" />
                 <div className="agent-team-strip__identity">
                   <strong>{agent.name}</strong>
-                  <span>{agent.role}</span>
+                  <span>
+                    {agent.role}
+                    {" · "}
+                    {agentOriginLabel(agent)}
+                  </span>
                 </div>
               </div>
               <span className="agent-team-strip__status">{formatAgentStatus(agent.status)}</span>
             </div>
-            <p>{workLabel(agent)}</p>
-            {agent.lastToolActivity ? (
-              <span className="agent-team-strip__activity">
-                {humanizeActivityLabel(agent.lastToolActivity)}
-              </span>
-            ) : null}
+            <div className="agent-team-strip__detail-stack">
+              <div className="agent-team-strip__detail">
+                <span className="agent-team-strip__detail-label">Session work</span>
+                <p>{workLabel(agent)}</p>
+              </div>
+              {agent.lastToolActivity ? (
+                <div className="agent-team-strip__detail">
+                  <span className="agent-team-strip__detail-label">Recent activity</span>
+                  <p>{humanizeActivityLabel(agent.lastToolActivity)}</p>
+                </div>
+              ) : null}
+            </div>
           </article>
         );
       })}

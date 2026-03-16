@@ -109,6 +109,40 @@ async function clickButton(container: HTMLElement, text: string) {
 }
 
 describe("TeamRunPanel", () => {
+  it("wraps the conversation stack in a dedicated view scroll container", async () => {
+    const view = await renderIntoDocument(
+      <TeamRunPanel
+        isBusy={false}
+        onAddAgent={vi.fn()}
+        onContinue={vi.fn()}
+        run={sampleRun()}
+      />,
+    );
+
+    const viewScroll = view.container.querySelector(".team-run-panel__view-scroll");
+    const strip = view.container.querySelector(".agent-team-strip");
+    const charter = view.container.querySelector(".run-charter-card");
+    const feed = view.container.querySelector(".run-event-feed");
+    const viewSummary = view.container.querySelector(".team-run-panel__views-summary");
+    const statusLight = view.container.querySelector(".run-event-feed__status-light");
+    const statusPill = view.container.querySelector(".run-event-feed__status");
+    const charterSummary = view.container.querySelector(".run-charter-card__summary");
+
+    expect(viewScroll).toBeTruthy();
+    expect(viewScroll?.contains(strip ?? null)).toBe(true);
+    expect(viewScroll?.contains(charter ?? null)).toBe(true);
+    expect(viewScroll?.contains(feed ?? null)).toBe(true);
+    expect(viewSummary).toBeFalsy();
+    expect(statusLight).toBeTruthy();
+    expect(statusPill).toBeFalsy();
+    expect(charterSummary?.textContent?.includes("Waiting for input")).toBe(false);
+    expect(charterSummary?.textContent?.includes("Review")).toBe(false);
+    expect(findText(view.container, "Session work")).toBeTruthy();
+    expect(findText(view.container, "Add Agent")).toBeFalsy();
+
+    await view.cleanup();
+  });
+
   it("renders conversation-first secondary tabs and switches between status, agents, and files", async () => {
     const run = sampleRun();
     run.agents = [
@@ -177,7 +211,8 @@ describe("TeamRunPanel", () => {
 
     expect(view.container.querySelector(".agent-team-strip__avatar")).toBeTruthy();
     expect(findText(view.container, "Reviewer")).toBeTruthy();
-    expect(findText(view.container, "Reviewer")).toBeTruthy();
+    expect(findText(view.container, "Session work")).toBeTruthy();
+    expect(findText(view.container, "Add Agent")).toBeTruthy();
 
     await clickButton(view.container, "Files");
 

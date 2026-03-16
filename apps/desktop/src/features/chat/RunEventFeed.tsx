@@ -79,6 +79,24 @@ function formatEventStatus(status: string | null) {
   return titleCase(status);
 }
 
+function eventStatusTone(status: string | null) {
+  switch (status) {
+    case "completed":
+    case "done":
+      return "complete";
+    case "blocked":
+    case "stuck":
+      return "blocked";
+    case "thinking":
+    case "queued":
+    case "running":
+    case "waiting_for_user":
+      return "pending";
+    default:
+      return "neutral";
+  }
+}
+
 function humanizeToolLabel(value: string) {
   if (value === "session_artifacts") {
     return "Session Artifacts";
@@ -411,6 +429,7 @@ function RunEventCard({
   const speaker = event.kind === "user_instruction" ? "You" : agentName(agents, event.agentId);
   const kindLabel = formatEventKindLabel(event.kind);
   const statusLabel = formatEventStatus(event.status);
+  const statusTone = eventStatusTone(event.status);
   const thinking = isThinkingEvent(event);
 
   return (
@@ -432,13 +451,25 @@ function RunEventCard({
         <div className="run-event-feed__meta">
           <span className="run-event-feed__agent">{speaker}</span>
           <span className="run-event-feed__kind">{kindLabel}</span>
-          {statusLabel ? <span className="run-event-feed__status">{statusLabel}</span> : null}
         </div>
-        {onBranch ? (
-          <RunEventBranchAnchor
-            isVisible={isBranchVisible}
-            onBranch={() => onBranch(event.id)}
-          />
+        {statusLabel || onBranch ? (
+          <div className="run-event-feed__meta-actions">
+            {statusLabel ? (
+              <span
+                aria-label={statusLabel}
+                className={`run-event-feed__status-light run-event-feed__status-light--${statusTone}`}
+                title={statusLabel}
+              >
+                <span className="composer__visually-hidden">{statusLabel}</span>
+              </span>
+            ) : null}
+            {onBranch ? (
+              <RunEventBranchAnchor
+                isVisible={isBranchVisible}
+                onBranch={() => onBranch(event.id)}
+              />
+            ) : null}
+          </div>
         ) : null}
       </div>
       <h3>{event.title}</h3>

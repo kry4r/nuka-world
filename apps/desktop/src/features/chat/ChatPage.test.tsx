@@ -1911,7 +1911,7 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Checkpoint summary")).toBeTruthy();
     expect(findText(view.container, "checkpoint_summary")).toBeFalsy();
     expect(findText(view.container, "waiting_for_user")).toBeFalsy();
-    expect(findText(view.container, "Add Agent")).toBeTruthy();
+    expect(findText(view.container, "Add Agent")).toBeFalsy();
   });
 
   it("continues a run and adds a runtime agent from the team run surface", async () => {
@@ -1999,6 +1999,7 @@ describe("ChatPage", () => {
     );
     expect(findText(view.container, "Coordinator agenda")).toBeTruthy();
 
+    await clickButton(view.container, "Agents");
     await clickButton(view.container, "Add Agent");
     await setFieldValue(view.container, "Agent name", "Scribe");
     await setFieldValue(view.container, "Agent role", "Writer");
