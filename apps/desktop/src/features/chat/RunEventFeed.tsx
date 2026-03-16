@@ -5,7 +5,9 @@ import { useI18n } from "@/lib/i18n";
 type RunEventFeedProps = {
   agents: TeamRunAgentRecord[];
   events: TeamRunEventRecord[];
+  mode?: "conversation" | "agent";
   onBranch?: (eventId: string) => void;
+  selectedAgentId?: string | null;
 };
 
 const PRIMARY_EVENT_KINDS = new Set([
@@ -65,6 +67,45 @@ function formatEventKindLabel(kind: string, t: ReturnType<typeof useI18n>["t"]) 
       return t("teamRun.event.retry");
     default:
       return titleCase(kind);
+  }
+}
+
+function eventCardKind(event: TeamRunEventRecord) {
+  if (event.kind === "user_instruction" || event.kind === "round_agenda") {
+    return "instruction";
+  }
+
+  if (event.status === "thinking") {
+    return "thinking";
+  }
+
+  if (event.kind.startsWith("run_")) {
+    return "status";
+  }
+
+  if (event.toolName) {
+    return "tool";
+  }
+
+  return "reply";
+}
+
+function formatEventCardLabel(
+  cardKind: ReturnType<typeof eventCardKind>,
+  t: ReturnType<typeof useI18n>["t"],
+) {
+  switch (cardKind) {
+    case "instruction":
+      return t("teamRun.eventCard.instruction");
+    case "thinking":
+      return t("teamRun.eventCard.thinking");
+    case "tool":
+      return t("teamRun.eventCard.tool");
+    case "status":
+      return t("teamRun.eventCard.status");
+    case "reply":
+    default:
+      return t("teamRun.eventCard.reply");
   }
 }
 
@@ -445,10 +486,12 @@ function RunEventBranchAnchor({
 function RunEventCard({
   agents,
   event,
+  mode,
   onBranch,
 }: {
   agents: TeamRunAgentRecord[];
   event: TeamRunEventRecord;
+  mode: "conversation" | "agent";
   onBranch?: (eventId: string) => void;
 }) {
   const { t } = useI18n();
@@ -460,14 +503,17 @@ function RunEventCard({
       ? t("teamRun.speaker.you")
       : linkedAgent?.name ?? t("teamRun.speaker.system");
   const speakerRole = linkedAgent?.role ?? null;
-  const kindLabel = formatEventKindLabel(event.kind, t);
+  const cardKind = eventCardKind(event);
+  const kindLabel =
+    mode === "agent" ? formatEventCardLabel(cardKind, t) : formatEventKindLabel(event.kind, t);
   const statusLabel = formatEventStatus(event.status, t);
   const statusTone = eventStatusTone(event.status);
   const thinking = isThinkingEvent(event);
 
   return (
     <article
-      className={`run-event-feed__item run-event-feed__item--${eventTone(event)}${thinking ? " is-thinking" : ""}`}
+      className={`run-event-feed__item run-event-feed__item--${eventTone(event)} run-event-feed__item--card-${cardKind}${thinking ? " is-thinking" : ""}`}
+      data-event-card-kind={cardKind}
       onBlur={(inputEvent) => {
         const nextTarget = inputEvent.relatedTarget;
         if (nextTarget instanceof Node && inputEvent.currentTarget.contains(nextTarget)) {
@@ -482,6 +528,7 @@ function RunEventCard({
     >
       <div className="run-event-feed__meta-row">
         <div className="run-event-feed__meta">
+          <span className="run-event-feed__eyebrow">{kindLabel}</span>
           <div className="run-event-feed__identity-line">
             <span
               aria-hidden="true"
@@ -490,7 +537,6 @@ function RunEventCard({
             <span className="run-event-feed__agent">{speaker}</span>
             {speakerRole ? <span className="run-event-feed__role">{speakerRole}</span> : null}
           </div>
-          <span className="run-event-feed__kind">{kindLabel}</span>
         </div>
         {statusLabel || onBranch ? (
           <div className="run-event-feed__meta-actions">
@@ -542,16 +588,41 @@ function RunEventCard({
   );
 }
 
-export function RunEventFeed({ agents, events, onBranch }: RunEventFeedProps) {
+export function RunEventFeed({
+  agents,
+  events,
+  mode = "conversation",
+  onBranch,
+  selectedAgentId = null,
+}: RunEventFeedProps) {
   const { t } = useI18n();
-  const visibleEvents = events.filter(
-    (event) => event.kind !== "file_change" && PRIMARY_EVENT_KINDS.has(event.kind),
-  );
+  const visibleEvents = events.filter((event) => {
+    if (event.kind === "file_change" || !PRIMARY_EVENT_KINDS.has(event.kind)) {
+      return false;
+    }
+
+    if (mode !== "agent" || !selectedAgentId) {
+      return true;
+    }
+
+    return (
+      event.agentId === selectedAgentId ||
+      event.kind === "user_instruction" ||
+      event.kind === "round_agenda" ||
+      event.kind.startsWith("run_")
+    );
+  });
 
   return (
     <section aria-label={t("teamRun.view.conversation")} className="run-event-feed">
       {visibleEvents.map((event) => (
-        <RunEventCard agents={agents} event={event} key={event.id} onBranch={onBranch} />
+        <RunEventCard
+          agents={agents}
+          event={event}
+          key={event.id}
+          mode={mode}
+          onBranch={onBranch}
+        />
       ))}
     </section>
   );

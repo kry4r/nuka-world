@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { TeamRunEventRecord, TeamRunRecord } from "@/lib/team";
+import { useEffect, useMemo, useState } from "react";
+import type { TeamRunAgentRecord, TeamRunEventRecord, TeamRunRecord } from "@/lib/team";
 import { useI18n } from "@/lib/i18n";
 import { AgentTeamStrip } from "./AgentTeamStrip";
 import { RunCharterCard } from "./RunCharterCard";
@@ -117,6 +117,48 @@ function statusTone(value: string) {
     default:
       return "neutral";
   }
+}
+
+function formatAgentStatus(value: string, t: ReturnType<typeof useI18n>["t"]) {
+  if (value === "waiting") {
+    return t("teamRun.state.waiting");
+  }
+
+  if (value === "thinking") {
+    return t("teamRun.state.thinking");
+  }
+
+  if (value === "done" || value === "completed") {
+    return t("teamRun.state.completed");
+  }
+
+  if (value === "blocked") {
+    return t("teamRun.state.blocked");
+  }
+
+  if (value === "stuck") {
+    return t("teamRun.state.stuck");
+  }
+
+  return titleCase(value);
+}
+
+function defaultActiveAgentId(run: TeamRunRecord) {
+  return run.agents.find((agent) => agent.id === run.leadAgentId)?.id ?? run.agents[0]?.id ?? null;
+}
+
+function sortAgents(agents: TeamRunAgentRecord[], leadAgentId: string | null) {
+  return [...agents].sort((left, right) => {
+    if (left.id === leadAgentId) {
+      return -1;
+    }
+
+    if (right.id === leadAgentId) {
+      return 1;
+    }
+
+    return left.joinedAt.localeCompare(right.joinedAt) || left.name.localeCompare(right.name);
+  });
 }
 
 function statusHeadline(value: string, t: ReturnType<typeof useI18n>["t"]) {
@@ -329,104 +371,80 @@ function FilesView({ run }: { run: TeamRunRecord }) {
 export function TeamRunPanel({
   run,
   isBusy,
-  onAddAgent,
   onBranchEvent,
   onContinue,
 }: TeamRunPanelProps) {
   const { t } = useI18n();
   const [activeView, setActiveView] = useState<TeamRunPanelView>("conversation");
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(() => defaultActiveAgentId(run));
   const [followUp, setFollowUp] = useState("");
-  const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
-  const [agentName, setAgentName] = useState("");
-  const [agentRole, setAgentRole] = useState("");
-  const [agentResponsibility, setAgentResponsibility] = useState("");
+  const sortedAgents = useMemo(
+    () => sortAgents(run.agents, run.leadAgentId),
+    [run.agents, run.leadAgentId],
+  );
+  const agentIdsKey = useMemo(() => sortedAgents.map((agent) => agent.id).join("|"), [sortedAgents]);
+  const activeAgent = sortedAgents.find((agent) => agent.id === activeAgentId) ?? sortedAgents[0] ?? null;
+
+  useEffect(() => {
+    setActiveAgentId((current) => {
+      if (current && sortedAgents.some((agent) => agent.id === current)) {
+        return current;
+      }
+
+      return sortedAgents.find((agent) => agent.id === run.leadAgentId)?.id ?? sortedAgents[0]?.id ?? null;
+    });
+  }, [agentIdsKey, run.leadAgentId, sortedAgents]);
+
   const activeViewBody = (() => {
     switch (activeView) {
       case "status":
         return <StatusView run={run} />;
       case "agents":
         return (
-          <div className="team-run-panel__agents-view">
-            <AgentTeamStrip agents={run.agents} events={run.events} leadAgentId={run.leadAgentId} />
-            <section className="team-run-panel__agents-card ui-card">
-              <div className="team-run-panel__agents-card-header">
-                <div className="team-run-panel__agents-card-copy">
-                  <strong>{t("teamRun.agents.addTitle")}</strong>
+          <div className="team-run-panel__agents-layout">
+            <AgentTeamStrip
+              agents={sortedAgents}
+              events={run.events}
+              leadAgentId={run.leadAgentId}
+              onSelectAgent={setActiveAgentId}
+              selectedAgentId={activeAgent?.id ?? null}
+            />
+            <section className="team-run-panel__agent-timeline ui-card">
+              {activeAgent ? (
+                <>
+                  <header className="team-run-panel__agent-timeline-header">
+                    <div className="team-run-panel__agent-timeline-copy">
+                      <div className="team-run-panel__agent-timeline-identity">
+                        <span aria-hidden="true" className="team-run-panel__agent-avatar" />
+                        <strong>{activeAgent.name}</strong>
+                        <span>{activeAgent.role}</span>
+                      </div>
+                      <p>{activeAgent.currentWork || activeAgent.responsibility || t("teamRun.agent.standingBy")}</p>
+                    </div>
+                    <span className="team-run-panel__agent-status">
+                      <span
+                        aria-hidden="true"
+                        className={`agent-team-strip__status-light agent-team-strip__status-light--${statusTone(activeAgent.status)}`}
+                      />
+                      {formatAgentStatus(activeAgent.status, t)}
+                    </span>
+                  </header>
+                  <div className="team-run-panel__agent-timeline-scroll">
+                    <RunEventFeed
+                      agents={run.agents}
+                      events={run.events}
+                      mode="agent"
+                      onBranch={onBranchEvent}
+                      selectedAgentId={activeAgent.id}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="team-run-panel__timeline-empty">
+                  <strong>{t("teamRun.view.agents")}</strong>
+                  <p>{t("teamRun.agent.noSessionUpdate")}</p>
                 </div>
-              </div>
-              {isAddAgentOpen ? (
-                <div className="team-run-panel__agent-form">
-                  <label className="team-run-panel__field">
-                    <span>{t("teamRun.agents.field.name")}</span>
-                    <input
-                      aria-label={t("teamRun.agents.field.name")}
-                      className="field-input"
-                      disabled={isBusy}
-                      onChange={(event) => setAgentName(event.target.value)}
-                      value={agentName}
-                    />
-                  </label>
-                  <label className="team-run-panel__field">
-                    <span>{t("teamRun.agents.field.role")}</span>
-                    <input
-                      aria-label={t("teamRun.agents.field.role")}
-                      className="field-input"
-                      disabled={isBusy}
-                      onChange={(event) => setAgentRole(event.target.value)}
-                      value={agentRole}
-                    />
-                  </label>
-                  <label className="team-run-panel__field">
-                    <span>{t("teamRun.agents.field.responsibility")}</span>
-                    <textarea
-                      aria-label={t("teamRun.agents.field.responsibility")}
-                      className="composer__input team-run-panel__input"
-                      disabled={isBusy}
-                      onChange={(event) => setAgentResponsibility(event.target.value)}
-                      rows={2}
-                      value={agentResponsibility}
-                    />
-                  </label>
-                </div>
-              ) : null}
-              <div className="team-run-panel__actions">
-                {isAddAgentOpen ? (
-                  <button
-                    className="settings-button"
-                    disabled={
-                      isBusy ||
-                      !agentName.trim() ||
-                      !agentRole.trim() ||
-                      !agentResponsibility.trim()
-                    }
-                    onClick={() => {
-                      void Promise.resolve(
-                        onAddAgent({
-                          name: agentName.trim(),
-                          role: agentRole.trim(),
-                          responsibility: agentResponsibility.trim(),
-                        }),
-                      ).then(() => {
-                        setAgentName("");
-                        setAgentRole("");
-                        setAgentResponsibility("");
-                        setIsAddAgentOpen(false);
-                      });
-                    }}
-                    type="button"
-                  >
-                    {t("teamRun.agents.button.invite")}
-                  </button>
-                ) : null}
-                <button
-                  className="settings-button"
-                  disabled={isBusy}
-                  onClick={() => setIsAddAgentOpen((current) => !current)}
-                  type="button"
-                >
-                  {isAddAgentOpen ? t("teamRun.agents.button.close") : t("teamRun.agents.button.add")}
-                </button>
-              </div>
+              )}
             </section>
           </div>
         );

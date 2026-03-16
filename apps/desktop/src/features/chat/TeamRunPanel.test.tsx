@@ -196,6 +196,62 @@ describe("TeamRunPanel", () => {
         sequence: 1,
         createdAt: "2026-03-13T00:01:00Z",
       },
+      {
+        id: "event-reviewer-instruction",
+        runId: "run-release",
+        kind: "user_instruction",
+        agentId: "agent-reviewer",
+        title: "Reviewer brief",
+        content: "Check the final notes before sign-off.",
+        status: null,
+        toolName: null,
+        toolCallId: null,
+        toolTarget: null,
+        sequence: 2,
+        createdAt: "2026-03-13T00:01:30Z",
+      },
+      {
+        id: "event-reviewer-thinking",
+        runId: "run-release",
+        kind: "position_card",
+        agentId: "agent-reviewer",
+        title: "Reviewer reasoning",
+        content: "Verify the sign-off owner and note gaps.",
+        status: "thinking",
+        toolName: null,
+        toolCallId: null,
+        toolTarget: null,
+        sequence: 3,
+        createdAt: "2026-03-13T00:02:00Z",
+      },
+      {
+        id: "event-reviewer-reply",
+        runId: "run-release",
+        kind: "checkpoint_summary",
+        agentId: "agent-reviewer",
+        title: "Reviewer update",
+        content: "The release note draft is ready for final review.",
+        status: "completed",
+        toolName: null,
+        toolCallId: null,
+        toolTarget: null,
+        sequence: 4,
+        createdAt: "2026-03-13T00:02:30Z",
+      },
+      {
+        id: "event-reviewer-tool",
+        runId: "run-release",
+        kind: "checkpoint_summary",
+        agentId: "agent-reviewer",
+        title: "Saved review artifact",
+        content: "Saved the review notes for the team run.",
+        status: "completed",
+        toolName: "session_artifacts",
+        toolCallId: "round-1-reviewer",
+        toolTarget: "C:\\\\\\\\nuka\\\\\\\\team-runs\\\\\\\\run-release\\\\\\\\round-01\\\\\\\\reviewer-notes.md",
+        sequence: 5,
+        createdAt: "2026-03-13T00:02:40Z",
+      },
       ...run.events,
     ];
 
@@ -230,32 +286,43 @@ describe("TeamRunPanel", () => {
 
     await clickButton(view.container, "Agents");
 
-    expect(view.container.querySelector(".agent-team-strip__avatar")).toBeTruthy();
-    expect(findText(view.container, "Reviewer")).toBeTruthy();
-    expect(findText(view.container, "Current work")).toBeTruthy();
-    expect(findText(view.container, "Latest update")).toBeTruthy();
-    expect(findText(view.container, "Tool state")).toBeTruthy();
-    expect(findText(view.container, "Responsibility")).toBeTruthy();
-    expect(findText(view.container, "Validate the final notes")).toBeTruthy();
-    expect(findText(view.container, "Lead agent")).toBeTruthy();
-    expect(findText(view.container, "Round 1 checkpoint")).toBeTruthy();
-    expect(findText(view.container, "Add Agent")).toBeTruthy();
-    expect(
-      findText(view.container, "Add another runtime agent when this run needs one."),
-    ).toBeFalsy();
-    expect(
-      findText(
-        view.container,
-        "Keep follow-ups in the footer. Use this only for another active worker.",
-      ),
-    ).toBeFalsy();
-    expect(
-      findText(
-        view.container,
-        "Keep this session focused. Bring in another runtime agent only when the active team needs extra coverage.",
-      ),
-    ).toBeFalsy();
-    expect(findText(view.container, "Recent activity")).toBeFalsy();
+    const agentsLayout = view.container.querySelector(".team-run-panel__agents-layout");
+    const agentRoster = view.container.querySelector(".agent-team-strip");
+    const agentTimeline = view.container.querySelector(".team-run-panel__agent-timeline");
+    const viewScroll = view.container.querySelector(".team-run-panel__view-scroll");
+    const composer = view.container.querySelector(".team-run-panel__composer");
+
+    expect(agentsLayout).toBeTruthy();
+    expect(agentRoster).toBeTruthy();
+    expect(agentTimeline).toBeTruthy();
+    expect(viewScroll?.contains(composer ?? null)).toBe(false);
+    expect(findText(view.container, "Lead agent")).toBeFalsy();
+    expect(findText(view.container, "Current work")).toBeFalsy();
+    expect(findText(view.container, "Latest update")).toBeFalsy();
+    expect(findText(view.container, "Tool state")).toBeFalsy();
+    expect(findText(view.container, "Responsibility")).toBeFalsy();
+    expect(findText(view.container, "Add Agent")).toBeFalsy();
+
+    await clickButton(view.container, "Reviewer");
+
+    const selectedAgent = view.container.querySelector(
+      '.agent-team-strip__item[aria-pressed="true"]',
+    );
+    const eventKinds = Array.from(
+      view.container.querySelectorAll(".run-event-feed__item"),
+    ).map((node) => node.getAttribute("data-event-card-kind"));
+
+    expect(selectedAgent?.textContent).toContain("Reviewer");
+    expect(findText(view.container, "Reviewer brief")).toBeTruthy();
+    expect(findText(view.container, "Reviewer reasoning")).toBeTruthy();
+    expect(findText(view.container, "Reviewer update")).toBeTruthy();
+    expect(findText(view.container, "Saved review artifact")).toBeTruthy();
+    expect(findText(view.container, "Run blocked")).toBeTruthy();
+    expect(eventKinds).toContain("instruction");
+    expect(eventKinds).toContain("thinking");
+    expect(eventKinds).toContain("reply");
+    expect(eventKinds).toContain("tool");
+    expect(eventKinds).toContain("status");
 
     await clickButton(view.container, "Files");
 

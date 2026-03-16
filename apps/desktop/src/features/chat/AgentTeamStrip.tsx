@@ -5,6 +5,8 @@ type AgentTeamStripProps = {
   agents: TeamRunAgentRecord[];
   events: TeamRunEventRecord[];
   leadAgentId: string | null;
+  onSelectAgent: (agentId: string) => void;
+  selectedAgentId: string | null;
 };
 
 function titleCase(value: string) {
@@ -95,10 +97,6 @@ function agentStatusTone(status: string) {
   }
 }
 
-function toolStateLabel(agent: TeamRunAgentRecord, t: ReturnType<typeof useI18n>["t"]) {
-  return humanizeActivityLabel(agent.lastToolActivity, t) ?? t("teamRun.agent.noToolActivity");
-}
-
 function latestUpdateLabel(
   events: TeamRunEventRecord[],
   agent: TeamRunAgentRecord,
@@ -112,66 +110,58 @@ function latestUpdateLabel(
   return event.title;
 }
 
-export function AgentTeamStrip({ agents, events, leadAgentId }: AgentTeamStripProps) {
+export function AgentTeamStrip({
+  agents,
+  events,
+  leadAgentId,
+  onSelectAgent,
+  selectedAgentId,
+}: AgentTeamStripProps) {
   const { t } = useI18n();
 
   return (
     <section aria-label="Agent team strip" className="agent-team-strip">
       {agents.map((agent) => {
         const isLead = agent.id === leadAgentId;
+        const isSelected = agent.id === selectedAgentId;
 
         return (
-          <article
-            className={`agent-team-strip__card${isLead ? " is-lead" : ""}`}
+          <button
+            aria-label={agent.name}
+            aria-pressed={isSelected}
+            className={`agent-team-strip__item${isLead ? " is-lead" : ""}${isSelected ? " is-selected" : ""}`}
             data-lead={isLead}
             key={agent.id}
+            onClick={() => onSelectAgent(agent.id)}
+            type="button"
           >
-            <div className="agent-team-strip__card-top">
+            <div className="agent-team-strip__item-top">
               <div className="agent-team-strip__identity-line">
                 <span aria-hidden="true" className="agent-team-strip__avatar" />
                 <div className="agent-team-strip__identity">
                   <strong>{agent.name}</strong>
-                  <span>
-                    {agent.role}
-                    {" · "}
-                    {agentOriginLabel(agent) === "runtime"
-                      ? t("teamRun.agent.runtime")
-                      : t("teamRun.agent.team")}
-                  </span>
+                  <span>{agent.role}</span>
                 </div>
               </div>
-              <div className="agent-team-strip__presence">
-                {isLead ? <span className="agent-team-strip__lead">{t("teamRun.agent.lead")}</span> : null}
-                <span className="agent-team-strip__status">
-                  <span
-                    aria-hidden="true"
-                    className={`agent-team-strip__status-light agent-team-strip__status-light--${agentStatusTone(agent.status)}`}
-                  />
-                  {formatAgentStatus(agent.status, t)}
-                </span>
-              </div>
             </div>
-            <div className="agent-team-strip__detail-stack">
-              <div className="agent-team-strip__detail">
-                <span className="agent-team-strip__detail-label">
-                  {t("teamRun.agents.field.responsibility")}
-                </span>
-                <p>{agent.responsibility || t("teamRun.agent.standingBy")}</p>
-              </div>
-              <div className="agent-team-strip__detail">
-                <span className="agent-team-strip__detail-label">{t("teamRun.agent.currentWork")}</span>
-                <p>{workLabel(agent, t)}</p>
-              </div>
-              <div className="agent-team-strip__detail">
-                <span className="agent-team-strip__detail-label">{t("teamRun.agent.latestUpdate")}</span>
-                <p>{latestUpdateLabel(events, agent, t)}</p>
-              </div>
-              <div className="agent-team-strip__detail">
-                <span className="agent-team-strip__detail-label">{t("teamRun.agent.toolState")}</span>
-                <p>{toolStateLabel(agent, t)}</p>
-              </div>
+            <p className="agent-team-strip__summary">
+              {latestUpdateLabel(events, agent, t) || workLabel(agent, t)}
+            </p>
+            <div className="agent-team-strip__presence">
+              <span className="agent-team-strip__status">
+                <span
+                  aria-hidden="true"
+                  className={`agent-team-strip__status-light agent-team-strip__status-light--${agentStatusTone(agent.status)}`}
+                />
+                {formatAgentStatus(agent.status, t)}
+              </span>
+              <span className="agent-team-strip__origin">
+                {agentOriginLabel(agent) === "runtime"
+                  ? t("teamRun.agent.runtime")
+                  : t("teamRun.agent.team")}
+              </span>
             </div>
-          </article>
+          </button>
         );
       })}
     </section>

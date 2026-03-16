@@ -1458,7 +1458,7 @@ button {
 .team-run-panel__views,
 .team-run-panel__conversation-view,
 .team-run-panel__status-stack,
-.team-run-panel__agents-view,
+.team-run-panel__agents-layout,
 .team-run-panel__timeline {
   display: flex;
   min-height: 0;
@@ -1521,9 +1521,8 @@ button {
 .team-run-panel__view-body,
 .team-run-panel__view-scroll,
 .team-run-panel__conversation-view,
-.team-run-panel__agents-card,
-.agent-team-strip__detail-stack,
-.agent-team-strip__detail,
+.team-run-panel__agent-timeline,
+.team-run-panel__agent-timeline-scroll,
 .run-charter-card,
 .run-charter-card__summary-copy,
 .run-charter-card__body {
@@ -1547,39 +1546,64 @@ button {
   padding-right: 4px;
 }
 
-.team-run-panel__agents-view {
+.team-run-panel__agents-layout {
   display: grid;
-  align-items: start;
+  flex: 1;
+  grid-template-columns: 248px minmax(0, 1fr);
   gap: 14px;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  min-height: 0;
 }
 
 .agent-team-strip {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
 }
 
-.agent-team-strip__card {
+.agent-team-strip__item {
   display: flex;
+  width: 100%;
   min-width: 0;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 14px;
   border: 1px solid rgba(217, 205, 190, 0.76);
   border-radius: 18px;
   background: rgba(255, 252, 247, 0.92);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
 }
 
-.agent-team-strip__card.is-lead {
+.agent-team-strip__item:hover,
+.agent-team-strip__item:focus-visible {
+  border-color: rgba(195, 168, 130, 0.86);
+  box-shadow: 0 8px 18px rgba(88, 69, 47, 0.06);
+}
+
+.agent-team-strip__item.is-selected {
+  border-color: rgba(181, 153, 112, 0.9);
+  background: rgba(252, 247, 240, 0.98);
+  box-shadow: 0 10px 22px rgba(88, 69, 47, 0.08);
+}
+
+.agent-team-strip__item.is-lead {
   border-color: rgba(182, 157, 122, 0.88);
-  background: rgba(250, 244, 236, 0.96);
+  background: rgba(250, 244, 236, 0.94);
 }
 
-.agent-team-strip__card-top,
+.agent-team-strip__item-top,
 .agent-team-strip__identity,
 .agent-team-strip__identity-line,
 .agent-team-strip__presence,
+.team-run-panel__agent-timeline-header,
+.team-run-panel__agent-timeline-copy,
+.team-run-panel__agent-timeline-identity,
 .run-charter-card__header,
 .run-charter-card__badges,
 .run-event-feed__meta,
@@ -1590,7 +1614,7 @@ button {
   gap: 8px;
 }
 
-.agent-team-strip__card-top,
+.agent-team-strip__item-top,
 .run-charter-card__header {
   align-items: flex-start;
   justify-content: space-between;
@@ -1622,13 +1646,13 @@ button {
 }
 
 .agent-team-strip__identity span,
-.agent-team-strip__detail-label,
-.agent-team-strip__lead,
 .agent-team-strip__status,
+.agent-team-strip__origin,
+.team-run-panel__agent-timeline-copy p,
+.run-event-feed__eyebrow,
 .run-charter-card__eyebrow,
 .run-charter-card__summary-hint,
 .run-charter-card__metric dt,
-.run-event-feed__kind,
 .team-run-panel__field span {
   color: #766d63;
   font-size: 11px;
@@ -1646,29 +1670,20 @@ button {
   line-height: 1.5;
 }
 
-.agent-team-strip__detail-stack {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.agent-team-strip__detail {
-  gap: 4px;
-  min-width: 0;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(247, 241, 233, 0.76);
+.agent-team-strip__summary {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .agent-team-strip__presence {
   align-items: center;
-  justify-content: flex-end;
-}
-
-.agent-team-strip__lead {
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(236, 227, 214, 0.82);
+  justify-content: space-between;
 }
 
 .agent-team-strip__status {
@@ -1696,6 +1711,63 @@ button {
 
 .agent-team-strip__status-light--blocked {
   background: #b86d5e;
+}
+
+.team-run-panel__agent-timeline {
+  flex: 1;
+  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 14px;
+}
+
+.team-run-panel__agent-timeline-header {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.team-run-panel__agent-timeline-copy {
+  min-width: 0;
+  gap: 6px;
+}
+
+.team-run-panel__agent-timeline-identity {
+  align-items: center;
+  gap: 8px;
+}
+
+.team-run-panel__agent-avatar {
+  display: inline-flex;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #8a755b 0%, #b49a78 100%);
+}
+
+.team-run-panel__agent-timeline-identity span {
+  color: #766d63;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.team-run-panel__agent-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #766d63;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.team-run-panel__agent-timeline-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .run-charter-card__header h2,
@@ -1787,6 +1859,25 @@ button {
   border: 1px solid rgba(217, 205, 190, 0.76);
   border-radius: 18px;
   background: rgba(255, 252, 247, 0.92);
+}
+
+.run-event-feed__item--card-instruction {
+  background: rgba(249, 244, 237, 0.98);
+  border-color: rgba(195, 170, 137, 0.82);
+}
+
+.run-event-feed__item--card-reply {
+  background: rgba(255, 252, 247, 0.96);
+}
+
+.run-event-feed__item--card-tool {
+  background: rgba(251, 247, 241, 0.98);
+  border-color: rgba(192, 174, 146, 0.82);
+}
+
+.run-event-feed__item--card-status {
+  background: rgba(247, 241, 233, 0.96);
+  border-color: rgba(191, 164, 128, 0.78);
 }
 
 .run-event-feed__meta-row {
@@ -1949,10 +2040,15 @@ button {
   font-weight: 600;
 }
 
+.run-event-feed__tool {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(243, 236, 227, 0.84);
+}
+
 .run-event-feed__tool span {
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(233, 221, 206, 0.78);
   color: #5f584f;
   font-size: 11px;
   font-weight: 600;
@@ -2164,16 +2260,6 @@ button {
   padding: 14px 16px;
 }
 
-.team-run-panel__agent-form {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.team-run-panel__agent-form .team-run-panel__field:last-child {
-  grid-column: 1 / -1;
-}
-
 .team-run-panel__error {
   padding: 12px 14px;
   border-radius: 16px;
@@ -2187,38 +2273,6 @@ button {
   gap: 8px;
 }
 
-.team-run-panel__agents-card {
-  align-self: start;
-  gap: 12px;
-  position: sticky;
-  top: 0;
-}
-
-.team-run-panel__agents-card-header,
-.team-run-panel__agents-card-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.team-run-panel__agents-card-copy strong {
-  color: var(--color-text);
-  font-size: 14px;
-  line-height: 1.45;
-}
-
-.team-run-panel__agents-card-copy span {
-  color: var(--color-text-soft);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.team-run-panel__agents-card-note {
-  margin: 0;
-  color: var(--color-text-soft);
-  line-height: 1.5;
-}
-
 .team-run-panel__input {
   min-height: 64px;
 }
@@ -2228,21 +2282,13 @@ button {
 }
 
 @media (max-width: 980px) {
-  .team-run-panel__agents-view,
+  .team-run-panel__agents-layout,
   .team-run-panel__status-stack {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .team-run-panel__status-overview {
     grid-column: auto;
-  }
-
-  .team-run-panel__agents-card {
-    position: static;
-  }
-
-  .agent-team-strip__detail-stack {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 

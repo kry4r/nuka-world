@@ -1884,6 +1884,37 @@ describe("ChatPage", () => {
       run: {
         ...sampleRun,
         status: "waiting_for_user",
+        events: [
+          ...sampleRun.events,
+          {
+            id: "event-research-instruction",
+            runId: "run-release",
+            kind: "user_instruction",
+            agentId: "agent-research",
+            title: "Research brief",
+            content: "Check evidence gaps.",
+            status: null,
+            toolName: null,
+            toolCallId: null,
+            toolTarget: null,
+            sequence: 2,
+            createdAt: "2026-03-11T12:09:00Z",
+          },
+          {
+            id: "event-research-thinking",
+            runId: "run-release",
+            kind: "position_card",
+            agentId: "agent-research",
+            title: "Research notes",
+            content: "Check evidence gaps.",
+            status: "thinking",
+            toolName: null,
+            toolCallId: null,
+            toolTarget: null,
+            sequence: 3,
+            createdAt: "2026-03-11T12:10:00Z",
+          },
+        ],
         agents: [
           sampleRun.agents[0],
           {
@@ -1925,12 +1956,14 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Add Agent")).toBeFalsy();
 
     await clickButton(view.container, "Agents");
+    await clickButton(view.container, "Research");
 
-    expect(findText(view.container, "Using Search Knowledge")).toBeTruthy();
+    expect(findText(view.container, "Research brief")).toBeTruthy();
+    expect(findText(view.container, "Research notes")).toBeTruthy();
     expect(findText(view.container, "Check evidence gaps.")).toBeTruthy();
   });
 
-  it("continues a run and adds a runtime agent from the team run surface", async () => {
+  it("continues a run from the fixed footer composer even after switching to Agents", async () => {
     listWorkspaceSessionsMock.mockResolvedValueOnce([
       {
         id: "run-release",
@@ -1967,29 +2000,38 @@ describe("ChatPage", () => {
         },
       ],
     });
-    addTeamRunAgentMock.mockResolvedValueOnce({
+    continueTeamRunMock.mockResolvedValueOnce({
       ...sampleRun,
-      agents: [
-        ...sampleRun.agents,
+      status: "waiting_for_user",
+      events: [
+        ...sampleRun.events,
         {
-          id: "agent-scribe",
+          id: "event-follow-up",
           runId: "run-release",
-          sourceAgentId: null,
-          sourceTeamAssignmentId: null,
-          sourceTeamAgentId: null,
-          name: "Scribe",
-          role: "Writer",
-          responsibility: "Capture the final handoff.",
-          systemPrompt: "Write the handoff.",
-          toolBindings: [],
-          toolUsePolicy: {
-            maxCallsPerRound: 1,
-            summarizeOutput: true,
-          },
-          status: "waiting",
-          currentWork: "Waiting for coordinator",
-          lastToolActivity: null,
-          joinedAt: "2026-03-11T12:17:00Z",
+          kind: "round_agenda",
+          agentId: "agent-coordinator",
+          title: "Coordinator agenda",
+          content: "Re-check the remaining validation blocker.",
+          status: "completed",
+          toolName: null,
+          toolCallId: null,
+          toolTarget: null,
+          sequence: 2,
+          createdAt: "2026-03-11T12:16:00Z",
+        },
+        {
+          id: "event-follow-up-2",
+          runId: "run-release",
+          kind: "round_agenda",
+          agentId: "agent-coordinator",
+          title: "Coordinator follow-up",
+          content: "Capture the final handoff.",
+          status: "completed",
+          toolName: null,
+          toolCallId: null,
+          toolTarget: null,
+          sequence: 3,
+          createdAt: "2026-03-11T12:17:00Z",
         },
       ],
     });
@@ -2016,25 +2058,17 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Coordinator agenda")).toBeTruthy();
 
     await clickButton(view.container, "Agents");
-    await clickButton(view.container, "Add Agent");
-    await setFieldValue(view.container, "Name", "Scribe");
-    await setFieldValue(view.container, "Role", "Writer");
-    await setFieldValue(
-      view.container,
-      "Responsibility",
+    expect(findText(view.container, "Add Agent")).toBeFalsy();
+
+    await setFieldValue(view.container, "Follow-up", "Capture the final handoff.");
+    await clickButton(view.container, "Continue Run");
+
+    expect(continueTeamRunMock).toHaveBeenLastCalledWith(
+      "run-release",
       "Capture the final handoff.",
     );
-    await clickButton(view.container, "Invite Agent");
-
-    expect(addTeamRunAgentMock).toHaveBeenCalledWith(
-      "run-release",
-      expect.objectContaining({
-        name: "Scribe",
-        role: "Writer",
-        responsibility: "Capture the final handoff.",
-      }),
-    );
-    expect(findText(view.container, "Scribe")).toBeTruthy();
+    expect(addTeamRunAgentMock).not.toHaveBeenCalled();
+    expect(findText(view.container, "Coordinator follow-up")).toBeTruthy();
   });
 
   it("shows the run queue and retries a blocked run from chat", async () => {
