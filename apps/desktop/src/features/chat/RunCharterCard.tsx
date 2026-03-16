@@ -1,4 +1,5 @@
 import type { TeamRunRecord } from "@/lib/team";
+import { useI18n } from "@/lib/i18n";
 
 type RunCharterCardProps = {
   run: TeamRunRecord;
@@ -13,22 +14,23 @@ function titleCase(value: string) {
     .join(" ");
 }
 
-function formatRunStatus(value: string) {
+function formatRunStatus(value: string, t: ReturnType<typeof useI18n>["t"]) {
   if (value === "waiting_for_user") {
-    return "Waiting for Input";
+    return t("teamRun.state.waitingForInput");
   }
 
   return titleCase(value);
 }
 
 export function RunCharterCard({ run }: RunCharterCardProps) {
+  const { t } = useI18n();
+
   return (
     <details className="run-charter-card ui-card">
       <summary className="run-charter-card__summary">
         <div className="run-charter-card__summary-copy">
-          <span className="run-charter-card__eyebrow">Run details</span>
+          <span className="run-charter-card__eyebrow">{t("teamRun.details.title")}</span>
           <strong>{run.title}</strong>
-          <span className="run-charter-card__summary-hint">Show the run context</span>
         </div>
         <span aria-hidden="true" className="run-charter-card__summary-icon" />
       </summary>
@@ -38,30 +40,32 @@ export function RunCharterCard({ run }: RunCharterCardProps) {
 
         <dl className="run-charter-card__grid">
           <div className="run-charter-card__metric">
-            <dt>Status</dt>
-            <dd>{formatRunStatus(run.status)}</dd>
+            <dt>{t("teamRun.details.status")}</dt>
+            <dd>{formatRunStatus(run.status, t)}</dd>
           </div>
           <div className="run-charter-card__metric">
-            <dt>Phase</dt>
+            <dt>{t("teamRun.details.phase")}</dt>
             <dd>{titleCase(run.currentPhase)}</dd>
           </div>
           <div className="run-charter-card__metric">
-            <dt>Success</dt>
+            <dt>{t("teamRun.details.success")}</dt>
             <dd>{run.charter.successCriteria}</dd>
           </div>
           <div className="run-charter-card__metric">
-            <dt>Output</dt>
+            <dt>{t("teamRun.details.output")}</dt>
             <dd>{run.charter.outputFormat}</dd>
           </div>
           <div className="run-charter-card__metric">
-            <dt>Budget</dt>
+            <dt>{t("teamRun.details.budget")}</dt>
             <dd>{run.charter.budgetPolicy}</dd>
           </div>
           <div className="run-charter-card__metric">
-            <dt>Rounds</dt>
+            <dt>{t("teamRun.details.rounds")}</dt>
             <dd>
-              {run.charter.maxActiveAgentsPerRound} agents,{" "}
-              {run.charter.maxMessagesPerAgentPerRound} messages
+              {t("teamRun.details.roundsSummary", {
+                agents: run.charter.maxActiveAgentsPerRound,
+                messages: run.charter.maxMessagesPerAgentPerRound,
+              })}
             </dd>
           </div>
         </dl>

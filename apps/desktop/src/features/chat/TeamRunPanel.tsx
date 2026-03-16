@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { TeamRunEventRecord, TeamRunRecord } from "@/lib/team";
+import { useI18n } from "@/lib/i18n";
 import { AgentTeamStrip } from "./AgentTeamStrip";
 import { RunCharterCard } from "./RunCharterCard";
 import { RunEventFeed } from "./RunEventFeed";
@@ -20,13 +21,6 @@ type TeamRunPanelProps = {
 
 type TeamRunPanelView = "conversation" | "status" | "agents" | "files";
 
-const VIEW_OPTIONS: Array<{ id: TeamRunPanelView; label: string }> = [
-  { id: "conversation", label: "Conversation" },
-  { id: "status", label: "Status" },
-  { id: "agents", label: "Agents" },
-  { id: "files", label: "Files" },
-];
-
 function titleCase(value: string) {
   return value
     .replace(/_/g, " ")
@@ -36,28 +30,48 @@ function titleCase(value: string) {
     .join(" ");
 }
 
-function formatRunStatus(value: string) {
+function formatRunStatus(value: string, t: ReturnType<typeof useI18n>["t"]) {
   if (value === "waiting_for_user") {
-    return "Waiting for input";
+    return t("teamRun.state.waitingForInput");
+  }
+
+  if (value === "queued") {
+    return t("teamRun.state.queued");
+  }
+
+  if (value === "blocked") {
+    return t("teamRun.state.blocked");
+  }
+
+  if (value === "stuck") {
+    return t("teamRun.state.stuck");
+  }
+
+  if (value === "running") {
+    return t("teamRun.state.running");
+  }
+
+  if (value === "completed" || value === "done") {
+    return t("teamRun.state.completed");
   }
 
   return titleCase(value);
 }
 
-function formatEventKindLabel(kind: string) {
+function formatEventKindLabel(kind: string, t: ReturnType<typeof useI18n>["t"]) {
   switch (kind) {
     case "run_started":
-      return "Run started";
+      return t("teamRun.event.runStarted");
     case "run_queued":
-      return "Queued";
+      return t("teamRun.event.queued");
     case "run_blocked":
-      return "Blocked";
+      return t("teamRun.event.blocked");
     case "run_resumed":
-      return "Resumed";
+      return t("teamRun.event.resumed");
     case "run_stuck":
-      return "Stuck";
+      return t("teamRun.event.stuck");
     case "run_retry":
-      return "Retry";
+      return t("teamRun.event.retry");
     default:
       return titleCase(kind);
   }
@@ -67,7 +81,7 @@ function latestCheckpointEvent(run: TeamRunRecord) {
   return [...run.events].reverse().find((event) => event.kind === "checkpoint_summary") ?? null;
 }
 
-function currentRoundLabel(run: TeamRunRecord) {
+function currentRoundLabel(run: TeamRunRecord, t: ReturnType<typeof useI18n>["t"]) {
   const sources = [
     latestCheckpointEvent(run)?.title ?? null,
     ...run.events
@@ -85,7 +99,7 @@ function currentRoundLabel(run: TeamRunRecord) {
     }
   }
 
-  return "Awaiting first round";
+  return t("teamRun.currentRound.awaiting");
 }
 
 function statusTone(value: string) {
@@ -105,63 +119,63 @@ function statusTone(value: string) {
   }
 }
 
-function statusHeadline(value: string) {
+function statusHeadline(value: string, t: ReturnType<typeof useI18n>["t"]) {
   switch (value) {
     case "waiting_for_user":
-      return "Needs your follow-up";
+      return t("teamRun.statusView.headline.waitingForUser");
     case "queued":
-      return "Queued for the next run slot";
+      return t("teamRun.statusView.headline.queued");
     case "blocked":
-      return "Blocked until the constraint clears";
+      return t("teamRun.statusView.headline.blocked");
     case "stuck":
-      return "Needs recovery before the next step";
+      return t("teamRun.statusView.headline.stuck");
     case "completed":
     case "done":
-      return "Completed the active objective";
+      return t("teamRun.statusView.headline.completed");
     case "running":
-      return "Actively working through the round";
+      return t("teamRun.statusView.headline.running");
     default:
-      return formatRunStatus(value);
+      return formatRunStatus(value, t);
   }
 }
 
-function statusSummary(run: TeamRunRecord) {
+function statusSummary(run: TeamRunRecord, t: ReturnType<typeof useI18n>["t"]) {
   switch (run.status) {
     case "waiting_for_user":
-      return "The team has paused after its latest checkpoint and is waiting for your next instruction.";
+      return t("teamRun.statusView.summary.waitingForUser");
     case "queued":
-      return "The run is staged and will resume automatically when execution capacity is available.";
+      return t("teamRun.statusView.summary.queued");
     case "blocked":
-      return "The run cannot move forward until the current blocker is resolved.";
+      return t("teamRun.statusView.summary.blocked");
     case "stuck":
-      return "The run needs intervention before another retry or resume attempt.";
+      return t("teamRun.statusView.summary.stuck");
     case "completed":
     case "done":
-      return "The active run finished its current goal and is ready for review or branching.";
+      return t("teamRun.statusView.summary.completed");
     case "running":
-      return "The current round is in motion and the active agents are still working.";
+      return t("teamRun.statusView.summary.running");
     default:
       return run.goal;
   }
 }
 
-function nextStepCopy(value: string) {
+function nextStepCopy(value: string, t: ReturnType<typeof useI18n>["t"]) {
   switch (value) {
     case "waiting_for_user":
-      return "Send the next follow-up from the composer below.";
+      return t("teamRun.statusView.next.waitingForUser");
     case "queued":
-      return "Stay on this session until the queue advances.";
+      return t("teamRun.statusView.next.queued");
     case "blocked":
-      return "Resolve the blocker or resume when the dependency clears.";
+      return t("teamRun.statusView.next.blocked");
     case "stuck":
-      return "Inspect the latest run state, then retry or resume.";
+      return t("teamRun.statusView.next.stuck");
     case "completed":
     case "done":
-      return "Review the result, branch from a checkpoint, or continue with a new instruction.";
+      return t("teamRun.statusView.next.completed");
     case "running":
-      return "Let the active agents finish before steering the next round.";
+      return t("teamRun.statusView.next.running");
     default:
-      return "Keep the next instruction ready in the composer below.";
+      return t("teamRun.statusView.next.default");
   }
 }
 
@@ -197,7 +211,8 @@ function statusEvents(run: TeamRunRecord) {
 }
 
 function StatusLight({ status }: { status: string | null }) {
-  const label = status ? formatRunStatus(status) : "Status unknown";
+  const { t } = useI18n();
+  const label = status ? formatRunStatus(status, t) : t("teamRun.state.unknown");
   const tone = statusTone(status ?? "unknown");
 
   return (
@@ -212,6 +227,7 @@ function StatusLight({ status }: { status: string | null }) {
 }
 
 function StatusView({ run }: { run: TeamRunRecord }) {
+  const { t } = useI18n();
   const statusTimeline = statusEvents(run);
   const latestCheckpoint = latestCheckpointEvent(run);
 
@@ -220,20 +236,20 @@ function StatusView({ run }: { run: TeamRunRecord }) {
       <article className="team-run-panel__status-overview ui-card">
         <div className="team-run-panel__status-overview-header">
           <div className="team-run-panel__status-copy">
-            <span>Run health</span>
-            <strong>{statusHeadline(run.status)}</strong>
+            <span>{t("teamRun.statusView.health")}</span>
+            <strong>{statusHeadline(run.status, t)}</strong>
           </div>
           <StatusLight status={run.status} />
         </div>
-        <p>{statusSummary(run)}</p>
+        <p>{statusSummary(run, t)}</p>
         <div className="team-run-panel__status-metrics">
           <div className="team-run-panel__status-metric">
-            <span>Current round</span>
-            <strong>{currentRoundLabel(run)}</strong>
+            <span>{t("teamRun.statusView.currentRound")}</span>
+            <strong>{currentRoundLabel(run, t)}</strong>
           </div>
           <div className="team-run-panel__status-metric">
-            <span>Next step</span>
-            <strong>{nextStepCopy(run.status)}</strong>
+            <span>{t("teamRun.statusView.nextStep")}</span>
+            <strong>{nextStepCopy(run.status, t)}</strong>
           </div>
         </div>
       </article>
@@ -241,7 +257,7 @@ function StatusView({ run }: { run: TeamRunRecord }) {
       {latestCheckpoint ? (
         <article className="team-run-panel__status-card ui-card">
           <div className="team-run-panel__status-section-copy">
-            <span>Latest checkpoint</span>
+            <span>{t("teamRun.statusView.latestCheckpoint")}</span>
             <strong>{latestCheckpoint.title}</strong>
           </div>
           <p>{latestCheckpoint.content}</p>
@@ -249,12 +265,15 @@ function StatusView({ run }: { run: TeamRunRecord }) {
       ) : null}
 
       {statusTimeline.length > 0 ? (
-        <section aria-label="Team run status timeline" className="team-run-panel__status-timeline">
+        <section
+          aria-label={t("teamRun.statusView.timeline")}
+          className="team-run-panel__status-timeline"
+        >
           {statusTimeline.map((event: TeamRunEventRecord) => (
             <article className="team-run-panel__status-item ui-card" key={event.id}>
               <div className="team-run-panel__status-item-header">
                 <div className="team-run-panel__status-section-copy">
-                  <span>{formatEventKindLabel(event.kind)}</span>
+                  <span>{formatEventKindLabel(event.kind, t)}</span>
                   <strong>{event.title}</strong>
                 </div>
                 <StatusLight status={event.status} />
@@ -264,30 +283,29 @@ function StatusView({ run }: { run: TeamRunRecord }) {
           ))}
         </section>
       ) : null}
-
-      <RunCharterCard run={run} />
     </div>
   );
 }
 
 function FilesView({ run }: { run: TeamRunRecord }) {
+  const { t } = useI18n();
   const fileChangeBatches = groupFileChanges(run);
 
   if (fileChangeBatches.length === 0) {
     return (
-      <section aria-label="File timeline" className="team-run-panel__timeline">
+      <section aria-label={t("teamRun.files.title")} className="team-run-panel__timeline">
         <article className="team-run-panel__timeline-empty ui-card">
-          <strong>File timeline</strong>
-          <p>No run artifacts have been written yet.</p>
+          <strong>{t("teamRun.files.title")}</strong>
+          <p>{t("teamRun.files.empty")}</p>
         </article>
       </section>
     );
   }
 
   return (
-    <section aria-label="File timeline" className="team-run-panel__timeline">
+    <section aria-label={t("teamRun.files.title")} className="team-run-panel__timeline">
       <div className="team-run-panel__timeline-header">
-        <h2>File timeline</h2>
+        <h2>{t("teamRun.files.title")}</h2>
       </div>
       <div className="team-run-panel__timeline-groups">
         {fileChangeBatches.map((batch) => (
@@ -315,6 +333,7 @@ export function TeamRunPanel({
   onBranchEvent,
   onContinue,
 }: TeamRunPanelProps) {
+  const { t } = useI18n();
   const [activeView, setActiveView] = useState<TeamRunPanelView>("conversation");
   const [followUp, setFollowUp] = useState("");
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
@@ -332,16 +351,15 @@ export function TeamRunPanel({
             <section className="team-run-panel__agents-card ui-card">
               <div className="team-run-panel__agents-card-header">
                 <div className="team-run-panel__agents-card-copy">
-                  <strong>Add another runtime agent when this run needs one.</strong>
-                  <span>Keep follow-ups in the footer. Use this only for another active worker.</span>
+                  <strong>{t("teamRun.agents.addTitle")}</strong>
                 </div>
               </div>
               {isAddAgentOpen ? (
                 <div className="team-run-panel__agent-form">
                   <label className="team-run-panel__field">
-                    <span>Name</span>
+                    <span>{t("teamRun.agents.field.name")}</span>
                     <input
-                      aria-label="Agent name"
+                      aria-label={t("teamRun.agents.field.name")}
                       className="field-input"
                       disabled={isBusy}
                       onChange={(event) => setAgentName(event.target.value)}
@@ -349,9 +367,9 @@ export function TeamRunPanel({
                     />
                   </label>
                   <label className="team-run-panel__field">
-                    <span>Role</span>
+                    <span>{t("teamRun.agents.field.role")}</span>
                     <input
-                      aria-label="Agent role"
+                      aria-label={t("teamRun.agents.field.role")}
                       className="field-input"
                       disabled={isBusy}
                       onChange={(event) => setAgentRole(event.target.value)}
@@ -359,9 +377,9 @@ export function TeamRunPanel({
                     />
                   </label>
                   <label className="team-run-panel__field">
-                    <span>Responsibility</span>
+                    <span>{t("teamRun.agents.field.responsibility")}</span>
                     <textarea
-                      aria-label="Agent responsibility"
+                      aria-label={t("teamRun.agents.field.responsibility")}
                       className="composer__input team-run-panel__input"
                       disabled={isBusy}
                       onChange={(event) => setAgentResponsibility(event.target.value)}
@@ -370,12 +388,7 @@ export function TeamRunPanel({
                     />
                   </label>
                 </div>
-              ) : (
-                <p className="team-run-panel__agents-card-note">
-                  Keep this session focused. Bring in another runtime agent only when the active
-                  team needs extra coverage.
-                </p>
-              )}
+              ) : null}
               <div className="team-run-panel__actions">
                 {isAddAgentOpen ? (
                   <button
@@ -402,7 +415,7 @@ export function TeamRunPanel({
                     }}
                     type="button"
                   >
-                    Invite Agent
+                    {t("teamRun.agents.button.invite")}
                   </button>
                 ) : null}
                 <button
@@ -411,7 +424,7 @@ export function TeamRunPanel({
                   onClick={() => setIsAddAgentOpen((current) => !current)}
                   type="button"
                 >
-                  {isAddAgentOpen ? "Close Agent Form" : "Add Agent"}
+                  {isAddAgentOpen ? t("teamRun.agents.button.close") : t("teamRun.agents.button.add")}
                 </button>
               </div>
             </section>
@@ -423,7 +436,6 @@ export function TeamRunPanel({
       default:
         return (
           <div className="team-run-panel__conversation-view">
-            <AgentTeamStrip agents={run.agents} events={run.events} leadAgentId={run.leadAgentId} />
             <RunCharterCard run={run} />
             <RunEventFeed agents={run.agents} events={run.events} onBranch={onBranchEvent} />
           </div>
@@ -436,16 +448,16 @@ export function TeamRunPanel({
       <div className="team-run-panel__views ui-card">
         <div className="team-run-panel__views-header">
           <div className="team-run-panel__view-tabs" role="tablist">
-            {VIEW_OPTIONS.map((view) => (
+            {(["conversation", "status", "agents", "files"] as TeamRunPanelView[]).map((view) => (
               <button
-                aria-selected={activeView === view.id}
-                className={`team-run-panel__view-tab${activeView === view.id ? " is-active" : ""}`}
-                key={view.id}
-                onClick={() => setActiveView(view.id)}
+                aria-selected={activeView === view}
+                className={`team-run-panel__view-tab${activeView === view ? " is-active" : ""}`}
+                key={view}
+                onClick={() => setActiveView(view)}
                 role="tab"
                 type="button"
               >
-                {view.label}
+                {t(`teamRun.view.${view}` as const)}
               </button>
             ))}
           </div>
@@ -458,13 +470,13 @@ export function TeamRunPanel({
 
       <div className="team-run-panel__composer ui-card">
         <label className="team-run-panel__field">
-          <span>Follow-up</span>
+          <span>{t("teamRun.composer.followUp")}</span>
           <textarea
-            aria-label="Team run follow-up"
+            aria-label={t("teamRun.composer.followUp")}
             className="composer__input team-run-panel__input"
             disabled={isBusy}
             onChange={(event) => setFollowUp(event.target.value)}
-            placeholder="Append instruction"
+            placeholder={t("teamRun.composer.placeholder")}
             rows={1}
             value={followUp}
           />
@@ -486,7 +498,7 @@ export function TeamRunPanel({
             }}
             type="button"
           >
-            Continue Run
+            {t("teamRun.composer.continue")}
           </button>
         </div>
       </div>

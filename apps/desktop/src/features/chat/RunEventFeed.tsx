@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { TeamRunAgentRecord, TeamRunEventRecord } from "@/lib/team";
+import { useI18n } from "@/lib/i18n";
 
 type RunEventFeedProps = {
   agents: TeamRunAgentRecord[];
@@ -30,50 +31,74 @@ function titleCase(value: string) {
     .join(" ");
 }
 
-function agentName(agents: TeamRunAgentRecord[], agentId: string | null) {
+function agentRecord(agents: TeamRunAgentRecord[], agentId: string | null) {
   if (!agentId) {
-    return "System";
+    return null;
   }
 
-  return agents.find((agent) => agent.id === agentId)?.name ?? "Agent";
+  return agents.find((agent) => agent.id === agentId) ?? null;
 }
 
-function formatEventKindLabel(kind: string) {
+function formatEventKindLabel(kind: string, t: ReturnType<typeof useI18n>["t"]) {
   switch (kind) {
     case "user_instruction":
-      return "Follow-up";
+      return t("teamRun.event.followUp");
     case "round_agenda":
-      return "Round agenda";
+      return t("teamRun.event.roundAgenda");
     case "position_card":
-      return "Position card";
+      return t("teamRun.event.positionCard");
     case "checkpoint_summary":
-      return "Checkpoint summary";
+      return t("teamRun.event.checkpointSummary");
     case "compaction_summary":
-      return "Compacted context";
+      return t("teamRun.event.compactedContext");
     case "run_started":
-      return "Run started";
+      return t("teamRun.event.runStarted");
     case "run_queued":
-      return "Queued";
+      return t("teamRun.event.queued");
     case "run_blocked":
-      return "Blocked";
+      return t("teamRun.event.blocked");
     case "run_resumed":
-      return "Resumed";
+      return t("teamRun.event.resumed");
     case "run_stuck":
-      return "Stuck";
+      return t("teamRun.event.stuck");
     case "run_retry":
-      return "Retry";
+      return t("teamRun.event.retry");
     default:
       return titleCase(kind);
   }
 }
 
-function formatEventStatus(status: string | null) {
+function formatEventStatus(status: string | null, t: ReturnType<typeof useI18n>["t"]) {
   if (!status) {
     return null;
   }
 
   if (status === "waiting_for_user") {
-    return "Waiting for input";
+    return t("teamRun.state.waitingForInput");
+  }
+
+  if (status === "thinking") {
+    return t("teamRun.state.thinking");
+  }
+
+  if (status === "completed" || status === "done") {
+    return t("teamRun.state.completed");
+  }
+
+  if (status === "blocked") {
+    return t("teamRun.state.blocked");
+  }
+
+  if (status === "stuck") {
+    return t("teamRun.state.stuck");
+  }
+
+  if (status === "queued") {
+    return t("teamRun.state.queued");
+  }
+
+  if (status === "running") {
+    return t("teamRun.state.running");
   }
 
   return titleCase(status);
@@ -97,9 +122,9 @@ function eventStatusTone(status: string | null) {
   }
 }
 
-function humanizeToolLabel(value: string) {
+function humanizeToolLabel(value: string, t: ReturnType<typeof useI18n>["t"]) {
   if (value === "session_artifacts") {
-    return "Session Artifacts";
+    return t("teamRun.agent.sessionArtifacts");
   }
 
   return value.includes("_") ? titleCase(value) : value;
@@ -396,12 +421,14 @@ function RunEventBranchAnchor({
   isVisible: boolean;
   onBranch: () => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <button
-      aria-label="Branch from this event"
+      aria-label={t("teamRun.event.branch")}
       className={`run-event-feed__branch run-event-feed__branch--anchor${isVisible ? " is-visible" : ""}`}
       onClick={onBranch}
-      title="Branch from this event"
+      title={t("teamRun.event.branch")}
       type="button"
     >
       <svg aria-hidden="true" className="run-event-feed__branch-icon" viewBox="0 0 16 16">
@@ -424,11 +451,17 @@ function RunEventCard({
   event: TeamRunEventRecord;
   onBranch?: (eventId: string) => void;
 }) {
+  const { t } = useI18n();
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   const [isBranchVisible, setIsBranchVisible] = useState(false);
-  const speaker = event.kind === "user_instruction" ? "You" : agentName(agents, event.agentId);
-  const kindLabel = formatEventKindLabel(event.kind);
-  const statusLabel = formatEventStatus(event.status);
+  const linkedAgent = agentRecord(agents, event.agentId);
+  const speaker =
+    event.kind === "user_instruction"
+      ? t("teamRun.speaker.you")
+      : linkedAgent?.name ?? t("teamRun.speaker.system");
+  const speakerRole = linkedAgent?.role ?? null;
+  const kindLabel = formatEventKindLabel(event.kind, t);
+  const statusLabel = formatEventStatus(event.status, t);
   const statusTone = eventStatusTone(event.status);
   const thinking = isThinkingEvent(event);
 
@@ -449,7 +482,14 @@ function RunEventCard({
     >
       <div className="run-event-feed__meta-row">
         <div className="run-event-feed__meta">
-          <span className="run-event-feed__agent">{speaker}</span>
+          <div className="run-event-feed__identity-line">
+            <span
+              aria-hidden="true"
+              className={`run-event-feed__speaker-dot run-event-feed__speaker-dot--${eventTone(event)}`}
+            />
+            <span className="run-event-feed__agent">{speaker}</span>
+            {speakerRole ? <span className="run-event-feed__role">{speakerRole}</span> : null}
+          </div>
           <span className="run-event-feed__kind">{kindLabel}</span>
         </div>
         {statusLabel || onBranch ? (
@@ -476,16 +516,16 @@ function RunEventCard({
       {thinking ? (
         <div className="run-event-feed__thinking">
           <div className="run-event-feed__thinking-summary">
-            <strong>Thinking</strong>
-            <span>{speaker} is working through the next step.</span>
+            <strong>{t("teamRun.thinking.title")}</strong>
+            <span>{t("teamRun.thinking.summary", { name: speaker })}</span>
           </div>
           <button
-            aria-label={isThinkingExpanded ? "Hide thinking trace" : "Show thinking trace"}
+            aria-label={isThinkingExpanded ? t("teamRun.thinking.hide") : t("teamRun.thinking.show")}
             className="run-event-feed__thinking-toggle"
             onClick={() => setIsThinkingExpanded((current) => !current)}
             type="button"
           >
-            {isThinkingExpanded ? "Hide thinking trace" : "Show thinking trace"}
+            {isThinkingExpanded ? t("teamRun.thinking.hide") : t("teamRun.thinking.show")}
           </button>
           {isThinkingExpanded ? <MarkdownMessage content={event.content} /> : null}
         </div>
@@ -494,7 +534,7 @@ function RunEventCard({
       )}
       {event.toolName ? (
         <div className="run-event-feed__tool">
-          <span>{humanizeToolLabel(event.toolName)}</span>
+          <span>{humanizeToolLabel(event.toolName, t)}</span>
           {event.toolTarget ? <span>{event.toolTarget}</span> : null}
         </div>
       ) : null}
@@ -503,12 +543,13 @@ function RunEventCard({
 }
 
 export function RunEventFeed({ agents, events, onBranch }: RunEventFeedProps) {
+  const { t } = useI18n();
   const visibleEvents = events.filter(
     (event) => event.kind !== "file_change" && PRIMARY_EVENT_KINDS.has(event.kind),
   );
 
   return (
-    <section aria-label="Team run conversation" className="run-event-feed">
+    <section aria-label={t("teamRun.view.conversation")} className="run-event-feed">
       {visibleEvents.map((event) => (
         <RunEventCard agents={agents} event={event} key={event.id} onBranch={onBranch} />
       ))}

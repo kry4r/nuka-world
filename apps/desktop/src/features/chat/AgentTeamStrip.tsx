@@ -1,4 +1,5 @@
 import type { TeamRunAgentRecord, TeamRunEventRecord } from "@/lib/team";
+import { useI18n } from "@/lib/i18n";
 
 type AgentTeamStripProps = {
   agents: TeamRunAgentRecord[];
@@ -15,25 +16,40 @@ function titleCase(value: string) {
     .join(" ");
 }
 
-function formatAgentStatus(value: string) {
+function formatAgentStatus(value: string, t: ReturnType<typeof useI18n>["t"]) {
   if (value === "waiting") {
-    return "Waiting";
+    return t("teamRun.state.waiting");
   }
 
   if (value === "thinking") {
-    return "Thinking";
+    return t("teamRun.state.thinking");
+  }
+
+  if (value === "done" || value === "completed") {
+    return t("teamRun.state.completed");
+  }
+
+  if (value === "blocked") {
+    return t("teamRun.state.blocked");
+  }
+
+  if (value === "stuck") {
+    return t("teamRun.state.stuck");
   }
 
   return titleCase(value);
 }
 
-function humanizeActivityLabel(value: string | null) {
+function humanizeActivityLabel(
+  value: string | null,
+  t: ReturnType<typeof useI18n>["t"],
+) {
   if (!value) {
     return null;
   }
 
   if (value === "session_artifacts") {
-    return "Session Artifacts";
+    return t("teamRun.agent.sessionArtifacts");
   }
 
   return value.includes("_") ? titleCase(value) : value;
@@ -41,14 +57,18 @@ function humanizeActivityLabel(value: string | null) {
 
 function agentOriginLabel(agent: TeamRunAgentRecord) {
   if (!agent.sourceTeamAssignmentId && !agent.sourceTeamAgentId) {
-    return "Runtime agent";
+    return "runtime";
   }
 
-  return "Team agent";
+  return "team";
 }
 
-function workLabel(agent: TeamRunAgentRecord) {
-  return agent.currentWork || humanizeActivityLabel(agent.lastToolActivity) || "Standing by";
+function workLabel(agent: TeamRunAgentRecord, t: ReturnType<typeof useI18n>["t"]) {
+  return (
+    agent.currentWork ||
+    humanizeActivityLabel(agent.lastToolActivity, t) ||
+    t("teamRun.agent.standingBy")
+  );
 }
 
 function latestAgentEvent(events: TeamRunEventRecord[], agentId: string) {
@@ -75,20 +95,26 @@ function agentStatusTone(status: string) {
   }
 }
 
-function toolStateLabel(agent: TeamRunAgentRecord) {
-  return humanizeActivityLabel(agent.lastToolActivity) ?? "No tool activity yet";
+function toolStateLabel(agent: TeamRunAgentRecord, t: ReturnType<typeof useI18n>["t"]) {
+  return humanizeActivityLabel(agent.lastToolActivity, t) ?? t("teamRun.agent.noToolActivity");
 }
 
-function latestUpdateLabel(events: TeamRunEventRecord[], agent: TeamRunAgentRecord) {
+function latestUpdateLabel(
+  events: TeamRunEventRecord[],
+  agent: TeamRunAgentRecord,
+  t: ReturnType<typeof useI18n>["t"],
+) {
   const event = latestAgentEvent(events, agent.id);
   if (!event) {
-    return "No session update yet";
+    return t("teamRun.agent.noSessionUpdate");
   }
 
   return event.title;
 }
 
 export function AgentTeamStrip({ agents, events, leadAgentId }: AgentTeamStripProps) {
+  const { t } = useI18n();
+
   return (
     <section aria-label="Agent team strip" className="agent-team-strip">
       {agents.map((agent) => {
@@ -108,33 +134,41 @@ export function AgentTeamStrip({ agents, events, leadAgentId }: AgentTeamStripPr
                   <span>
                     {agent.role}
                     {" · "}
-                    {agentOriginLabel(agent)}
+                    {agentOriginLabel(agent) === "runtime"
+                      ? t("teamRun.agent.runtime")
+                      : t("teamRun.agent.team")}
                   </span>
                 </div>
               </div>
               <div className="agent-team-strip__presence">
-                {isLead ? <span className="agent-team-strip__lead">Lead agent</span> : null}
+                {isLead ? <span className="agent-team-strip__lead">{t("teamRun.agent.lead")}</span> : null}
                 <span className="agent-team-strip__status">
                   <span
                     aria-hidden="true"
                     className={`agent-team-strip__status-light agent-team-strip__status-light--${agentStatusTone(agent.status)}`}
                   />
-                  {formatAgentStatus(agent.status)}
+                  {formatAgentStatus(agent.status, t)}
                 </span>
               </div>
             </div>
             <div className="agent-team-strip__detail-stack">
               <div className="agent-team-strip__detail">
-                <span className="agent-team-strip__detail-label">Current work</span>
-                <p>{workLabel(agent)}</p>
+                <span className="agent-team-strip__detail-label">
+                  {t("teamRun.agents.field.responsibility")}
+                </span>
+                <p>{agent.responsibility || t("teamRun.agent.standingBy")}</p>
               </div>
               <div className="agent-team-strip__detail">
-                <span className="agent-team-strip__detail-label">Latest update</span>
-                <p>{latestUpdateLabel(events, agent)}</p>
+                <span className="agent-team-strip__detail-label">{t("teamRun.agent.currentWork")}</span>
+                <p>{workLabel(agent, t)}</p>
               </div>
               <div className="agent-team-strip__detail">
-                <span className="agent-team-strip__detail-label">Tool state</span>
-                <p>{toolStateLabel(agent)}</p>
+                <span className="agent-team-strip__detail-label">{t("teamRun.agent.latestUpdate")}</span>
+                <p>{latestUpdateLabel(events, agent, t)}</p>
+              </div>
+              <div className="agent-team-strip__detail">
+                <span className="agent-team-strip__detail-label">{t("teamRun.agent.toolState")}</span>
+                <p>{toolStateLabel(agent, t)}</p>
               </div>
             </div>
           </article>

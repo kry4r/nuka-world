@@ -1,5 +1,5 @@
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "./ChatPage";
 import type { MemoryCandidate } from "@/lib/memory";
 import type { ProviderRecord } from "@/lib/providers";
@@ -14,6 +14,8 @@ import type {
   WorkspaceSessionSummary,
 } from "@/lib/workspace";
 import { findText, renderIntoDocument } from "@/test/render";
+
+const DESKTOP_LOCALE_STORAGE_KEY = "nuka.desktop.locale";
 
 type RouteWorldPromptMockResult = {
   session: {
@@ -420,6 +422,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const cleanups: Array<() => Promise<void>> = [];
 
+beforeEach(() => {
+  window.localStorage.setItem(DESKTOP_LOCALE_STORAGE_KEY, "en-US");
+});
+
 function getButtonByText(container: HTMLElement, text: string) {
   const normalizedText = text.trim().toLowerCase();
 
@@ -567,6 +573,7 @@ function captureToasts() {
 }
 
 afterEach(async () => {
+  window.localStorage.clear();
   invokeMock.mockClear();
   invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
     switch (command) {
@@ -1861,7 +1868,7 @@ describe("ChatPage", () => {
     expect(findText(view.container, "Branch follow-up summary")).toBeTruthy();
   });
 
-  it("shows the lead agent, current work, and tool activity for an active team run", async () => {
+  it("keeps the active team run transcript-first and shows agent activity under the Agents view", async () => {
     listWorkspaceSessionsMock.mockResolvedValueOnce([
       {
         id: "run-release",
@@ -1912,11 +1919,15 @@ describe("ChatPage", () => {
     });
 
     expect(findText(view.container, "Coordinator")).toBeTruthy();
-    expect(findText(view.container, "Using Search Knowledge")).toBeTruthy();
     expect(findText(view.container, "Checkpoint summary")).toBeTruthy();
     expect(findText(view.container, "checkpoint_summary")).toBeFalsy();
     expect(findText(view.container, "waiting_for_user")).toBeFalsy();
     expect(findText(view.container, "Add Agent")).toBeFalsy();
+
+    await clickButton(view.container, "Agents");
+
+    expect(findText(view.container, "Using Search Knowledge")).toBeTruthy();
+    expect(findText(view.container, "Check evidence gaps.")).toBeTruthy();
   });
 
   it("continues a run and adds a runtime agent from the team run surface", async () => {
@@ -1993,7 +2004,7 @@ describe("ChatPage", () => {
 
     await setFieldValue(
       view.container,
-      "Team run follow-up",
+      "Follow-up",
       "Re-check the remaining validation blocker.",
     );
     await clickButton(view.container, "Continue Run");
@@ -2006,11 +2017,11 @@ describe("ChatPage", () => {
 
     await clickButton(view.container, "Agents");
     await clickButton(view.container, "Add Agent");
-    await setFieldValue(view.container, "Agent name", "Scribe");
-    await setFieldValue(view.container, "Agent role", "Writer");
+    await setFieldValue(view.container, "Name", "Scribe");
+    await setFieldValue(view.container, "Role", "Writer");
     await setFieldValue(
       view.container,
-      "Agent responsibility",
+      "Responsibility",
       "Capture the final handoff.",
     );
     await clickButton(view.container, "Invite Agent");

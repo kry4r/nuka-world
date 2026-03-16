@@ -1,8 +1,10 @@
 import { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TeamRunPanel } from "./TeamRunPanel";
 import { findText, renderIntoDocument } from "@/test/render";
 import type { TeamRunRecord } from "@/lib/team";
+
+const DESKTOP_LOCALE_STORAGE_KEY = "nuka.desktop.locale";
 
 function sampleRun(): TeamRunRecord {
   return {
@@ -108,8 +110,16 @@ async function clickButton(container: HTMLElement, text: string) {
   });
 }
 
+beforeEach(() => {
+  window.localStorage.setItem(DESKTOP_LOCALE_STORAGE_KEY, "en-US");
+});
+
+afterEach(() => {
+  window.localStorage.clear();
+});
+
 describe("TeamRunPanel", () => {
-  it("wraps the conversation stack in a dedicated view scroll container", async () => {
+  it("keeps the conversation view focused on run details and transcript content", async () => {
     const view = await renderIntoDocument(
       <TeamRunPanel
         isBusy={false}
@@ -129,7 +139,7 @@ describe("TeamRunPanel", () => {
     const charterSummary = view.container.querySelector(".run-charter-card__summary");
 
     expect(viewScroll).toBeTruthy();
-    expect(viewScroll?.contains(strip ?? null)).toBe(true);
+    expect(viewScroll?.contains(strip ?? null)).toBe(false);
     expect(viewScroll?.contains(charter ?? null)).toBe(true);
     expect(viewScroll?.contains(feed ?? null)).toBe(true);
     expect(viewSummary).toBeFalsy();
@@ -137,8 +147,11 @@ describe("TeamRunPanel", () => {
     expect(statusPill).toBeFalsy();
     expect(charterSummary?.textContent?.includes("Waiting for input")).toBe(false);
     expect(charterSummary?.textContent?.includes("Review")).toBe(false);
-    expect(findText(view.container, "Current work")).toBeTruthy();
+    expect(findText(view.container, "Show the run context")).toBeFalsy();
+    expect(findText(view.container, "Current work")).toBeFalsy();
     expect(findText(view.container, "Add Agent")).toBeFalsy();
+    expect(view.container.querySelector(".run-event-feed__identity-line")).toBeTruthy();
+    expect(findText(view.container, "Coordinator")).toBeTruthy();
 
     await view.cleanup();
   });
@@ -211,6 +224,8 @@ describe("TeamRunPanel", () => {
     expect(findText(view.container, "Send the next follow-up from the composer below.")).toBeTruthy();
     expect(findText(view.container, "Run blocked")).toBeTruthy();
     expect(findText(view.container, "Run status")).toBeFalsy();
+    expect(findText(view.container, "Run details")).toBeFalsy();
+    expect(view.container.querySelector(".run-charter-card")).toBeFalsy();
     expect(view.container.querySelector(".team-run-panel__status-header .status-badge")).toBeFalsy();
 
     await clickButton(view.container, "Agents");
@@ -220,9 +235,26 @@ describe("TeamRunPanel", () => {
     expect(findText(view.container, "Current work")).toBeTruthy();
     expect(findText(view.container, "Latest update")).toBeTruthy();
     expect(findText(view.container, "Tool state")).toBeTruthy();
+    expect(findText(view.container, "Responsibility")).toBeTruthy();
+    expect(findText(view.container, "Validate the final notes")).toBeTruthy();
     expect(findText(view.container, "Lead agent")).toBeTruthy();
     expect(findText(view.container, "Round 1 checkpoint")).toBeTruthy();
     expect(findText(view.container, "Add Agent")).toBeTruthy();
+    expect(
+      findText(view.container, "Add another runtime agent when this run needs one."),
+    ).toBeFalsy();
+    expect(
+      findText(
+        view.container,
+        "Keep follow-ups in the footer. Use this only for another active worker.",
+      ),
+    ).toBeFalsy();
+    expect(
+      findText(
+        view.container,
+        "Keep this session focused. Bring in another runtime agent only when the active team needs extra coverage.",
+      ),
+    ).toBeFalsy();
     expect(findText(view.container, "Recent activity")).toBeFalsy();
 
     await clickButton(view.container, "Files");
