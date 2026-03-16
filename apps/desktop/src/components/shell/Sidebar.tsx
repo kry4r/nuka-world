@@ -1,5 +1,6 @@
 import { NukaLogo } from "@/components/brand/NukaLogo";
 import { useAppRuntimeStatus } from "@/hooks/useAppRuntimeStatus";
+import { useI18n } from "@/lib/i18n";
 import type { ShellNavigationItem, ShellPageId } from "./shellNavigation";
 
 type SidebarProps = {
@@ -32,6 +33,7 @@ function SidebarIcon({ page }: { page: ShellPageId }) {
 }
 
 export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
+  const { t } = useI18n();
   const { error, status } = useAppRuntimeStatus();
   const primaryItems = navigation.filter((item) => item.id !== "settings");
   const settingsItem = navigation.find((item) => item.id === "settings");
@@ -39,12 +41,12 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
   const providerKind = error ? "degraded" : provider?.kind ?? "checking";
   const providerLabel =
     providerKind === "ready"
-      ? (provider?.label ?? "Configured provider")
+      ? (provider?.label ?? t("sidebar.provider.configured"))
       : providerKind === "missing"
-        ? "No provider configured"
+        ? t("sidebar.provider.missing")
         : providerKind === "checking"
-          ? "Checking provider status"
-          : "Provider unavailable";
+          ? t("sidebar.provider.checking")
+          : t("sidebar.provider.unavailable");
   const providerStatusClass =
     providerKind === "ready"
       ? "is-ready"
@@ -96,7 +98,7 @@ export function Sidebar({ activePage, navigation, onNavigate }: SidebarProps) {
           onClick={() => onNavigate("settings")}
           type="button"
         >
-          Open Settings
+          {t("sidebar.provider.openSettings")}
         </button>
       </section>
 

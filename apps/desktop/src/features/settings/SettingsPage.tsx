@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { FlatSelect } from "@/components/ui/FlatSelect";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { RUNTIME_STATUS_REFRESH_EVENT } from "@/hooks/useAppRuntimeStatus";
+import { type DesktopLocale, useI18n } from "@/lib/i18n";
 import {
   clearProviderSecret,
   importProviderFromEnv,
@@ -14,7 +15,8 @@ import { emitToast } from "@/lib/toast";
 
 type SettingsSectionId =
   | "providers"
-  | "runtime";
+  | "runtime"
+  | "appearance";
 
 type SettingsPayload = {
   defaultProviderId: string;
@@ -41,17 +43,17 @@ type SettingsPayload = {
 
 type SettingsSectionDefinition = {
   id: SettingsSectionId;
-  label: string;
 };
 
 const SECTION_DEFINITIONS: SettingsSectionDefinition[] = [
   {
     id: "providers",
-    label: "Providers",
   },
   {
     id: "runtime",
-    label: "Runtime",
+  },
+  {
+    id: "appearance",
   },
 ];
 
@@ -145,6 +147,7 @@ function requestRuntimeStatusRefresh() {
 }
 
 export function SettingsPage() {
+  const { locale, setLocale, t } = useI18n();
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("providers");
   const [settings, setSettings] = useState<SettingsPayload>(EMPTY_SETTINGS);
@@ -191,9 +194,11 @@ export function SettingsPage() {
     };
   }, []);
 
-  const activeDefinition =
-    SECTION_DEFINITIONS.find((section) => section.id === activeSection) ??
+  const activeDefinition = SECTION_DEFINITIONS.find((section) => section.id === activeSection) ??
     SECTION_DEFINITIONS[0];
+  const activeSectionLabel = activeDefinition
+    ? t(`settings.nav.${activeDefinition.id}` as const)
+    : t("settings.nav.providers");
 
   const runtimeDirty = useMemo(
     () =>
@@ -276,7 +281,7 @@ export function SettingsPage() {
       setInitialSettings(saved);
       requestRuntimeStatusRefresh();
       emitToast({
-        message: "Runtime settings saved.",
+        message: t("settings.toast.runtimeSaved"),
         tone: "success",
       });
     } catch (caughtError) {
@@ -316,7 +321,7 @@ export function SettingsPage() {
       setInitialSettings(savedSettings);
       requestRuntimeStatusRefresh();
       emitToast({
-        message: "Provider changes saved.",
+        message: t("settings.toast.providersSaved"),
         tone: "success",
       });
     } catch (caughtError) {
@@ -358,7 +363,7 @@ export function SettingsPage() {
       });
       setActiveSection("providers");
       emitToast({
-        message: `Imported provider: ${imported.name}`,
+        message: t("settings.toast.providerImported", { value: imported.name }),
         tone: "success",
       });
     } catch (caughtError) {
@@ -388,7 +393,7 @@ export function SettingsPage() {
         current.map((item, itemIndex) => (itemIndex === index ? clearedProvider : item)),
       );
       emitToast({
-        message: `Secret cleared: ${clearedProvider.name}`,
+        message: t("settings.toast.secretCleared", { value: clearedProvider.name }),
         tone: "success",
       });
     } catch (caughtError) {
@@ -407,7 +412,7 @@ export function SettingsPage() {
   ) => (
     <header className="settings-directory__header">
       <div className="settings-directory__header-copy">
-        <span className="settings-directory__eyebrow">{activeDefinition.label}</span>
+        <span className="settings-directory__eyebrow">{activeSectionLabel}</span>
         <h1>{title}</h1>
       </div>
       {actions ? <div className="settings-directory__header-actions">{actions}</div> : null}
@@ -417,7 +422,7 @@ export function SettingsPage() {
   const renderProvidersSection = () => (
     <>
       {renderSectionHeader(
-        "Providers",
+        t("settings.providers.title"),
         <div className="settings-panel__actions">
           <button
             className="settings-button"
@@ -425,14 +430,14 @@ export function SettingsPage() {
             onClick={() => void handleImportProviderFromEnv()}
             type="button"
           >
-            Import From Env
+            {t("settings.providers.import")}
           </button>
           <button
             className="settings-button settings-button--accent"
             onClick={handleAddProvider}
             type="button"
           >
-            + Add Provider
+            {t("settings.providers.add")}
           </button>
         </div>,
       )}
@@ -442,24 +447,30 @@ export function SettingsPage() {
           className="settings-panel__summary"
           data-testid="settings-provider-routing-summary"
         >
-          <StatusBadge tone="soft">{`Default ${defaultProviderLabel}`}</StatusBadge>
-          <StatusBadge tone="soft">{`Fallback ${fallbackProviderLabel}`}</StatusBadge>
+          <StatusBadge tone="soft">
+            {t("settings.providers.summary.default", { value: defaultProviderLabel })}
+          </StatusBadge>
+          <StatusBadge tone="soft">
+            {t("settings.providers.summary.fallback", { value: fallbackProviderLabel })}
+          </StatusBadge>
           <StatusBadge tone={settings.connectionChecks ? "accent" : "warning"}>
-            {settings.connectionChecks ? "Checks on" : "Checks off"}
+            {settings.connectionChecks
+              ? t("settings.providers.summary.checks.on")
+              : t("settings.providers.summary.checks.off")}
           </StatusBadge>
         </div>
 
         <div className="settings-form-grid">
           <label className="settings-form-field">
-            <span className="settings-form-field__label">Default Provider</span>
+            <span className="settings-form-field__label">{t("settings.providers.default.label")}</span>
             <FlatSelect
-              aria-label="Default Provider"
+              aria-label={t("settings.providers.default.label")}
               className="settings-select"
               onChange={(event) => updateSetting("defaultProviderId", event.target.value)}
               shellClassName="settings-select-shell"
               value={settings.defaultProviderId}
             >
-              <option value="">No default provider</option>
+              <option value="">{t("settings.providers.default.none")}</option>
               {providers.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.name}
@@ -469,15 +480,15 @@ export function SettingsPage() {
           </label>
 
           <label className="settings-form-field">
-            <span className="settings-form-field__label">Fallback Provider</span>
+            <span className="settings-form-field__label">{t("settings.providers.fallback.label")}</span>
             <FlatSelect
-              aria-label="Fallback Provider"
+              aria-label={t("settings.providers.fallback.label")}
               className="settings-select"
               onChange={(event) => updateSetting("fallbackProviderId", event.target.value)}
               shellClassName="settings-select-shell"
               value={settings.fallbackProviderId}
             >
-              <option value="">No fallback provider</option>
+              <option value="">{t("settings.providers.fallback.none")}</option>
               {providers.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.name}
@@ -489,10 +500,10 @@ export function SettingsPage() {
 
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
-            <strong>Connection checks</strong>
+            <strong>{t("settings.providers.connectionChecks")}</strong>
           </span>
           <input
-            aria-label="Connection checks"
+            aria-label={t("settings.providers.connectionChecks")}
             checked={settings.connectionChecks}
             className="settings-checkbox"
             onChange={(event) => updateSetting("connectionChecks", event.target.checked)}
@@ -507,26 +518,30 @@ export function SettingsPage() {
             <section className="settings-provider-card" key={provider.id}>
               <div className="settings-provider-card__header">
                 <div className="settings-provider-card__title">
-                  <strong>{provider.name || "Untitled Provider"}</strong>
+                  <strong>{provider.name || t("settings.providers.card.untitled")}</strong>
                 </div>
                 <div className="settings-panel__summary">
                   <StatusBadge tone="soft">
-                    {provider.local ? "Local runtime" : "Remote provider"}
+                    {provider.local
+                      ? t("settings.providers.card.local")
+                      : t("settings.providers.card.remote")}
                   </StatusBadge>
                   <StatusBadge
                     data-testid="provider-status-badge"
                     tone={provider.enabled ? "accent" : "warning"}
                   >
-                    {provider.enabled ? "Enabled" : "Disabled"}
+                    {provider.enabled
+                      ? t("settings.providers.card.enabled")
+                      : t("settings.providers.card.disabled")}
                   </StatusBadge>
                 </div>
               </div>
 
               <div className="settings-form-grid">
                 <label className="settings-form-field">
-                  <span className="settings-form-field__label">Provider name</span>
+                  <span className="settings-form-field__label">{t("settings.providers.field.name")}</span>
                   <input
-                    aria-label="Provider name"
+                    aria-label={t("settings.providers.field.name")}
                     className="settings-input"
                     onChange={(event) => updateProvider(index, "name", event.target.value)}
                     value={provider.name}
@@ -534,9 +549,9 @@ export function SettingsPage() {
                 </label>
 
                 <label className="settings-form-field">
-                  <span className="settings-form-field__label">Provider model</span>
+                  <span className="settings-form-field__label">{t("settings.providers.field.model")}</span>
                   <input
-                    aria-label="Provider model"
+                    aria-label={t("settings.providers.field.model")}
                     className="settings-input"
                     onChange={(event) => updateProvider(index, "model", event.target.value)}
                     value={provider.model}
@@ -544,9 +559,9 @@ export function SettingsPage() {
                 </label>
 
                 <label className="settings-form-field settings-form-field--full">
-                  <span className="settings-form-field__label">Provider base URL</span>
+                  <span className="settings-form-field__label">{t("settings.providers.field.baseUrl")}</span>
                   <input
-                    aria-label="Provider base URL"
+                    aria-label={t("settings.providers.field.baseUrl")}
                     className="settings-input"
                     onChange={(event) => updateProvider(index, "baseUrl", event.target.value)}
                     value={provider.baseUrl}
@@ -554,18 +569,26 @@ export function SettingsPage() {
                 </label>
 
                 <label className="settings-form-field settings-form-field--full">
-                  <span className="settings-form-field__label">Provider API Key</span>
+                  <span className="settings-form-field__label">{t("settings.providers.field.apiKey")}</span>
                   <input
-                    aria-label="Provider API Key"
+                    aria-label={t("settings.providers.field.apiKey")}
                     className="settings-input"
                     onChange={(event) => updateProvider(index, "apiKey", event.target.value)}
-                    placeholder={provider.hasSecret ? "Replace secret" : "Paste API key"}
+                    placeholder={provider.hasSecret
+                      ? t("settings.providers.field.secret.replace")
+                      : t("settings.providers.field.secret.paste")}
                     type="password"
                     value={provider.apiKey}
                   />
                   <div className="settings-form-field__meta">
-                    <span>{provider.hasSecret ? "Secret saved" : "No secret saved"}</span>
-                    {provider.hasSecret ? <span>Replace secret</span> : null}
+                    <span>
+                      {provider.hasSecret
+                        ? t("settings.providers.field.secret.saved")
+                        : t("settings.providers.field.secret.empty")}
+                    </span>
+                    {provider.hasSecret ? (
+                      <span>{t("settings.providers.field.secret.replace")}</span>
+                    ) : null}
                     {provider.hasSecret ? (
                       <button
                         className="settings-button"
@@ -573,7 +596,7 @@ export function SettingsPage() {
                         onClick={() => void handleClearProviderSecret(index)}
                         type="button"
                       >
-                        Clear secret
+                        {t("settings.providers.field.secret.clear")}
                       </button>
                     ) : null}
                   </div>
@@ -582,10 +605,10 @@ export function SettingsPage() {
 
               <label className="settings-toggle-row">
                 <span className="settings-form-field__copy">
-                  <strong>Enabled</strong>
+                  <strong>{t("settings.providers.card.enabled")}</strong>
                 </span>
                 <input
-                  aria-label={`Enable ${provider.name}`}
+                  aria-label={`${t("settings.providers.card.enabled")} ${provider.name}`}
                   checked={provider.enabled}
                   className="settings-checkbox"
                   onChange={(event) => updateProvider(index, "enabled", event.target.checked)}
@@ -603,7 +626,7 @@ export function SettingsPage() {
             onClick={() => void handleSaveProviders()}
             type="button"
           >
-            {isSavingProviders ? "Saving..." : "Save Provider Changes"}
+            {isSavingProviders ? "Saving..." : t("settings.providers.save")}
           </button>
         </div>
       </section>
@@ -612,56 +635,56 @@ export function SettingsPage() {
 
   const renderRuntimeSection = () => (
     <>
-      {renderSectionHeader("Runtime Controls")}
+      {renderSectionHeader(t("settings.runtime.title"))}
 
       <section className="settings-directory__panel">
         <div className="settings-form-grid">
           <label className="settings-form-field settings-form-field--full">
-            <span className="settings-form-field__label">External editor path</span>
+            <span className="settings-form-field__label">{t("settings.runtime.field.externalEditorPath")}</span>
             <input
-              aria-label="External editor path"
+              aria-label={t("settings.runtime.field.externalEditorPath")}
               className="settings-input"
               onChange={(event) => updateSetting("externalEditorPath", event.target.value)}
-              placeholder="Path to editor executable"
+              placeholder={t("settings.runtime.field.externalEditorPath.placeholder")}
               value={settings.externalEditorPath}
             />
           </label>
 
           <label className="settings-form-field">
-            <span className="settings-form-field__label">Close behavior</span>
+            <span className="settings-form-field__label">{t("settings.runtime.field.closeBehavior")}</span>
             <FlatSelect
-              aria-label="Close behavior"
+              aria-label={t("settings.runtime.field.closeBehavior")}
               className="settings-select"
               onChange={(event) => updateSetting("closeBehavior", event.target.value)}
               shellClassName="settings-select-shell"
               value={settings.closeBehavior}
             >
-              <option value="Minimize to tray">Minimize to tray</option>
-              <option value="Quit app">Quit app</option>
+              <option value="Minimize to tray">{t("settings.runtime.field.closeBehavior.minimize")}</option>
+              <option value="Quit app">{t("settings.runtime.field.closeBehavior.quit")}</option>
             </FlatSelect>
           </label>
 
           <label className="settings-form-field">
-            <span className="settings-form-field__label">Logging</span>
+            <span className="settings-form-field__label">{t("settings.runtime.field.logging")}</span>
             <FlatSelect
-              aria-label="Logging"
+              aria-label={t("settings.runtime.field.logging")}
               className="settings-select"
               onChange={(event) => updateSetting("logging", event.target.value)}
               shellClassName="settings-select-shell"
               value={settings.logging}
             >
-              <option value="Standard">Standard</option>
-              <option value="Verbose">Verbose</option>
+              <option value="Standard">{t("settings.runtime.field.logging.standard")}</option>
+              <option value="Verbose">{t("settings.runtime.field.logging.verbose")}</option>
             </FlatSelect>
           </label>
         </div>
 
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
-            <strong>Launch at login</strong>
+            <strong>{t("settings.runtime.toggle.launchAtLogin")}</strong>
           </span>
           <input
-            aria-label="Launch at login"
+            aria-label={t("settings.runtime.toggle.launchAtLogin")}
             checked={settings.launchAtLogin}
             className="settings-checkbox"
             onChange={(event) => updateSetting("launchAtLogin", event.target.checked)}
@@ -671,10 +694,10 @@ export function SettingsPage() {
 
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
-            <strong>Tray resident</strong>
+            <strong>{t("settings.runtime.toggle.trayResident")}</strong>
           </span>
           <input
-            aria-label="Tray resident"
+            aria-label={t("settings.runtime.toggle.trayResident")}
             checked={settings.trayResident}
             className="settings-checkbox"
             onChange={(event) => updateSetting("trayResident", event.target.checked)}
@@ -684,10 +707,10 @@ export function SettingsPage() {
 
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
-            <strong>Background adapters</strong>
+            <strong>{t("settings.runtime.toggle.backgroundAdapters")}</strong>
           </span>
           <input
-            aria-label="Background adapters"
+            aria-label={t("settings.runtime.toggle.backgroundAdapters")}
             checked={settings.backgroundAdapters}
             className="settings-checkbox"
             onChange={(event) => updateSetting("backgroundAdapters", event.target.checked)}
@@ -697,10 +720,10 @@ export function SettingsPage() {
 
         <label className="settings-toggle-row">
           <span className="settings-form-field__copy">
-            <strong>Notifications</strong>
+            <strong>{t("settings.runtime.toggle.notifications")}</strong>
           </span>
           <input
-            aria-label="Notifications"
+            aria-label={t("settings.runtime.toggle.notifications")}
             checked={settings.notifications}
             className="settings-checkbox"
             onChange={(event) => updateSetting("notifications", event.target.checked)}
@@ -715,8 +738,36 @@ export function SettingsPage() {
             onClick={() => void handleSaveSettings(setIsSavingRuntime)}
             type="button"
           >
-            {isSavingRuntime ? "Saving..." : "Save Runtime"}
+            {isSavingRuntime ? "Saving..." : t("settings.runtime.save")}
           </button>
+        </div>
+      </section>
+    </>
+  );
+
+  const renderAppearanceSection = () => (
+    <>
+      {renderSectionHeader(t("settings.appearance.title"))}
+
+      <section className="settings-directory__panel">
+        <div className="settings-form-grid">
+          <label className="settings-form-field">
+            <span className="settings-form-field__label">
+              {t("settings.appearance.field.language")}
+            </span>
+            <FlatSelect
+              aria-label={t("settings.appearance.field.language")}
+              className="settings-select"
+              onChange={(event) => {
+                setLocale(event.target.value as DesktopLocale);
+              }}
+              shellClassName="settings-select-shell"
+              value={locale}
+            >
+              <option value="zh-CN">{t("settings.appearance.option.zh-CN")}</option>
+              <option value="en-US">{t("settings.appearance.option.en-US")}</option>
+            </FlatSelect>
+          </label>
         </div>
       </section>
     </>
@@ -726,13 +777,14 @@ export function SettingsPage() {
     <div className="page-layout settings-page">
       <div className="page-layout__body settings-page__body">
         <aside
-          aria-label="Settings section navigation"
+          aria-label={t("settings.surface.navigation")}
           className="settings-directory"
           data-testid="settings-section-nav"
         >
           <div className="settings-directory__nav">
             {SECTION_DEFINITIONS.map((section) => {
               const isActive = section.id === activeSection;
+              const sectionLabel = t(`settings.nav.${section.id}` as const);
 
               return (
                 <button
@@ -742,7 +794,7 @@ export function SettingsPage() {
                   onClick={() => setActiveSection(section.id)}
                   type="button"
                 >
-                  <span className="settings-directory__nav-label">{section.label}</span>
+                  <span className="settings-directory__nav-label">{sectionLabel}</span>
                 </button>
               );
             })}
@@ -750,14 +802,15 @@ export function SettingsPage() {
         </aside>
 
         <section
-          aria-label="Settings control surface"
+          aria-label={t("settings.surface.controls")}
           className="settings-main settings-directory__content"
           data-testid="settings-control-surface"
         >
-          {!isLoaded ? <div className="settings-loading-state">Loading local settings...</div> : null}
+          {!isLoaded ? <div className="settings-loading-state">{t("settings.loading")}</div> : null}
 
           {isLoaded && activeSection === "providers" ? renderProvidersSection() : null}
           {isLoaded && activeSection === "runtime" ? renderRuntimeSection() : null}
+          {isLoaded && activeSection === "appearance" ? renderAppearanceSection() : null}
         </section>
       </div>
     </div>

@@ -1,7 +1,9 @@
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsPage } from "./SettingsPage";
 import { findText, renderIntoDocument } from "@/test/render";
+
+const DESKTOP_LOCALE_STORAGE_KEY = "nuka.desktop.locale";
 
 const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
   defaultInvokeImplementation: async (
@@ -89,9 +91,14 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const cleanups: Array<() => Promise<void>> = [];
 
+beforeEach(() => {
+  window.localStorage.setItem(DESKTOP_LOCALE_STORAGE_KEY, "en-US");
+});
+
 afterEach(async () => {
   invokeMock.mockClear();
   invokeMock.mockImplementation(defaultInvokeImplementation);
+  window.localStorage.clear();
 
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
@@ -143,7 +150,7 @@ function captureToasts() {
 }
 
 describe("SettingsPage", () => {
-  it("renders only provider and runtime operations in the compact settings nav", async () => {
+  it("renders provider, runtime, and appearance operations in the compact settings nav", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
@@ -151,8 +158,8 @@ describe("SettingsPage", () => {
     expect(view.container.querySelector('[data-testid="settings-control-surface"]')).toBeTruthy();
     expect(findText(view.container, "Providers")).toBeTruthy();
     expect(findText(view.container, "Runtime")).toBeTruthy();
+    expect(findText(view.container, "Appearance")).toBeTruthy();
     expect(findText(view.container, "General")).toBeFalsy();
-    expect(findText(view.container, "Appearance")).toBeFalsy();
     expect(findText(view.container, "Shortcuts")).toBeFalsy();
     expect(findText(view.container, "Default Local")).toBeTruthy();
     expect(findText(view.container, "Fallback Local")).toBeTruthy();
@@ -398,15 +405,57 @@ describe("SettingsPage", () => {
     expect(view.container.textContent).not.toContain("Keyboard editor");
   });
 
-  it("removes non-operational appearance controls from P0 settings", async () => {
+  it("keeps only the P0 language control in appearance settings", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
-    expect(findText(view.container, "Appearance")).toBeFalsy();
+    const appearanceButton = findButton(view.container, "Appearance");
+    expect(appearanceButton).toBeTruthy();
+
+    await act(async () => {
+      appearanceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(findText(view.container, "Appearance")).toBeTruthy();
+    expect(findText(view.container, "Interface language")).toBeTruthy();
+    expect(findButton(view.container, "Save Appearance")).toBeFalsy();
     expect(findText(view.container, "Appearance Defaults")).toBeFalsy();
     expect(findText(view.container, "Interface Font")).toBeFalsy();
     expect(findText(view.container, "Message Font")).toBeFalsy();
-    expect(findButton(view.container, "Save Appearance")).toBeFalsy();
+  });
+
+  it("updates the interface language locally without saving backend settings", async () => {
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    const appearanceButton = findButton(view.container, "Appearance");
+    expect(appearanceButton).toBeTruthy();
+
+    await act(async () => {
+      appearanceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const languageSelect = view.container.querySelector(
+      'select[aria-label="Interface language"]',
+    ) as HTMLSelectElement | null;
+
+    expect(languageSelect?.value).toBe("en-US");
+
+    await act(async () => {
+      if (!languageSelect) {
+        throw new Error("Interface language select missing");
+      }
+
+      setFormValue(languageSelect, "zh-CN");
+    });
+
+    expect(window.localStorage.getItem(DESKTOP_LOCALE_STORAGE_KEY)).toBe("zh-CN");
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "save_settings",
+      expect.objectContaining({
+        payload: expect.objectContaining({ language: expect.any(String) }),
+      }),
+    );
   });
 
   it("adds a provider draft and saves it through tauri", async () => {

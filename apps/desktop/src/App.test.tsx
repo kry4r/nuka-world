@@ -1,7 +1,9 @@
 import App from "./App";
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findText, renderIntoDocument } from "./test/render";
+
+const DESKTOP_LOCALE_STORAGE_KEY = "nuka.desktop.locale";
 
 const runtimeStatusState = {
   provider: {
@@ -226,12 +228,38 @@ async function setComposerValue(container: HTMLElement, value: string) {
   });
 }
 
+async function setSelectValue(container: HTMLElement, ariaLabel: string, value: string) {
+  const select = container.querySelector(
+    `select[aria-label="${ariaLabel}"]`,
+  ) as HTMLSelectElement | null;
+
+  await act(async () => {
+    if (!select) {
+      throw new Error(`select missing: ${ariaLabel}`);
+    }
+
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(select, value);
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await Promise.resolve();
+  });
+}
+
+beforeEach(() => {
+  window.localStorage.setItem(DESKTOP_LOCALE_STORAGE_KEY, "en-US");
+});
+
 afterEach(async () => {
   invokeMock.mockClear();
   appWindowControls.close.mockClear();
   appWindowControls.minimize.mockClear();
   appWindowControls.startDragging.mockClear();
   appWindowControls.toggleMaximize.mockClear();
+  window.localStorage.clear();
   runtimeStatusState.provider.kind = "ready";
   runtimeStatusState.provider.message = "Provider ready";
   runtimeStatusState.provider.label = "Local Provider";
@@ -245,6 +273,36 @@ afterEach(async () => {
 });
 
 describe("App shell", () => {
+  it("defaults the desktop shell to Chinese and persists locale changes from settings", async () => {
+    window.localStorage.removeItem(DESKTOP_LOCALE_STORAGE_KEY);
+
+    const firstView = await renderIntoDocument(<App />);
+    cleanups.push(firstView.cleanup);
+
+    expect(findText(firstView.container, "对话")).toBeTruthy();
+    expect(findText(firstView.container, "设置")).toBeTruthy();
+    expect(findText(firstView.container, "打开设置")).toBeTruthy();
+    expect(findText(firstView.container, "Chat")).toBeFalsy();
+    expect(findText(firstView.container, "Open Settings")).toBeFalsy();
+
+    await clickButton(firstView.container, "设置");
+    await clickButton(firstView.container, "外观");
+    await setSelectValue(firstView.container, "界面语言", "en-US");
+
+    expect(findText(firstView.container, "Chat")).toBeTruthy();
+    expect(findText(firstView.container, "Settings")).toBeTruthy();
+    expect(window.localStorage.getItem(DESKTOP_LOCALE_STORAGE_KEY)).toBe("en-US");
+
+    await firstView.cleanup();
+
+    const secondView = await renderIntoDocument(<App />);
+    cleanups.push(secondView.cleanup);
+
+    expect(findText(secondView.container, "Chat")).toBeTruthy();
+    expect(findText(secondView.container, "Settings")).toBeTruthy();
+    expect(findText(secondView.container, "对话")).toBeFalsy();
+  });
+
   it("shows Team in navigation and no longer shows Workflow in the shell nav", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
@@ -523,7 +581,7 @@ describe("App shell", () => {
     cleanups.push(view.cleanup);
 
     expect(view.container.querySelector('.app-shell__page[data-active-page="chat"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="World chat landing hero"]')).toBeTruthy();
+    expect(view.container.querySelector('[aria-label="Chat landing hero"]')).toBeTruthy();
     expect(findText(view.container, "Direct chat")).toBeFalsy();
     expect(findText(view.container, "Release Team Run")).toBeFalsy();
   });

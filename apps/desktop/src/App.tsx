@@ -7,6 +7,7 @@ import { KnowledgePage } from "./features/knowledge/KnowledgePage";
 import { MemoryPage } from "./features/memory/MemoryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { TeamPage } from "./features/team/TeamPage";
+import { useI18n } from "./lib/i18n";
 
 type AppPage = ShellPageId;
 
@@ -17,6 +18,7 @@ type AppPageDefinition = {
 
 export default function App() {
   const [activePage, setActivePage] = useState<AppPage>("chat");
+  const { t } = useI18n();
 
   useEffect(() => {
     const handleNavigation = (event: Event) => {
@@ -37,27 +39,27 @@ export default function App() {
 
   const pageDefinitions: Record<AppPage, AppPageDefinition> = {
     chat: {
-      label: "Chat",
+      label: t("nav.chat"),
       render: () => <ChatPage />,
     },
     team: {
-      label: "Team",
+      label: t("nav.team"),
       render: () => <TeamPage />,
     },
     agents: {
-      label: "Agents",
+      label: t("nav.agents"),
       render: () => <AgentsPage />,
     },
     memory: {
-      label: "Memory",
+      label: t("nav.memory"),
       render: () => <MemoryPage />,
     },
     knowledge: {
-      label: "Knowledge",
+      label: t("nav.knowledge"),
       render: () => <KnowledgePage />,
     },
     settings: {
-      label: "Settings",
+      label: t("nav.settings"),
       render: () => <SettingsPage />,
     },
   };
