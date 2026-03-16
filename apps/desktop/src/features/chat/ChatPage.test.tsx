@@ -2328,6 +2328,7 @@ describe("ChatPage", () => {
     ) as HTMLButtonElement | null;
 
     expect(view.container.querySelector('[data-testid="chat-routing-state"]')).toBeFalsy();
+    expect(routeButton?.textContent).toContain("Fallback");
     expect(routeButton?.textContent).toContain("gpt-4.1-mini");
   });
 
@@ -2359,6 +2360,7 @@ describe("ChatPage", () => {
     expect(routeButton && utilities?.contains(routeButton)).toBe(true);
     expect(draftButton && utilities?.contains(draftButton)).toBe(true);
     expect(sendButton && submit?.contains(sendButton)).toBe(true);
+    expect(routeButton?.textContent).toContain("Local");
     expect(routeButton?.textContent).toContain("gpt-oss");
     expect(routeButton?.textContent).not.toContain("Desktop default");
     expect(draftButton?.className).toContain("composer__icon-action");

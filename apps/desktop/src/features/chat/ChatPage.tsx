@@ -138,6 +138,11 @@ function routeDraftFromState(routing: ProviderRoutingState | null): ProviderRout
   };
 }
 
+function formatRouteSummary(providerLabel: string | null, modelLabel: string | null) {
+  const parts = [providerLabel?.trim(), modelLabel?.trim()].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "Desktop default";
+}
+
 function formatRunStatus(status: string) {
   return status.replace(/_/g, " ");
 }
@@ -742,8 +747,20 @@ export function ChatPage() {
     activeSessionProvider?.model ??
     activeDirectProviderRecord?.model ??
     "";
+  const effectiveProviderLabel =
+    activeSessionProvider?.name ??
+    (activeRouting?.effectiveProviderId
+      ? availableProviders.find((provider) => provider.id === activeRouting.effectiveProviderId)?.name ??
+        activeRouting.effectiveProviderId
+      : activeDirectProviderRecord?.name ?? null);
+  const requestedProviderLabel = routeDraft.requestedProviderId
+    ? availableProviders.find((provider) => provider.id === routeDraft.requestedProviderId)?.name ??
+      routeDraft.requestedProviderId
+    : null;
   const routeSummary =
-    (!activeTeamRun && effectiveModelLabel) || routeDraft.requestedModel.trim() || "Desktop default";
+    !activeTeamRun && (effectiveProviderLabel || effectiveModelLabel)
+      ? formatRouteSummary(effectiveProviderLabel, effectiveModelLabel)
+      : formatRouteSummary(requestedProviderLabel, routeDraft.requestedModel.trim() || null);
   const routeControls = routeMenuOpen ? (
     <div className="composer__route-menu" data-testid="chat-route-controls">
       <label className="chat-route-field">
