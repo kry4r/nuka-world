@@ -23,7 +23,7 @@ export function SessionTabs({
   return (
     <div
       aria-label="Workspace sessions"
-      className="session-tabs session-tabs--scrollable session-tabs--browser"
+      className="session-tabs session-tabs--scrollable session-tabs--browser session-tabs--dense"
       role="tablist"
     >
       {sessions.map((session) => {
@@ -60,16 +60,20 @@ export function SessionTabs({
               title={session.title}
               type="button"
             >
-              <span className="session-tab__title-row">
+              <span className="session-tab__content">
                 <span className="session-tab__title">{session.title}</span>
-                {markers.map((marker) => (
-                  <span
-                    className={`session-tab__marker session-tab__marker--${marker.toLowerCase().replace(/\s+/g, "-")}`}
-                    key={`${session.id}-${marker}`}
-                  >
-                    {marker}
+                {markers.length > 0 ? (
+                  <span className="session-tab__markers">
+                    {markers.map((marker) => (
+                      <span
+                        className={`session-tab__marker session-tab__marker--${marker.toLowerCase().replace(/\s+/g, "-")}`}
+                        key={`${session.id}-${marker}`}
+                      >
+                        {marker}
+                      </span>
+                    ))}
                   </span>
-                ))}
+                ) : null}
               </span>
             </button>
             <button

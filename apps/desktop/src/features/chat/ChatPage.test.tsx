@@ -1218,10 +1218,13 @@ describe("ChatPage", () => {
 
     expect(tabList?.className).toContain("session-tabs--scrollable");
     expect(tabList?.className).toContain("session-tabs--browser");
+    expect(tabList?.className).toContain("session-tabs--dense");
     expect(tabs.length).toBeGreaterThan(1);
     expect(view.container.querySelector(".session-tab__meta")).toBeFalsy();
     expect(view.container.querySelector(".session-tab__kind")).toBeFalsy();
-    expect(view.container.querySelectorAll(".session-tab__title-row")).toHaveLength(tabs.length);
+    expect(view.container.querySelectorAll(".session-tab__content")).toHaveLength(tabs.length);
+    expect(view.container.querySelectorAll(".session-tab__markers")).toHaveLength(1);
+    expect(view.container.querySelector(".session-tab__title-row")).toBeFalsy();
     expect(titlebar).toBeTruthy();
     expect(titlebar?.textContent).toContain("Chat");
     expect(title?.textContent).toContain("Design Review Chat");

@@ -1122,7 +1122,7 @@ button {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  align-items: flex-start;
+  align-items: center;
   padding: 0 2px 4px;
   scrollbar-width: thin;
 }
@@ -1131,12 +1131,17 @@ button {
   scroll-snap-type: x proximity;
 }
 
+.session-tabs--dense {
+  gap: 6px;
+  padding-bottom: 2px;
+}
+
 .session-tab-shell {
   position: relative;
   flex: 0 0 auto;
   width: fit-content;
-  min-width: 168px;
-  max-width: 236px;
+  min-width: 156px;
+  max-width: 220px;
   scroll-snap-align: start;
 }
 
@@ -1145,11 +1150,11 @@ button {
   width: 100%;
   min-width: 0;
   align-items: center;
-  justify-content: center;
-  padding: 9px 34px 9px 12px;
+  justify-content: flex-start;
+  padding: 7px 30px 7px 10px;
   border: 1px solid rgba(210, 199, 184, 0.78);
-  border-radius: 16px 16px 10px 10px;
-  background: linear-gradient(180deg, rgba(246, 239, 230, 0.88) 0%, rgba(239, 231, 220, 0.78) 100%);
+  border-radius: 14px 14px 8px 8px;
+  background: linear-gradient(180deg, rgba(248, 242, 234, 0.92) 0%, rgba(241, 233, 222, 0.86) 100%);
   color: var(--color-text);
   text-align: left;
   transition:
@@ -1164,27 +1169,35 @@ button {
   border-color: rgba(181, 153, 112, 0.92);
   background: rgba(255, 252, 248, 0.98);
   box-shadow:
-    0 12px 20px rgba(114, 92, 61, 0.1),
+    0 6px 12px rgba(114, 92, 61, 0.06),
     0 1px 0 rgba(255, 252, 248, 0.98);
-  transform: translateY(1px);
+  transform: none;
 }
 
-.session-tab__title-row {
+.session-tab__content {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  width: 100%;
   min-width: 0;
+}
+
+.session-tab__markers {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
 }
 
 .session-tab__marker {
   display: inline-flex;
   align-items: center;
-  min-height: 20px;
-  padding: 0 7px;
+  min-height: 18px;
+  padding: 0 6px;
   border-radius: 999px;
-  background: rgba(233, 221, 206, 0.82);
+  background: rgba(233, 221, 206, 0.72);
   color: #5f584f;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -1193,7 +1206,7 @@ button {
 .session-tab__title {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.35;
   overflow: hidden;
@@ -1214,16 +1227,16 @@ button {
   top: 50%;
   right: 10px;
   display: inline-flex;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   align-items: center;
   justify-content: center;
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: rgba(243, 235, 224, 0.92);
+  background: rgba(243, 235, 224, 0.88);
   color: #6e6357;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
   opacity: 0;
   pointer-events: none;
