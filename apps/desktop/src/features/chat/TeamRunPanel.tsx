@@ -44,6 +44,127 @@ function formatRunStatus(value: string) {
   return titleCase(value);
 }
 
+function formatEventKindLabel(kind: string) {
+  switch (kind) {
+    case "run_started":
+      return "Run started";
+    case "run_queued":
+      return "Queued";
+    case "run_blocked":
+      return "Blocked";
+    case "run_resumed":
+      return "Resumed";
+    case "run_stuck":
+      return "Stuck";
+    case "run_retry":
+      return "Retry";
+    default:
+      return titleCase(kind);
+  }
+}
+
+function latestCheckpointEvent(run: TeamRunRecord) {
+  return [...run.events].reverse().find((event) => event.kind === "checkpoint_summary") ?? null;
+}
+
+function currentRoundLabel(run: TeamRunRecord) {
+  const sources = [
+    latestCheckpointEvent(run)?.title ?? null,
+    ...run.events
+      .filter((event) => event.kind === "file_change")
+      .map((event) => event.title),
+  ].filter(Boolean) as string[];
+
+  for (const source of sources) {
+    const roundMatch = source.match(/round\s+\d+/i);
+    if (roundMatch) {
+      return roundMatch[0]
+        .split(" ")
+        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+        .join(" ");
+    }
+  }
+
+  return "Awaiting first round";
+}
+
+function statusTone(value: string) {
+  switch (value) {
+    case "completed":
+    case "done":
+      return "complete";
+    case "blocked":
+    case "stuck":
+      return "blocked";
+    case "queued":
+    case "running":
+    case "waiting_for_user":
+      return "pending";
+    default:
+      return "neutral";
+  }
+}
+
+function statusHeadline(value: string) {
+  switch (value) {
+    case "waiting_for_user":
+      return "Needs your follow-up";
+    case "queued":
+      return "Queued for the next run slot";
+    case "blocked":
+      return "Blocked until the constraint clears";
+    case "stuck":
+      return "Needs recovery before the next step";
+    case "completed":
+    case "done":
+      return "Completed the active objective";
+    case "running":
+      return "Actively working through the round";
+    default:
+      return formatRunStatus(value);
+  }
+}
+
+function statusSummary(run: TeamRunRecord) {
+  switch (run.status) {
+    case "waiting_for_user":
+      return "The team has paused after its latest checkpoint and is waiting for your next instruction.";
+    case "queued":
+      return "The run is staged and will resume automatically when execution capacity is available.";
+    case "blocked":
+      return "The run cannot move forward until the current blocker is resolved.";
+    case "stuck":
+      return "The run needs intervention before another retry or resume attempt.";
+    case "completed":
+    case "done":
+      return "The active run finished its current goal and is ready for review or branching.";
+    case "running":
+      return "The current round is in motion and the active agents are still working.";
+    default:
+      return run.goal;
+  }
+}
+
+function nextStepCopy(value: string) {
+  switch (value) {
+    case "waiting_for_user":
+      return "Send the next follow-up from the composer below.";
+    case "queued":
+      return "Stay on this session until the queue advances.";
+    case "blocked":
+      return "Resolve the blocker or resume when the dependency clears.";
+    case "stuck":
+      return "Inspect the latest run state, then retry or resume.";
+    case "completed":
+    case "done":
+      return "Review the result, branch from a checkpoint, or continue with a new instruction.";
+    case "running":
+      return "Let the active agents finish before steering the next round.";
+    default:
+      return "Keep the next instruction ready in the composer below.";
+  }
+}
+
 function groupFileChanges(run: TeamRunRecord) {
   const batches = new Map<
     string,
@@ -75,33 +196,68 @@ function statusEvents(run: TeamRunRecord) {
   return run.events.filter((event) => event.kind.startsWith("run_"));
 }
 
+function StatusLight({ status }: { status: string | null }) {
+  const label = status ? formatRunStatus(status) : "Status unknown";
+  const tone = statusTone(status ?? "unknown");
+
+  return (
+    <span
+      aria-label={label}
+      className={`team-run-panel__status-light team-run-panel__status-light--${tone}`}
+      title={label}
+    >
+      <span className="composer__visually-hidden">{label}</span>
+    </span>
+  );
+}
+
 function StatusView({ run }: { run: TeamRunRecord }) {
   const statusTimeline = statusEvents(run);
+  const latestCheckpoint = latestCheckpointEvent(run);
 
   return (
     <div className="team-run-panel__status-stack">
-      <article className="team-run-panel__status-card ui-card">
-        <div className="team-run-panel__status-header">
+      <article className="team-run-panel__status-overview ui-card">
+        <div className="team-run-panel__status-overview-header">
           <div className="team-run-panel__status-copy">
-            <span>Run status</span>
-            <strong>{formatRunStatus(run.status)}</strong>
+            <span>Run health</span>
+            <strong>{statusHeadline(run.status)}</strong>
           </div>
-          <span className="status-badge status-badge--soft">{titleCase(run.currentPhase)}</span>
+          <StatusLight status={run.status} />
         </div>
-        <p>{run.goal}</p>
+        <p>{statusSummary(run)}</p>
+        <div className="team-run-panel__status-metrics">
+          <div className="team-run-panel__status-metric">
+            <span>Current round</span>
+            <strong>{currentRoundLabel(run)}</strong>
+          </div>
+          <div className="team-run-panel__status-metric">
+            <span>Next step</span>
+            <strong>{nextStepCopy(run.status)}</strong>
+          </div>
+        </div>
       </article>
+
+      {latestCheckpoint ? (
+        <article className="team-run-panel__status-card ui-card">
+          <div className="team-run-panel__status-section-copy">
+            <span>Latest checkpoint</span>
+            <strong>{latestCheckpoint.title}</strong>
+          </div>
+          <p>{latestCheckpoint.content}</p>
+        </article>
+      ) : null}
 
       {statusTimeline.length > 0 ? (
         <section aria-label="Team run status timeline" className="team-run-panel__status-timeline">
           {statusTimeline.map((event: TeamRunEventRecord) => (
             <article className="team-run-panel__status-item ui-card" key={event.id}>
               <div className="team-run-panel__status-item-header">
-                <strong>{event.title}</strong>
-                {event.status ? (
-                  <span className="status-badge status-badge--soft">
-                    {formatRunStatus(event.status)}
-                  </span>
-                ) : null}
+                <div className="team-run-panel__status-section-copy">
+                  <span>{formatEventKindLabel(event.kind)}</span>
+                  <strong>{event.title}</strong>
+                </div>
+                <StatusLight status={event.status} />
               </div>
               <p>{event.content}</p>
             </article>
@@ -172,12 +328,12 @@ export function TeamRunPanel({
       case "agents":
         return (
           <div className="team-run-panel__agents-view">
-            <AgentTeamStrip agents={run.agents} leadAgentId={run.leadAgentId} />
+            <AgentTeamStrip agents={run.agents} events={run.events} leadAgentId={run.leadAgentId} />
             <section className="team-run-panel__agents-card ui-card">
               <div className="team-run-panel__agents-card-header">
                 <div className="team-run-panel__agents-card-copy">
-                  <span>Runtime agents</span>
-                  <strong>Invite another worker when this run needs one.</strong>
+                  <strong>Add another runtime agent when this run needs one.</strong>
+                  <span>Keep follow-ups in the footer. Use this only for another active worker.</span>
                 </div>
               </div>
               {isAddAgentOpen ? (
@@ -216,8 +372,8 @@ export function TeamRunPanel({
                 </div>
               ) : (
                 <p className="team-run-panel__agents-card-note">
-                  Keep the footer focused on follow-up instructions. Add runtime agents only
-                  when the session needs another active worker.
+                  Keep this session focused. Bring in another runtime agent only when the active
+                  team needs extra coverage.
                 </p>
               )}
               <div className="team-run-panel__actions">
@@ -267,7 +423,7 @@ export function TeamRunPanel({
       default:
         return (
           <div className="team-run-panel__conversation-view">
-            <AgentTeamStrip agents={run.agents} leadAgentId={run.leadAgentId} />
+            <AgentTeamStrip agents={run.agents} events={run.events} leadAgentId={run.leadAgentId} />
             <RunCharterCard run={run} />
             <RunEventFeed agents={run.agents} events={run.events} onBranch={onBranchEvent} />
           </div>

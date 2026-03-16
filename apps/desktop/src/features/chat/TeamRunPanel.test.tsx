@@ -137,7 +137,7 @@ describe("TeamRunPanel", () => {
     expect(statusPill).toBeFalsy();
     expect(charterSummary?.textContent?.includes("Waiting for input")).toBe(false);
     expect(charterSummary?.textContent?.includes("Review")).toBe(false);
-    expect(findText(view.container, "Session work")).toBeTruthy();
+    expect(findText(view.container, "Current work")).toBeTruthy();
     expect(findText(view.container, "Add Agent")).toBeFalsy();
 
     await view.cleanup();
@@ -204,15 +204,26 @@ describe("TeamRunPanel", () => {
 
     await clickButton(view.container, "Status");
 
-    expect(findText(view.container, "Waiting for input")).toBeTruthy();
+    expect(view.container.querySelector(".team-run-panel__status-overview")).toBeTruthy();
+    expect(view.container.querySelector(".team-run-panel__status-light")).toBeTruthy();
+    expect(findText(view.container, "Needs your follow-up")).toBeTruthy();
+    expect(findText(view.container, "Latest checkpoint")).toBeTruthy();
+    expect(findText(view.container, "Send the next follow-up from the composer below.")).toBeTruthy();
     expect(findText(view.container, "Run blocked")).toBeTruthy();
+    expect(findText(view.container, "Run status")).toBeFalsy();
+    expect(view.container.querySelector(".team-run-panel__status-header .status-badge")).toBeFalsy();
 
     await clickButton(view.container, "Agents");
 
     expect(view.container.querySelector(".agent-team-strip__avatar")).toBeTruthy();
     expect(findText(view.container, "Reviewer")).toBeTruthy();
-    expect(findText(view.container, "Session work")).toBeTruthy();
+    expect(findText(view.container, "Current work")).toBeTruthy();
+    expect(findText(view.container, "Latest update")).toBeTruthy();
+    expect(findText(view.container, "Tool state")).toBeTruthy();
+    expect(findText(view.container, "Lead agent")).toBeTruthy();
+    expect(findText(view.container, "Round 1 checkpoint")).toBeTruthy();
     expect(findText(view.container, "Add Agent")).toBeTruthy();
+    expect(findText(view.container, "Recent activity")).toBeFalsy();
 
     await clickButton(view.container, "Files");
 

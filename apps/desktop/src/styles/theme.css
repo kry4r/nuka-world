@@ -1405,6 +1405,7 @@ button {
 .agent-team-strip__card-top,
 .agent-team-strip__identity,
 .agent-team-strip__identity-line,
+.agent-team-strip__presence,
 .run-charter-card__header,
 .run-charter-card__badges,
 .run-event-feed__meta,
@@ -1448,6 +1449,7 @@ button {
 
 .agent-team-strip__identity span,
 .agent-team-strip__detail-label,
+.agent-team-strip__lead,
 .agent-team-strip__status,
 .run-charter-card__eyebrow,
 .run-charter-card__summary-hint,
@@ -1477,6 +1479,44 @@ button {
 
 .agent-team-strip__detail {
   gap: 4px;
+}
+
+.agent-team-strip__presence {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.agent-team-strip__lead {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(236, 227, 214, 0.82);
+}
+
+.agent-team-strip__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-team-strip__status-light {
+  display: inline-flex;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 999px;
+  background: rgba(179, 168, 154, 0.82);
+}
+
+.agent-team-strip__status-light--complete {
+  background: #6d9a5f;
+}
+
+.agent-team-strip__status-light--pending {
+  background: #c49b5f;
+}
+
+.agent-team-strip__status-light--blocked {
+  background: #b86d5e;
 }
 
 .run-charter-card__header h2,
@@ -1783,14 +1823,25 @@ button {
   gap: 12px;
 }
 
+.team-run-panel__status-overview,
 .team-run-panel__status-card,
 .team-run-panel__status-item,
 .team-run-panel__timeline-empty {
   gap: 10px;
 }
 
+.team-run-panel__status-overview-header,
 .team-run-panel__status-copy {
   display: flex;
+}
+
+.team-run-panel__status-overview-header {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.team-run-panel__status-copy {
   flex-direction: column;
   gap: 4px;
 }
@@ -1810,6 +1861,48 @@ button {
   line-height: 1.35;
 }
 
+.team-run-panel__status-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-run-panel__status-metric,
+.team-run-panel__status-section-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.team-run-panel__status-metric {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 252, 247, 0.92);
+}
+
+.team-run-panel__status-light {
+  display: inline-flex;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: rgba(179, 168, 154, 0.82);
+  box-shadow: 0 0 0 4px rgba(233, 221, 206, 0.46);
+}
+
+.team-run-panel__status-light--complete {
+  background: #6d9a5f;
+}
+
+.team-run-panel__status-light--pending {
+  background: #c49b5f;
+}
+
+.team-run-panel__status-light--blocked {
+  background: #b86d5e;
+}
+
 .team-run-panel__status-card p,
 .team-run-panel__status-item p,
 .team-run-panel__timeline-empty p {
@@ -1819,7 +1912,7 @@ button {
 }
 
 .team-run-panel__status-item-header {
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
 }
 
@@ -1866,6 +1959,12 @@ button {
   color: var(--color-text);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.team-run-panel__agents-card-copy span {
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .team-run-panel__agents-card-note {

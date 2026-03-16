@@ -1,7 +1,8 @@
-import type { TeamRunAgentRecord } from "@/lib/team";
+import type { TeamRunAgentRecord, TeamRunEventRecord } from "@/lib/team";
 
 type AgentTeamStripProps = {
   agents: TeamRunAgentRecord[];
+  events: TeamRunEventRecord[];
   leadAgentId: string | null;
 };
 
@@ -50,7 +51,44 @@ function workLabel(agent: TeamRunAgentRecord) {
   return agent.currentWork || humanizeActivityLabel(agent.lastToolActivity) || "Standing by";
 }
 
-export function AgentTeamStrip({ agents, leadAgentId }: AgentTeamStripProps) {
+function latestAgentEvent(events: TeamRunEventRecord[], agentId: string) {
+  return (
+    [...events]
+      .reverse()
+      .find((event) => event.agentId === agentId && event.kind !== "file_change") ?? null
+  );
+}
+
+function agentStatusTone(status: string) {
+  switch (status) {
+    case "done":
+    case "completed":
+      return "complete";
+    case "thinking":
+    case "waiting":
+      return "pending";
+    case "blocked":
+    case "stuck":
+      return "blocked";
+    default:
+      return "neutral";
+  }
+}
+
+function toolStateLabel(agent: TeamRunAgentRecord) {
+  return humanizeActivityLabel(agent.lastToolActivity) ?? "No tool activity yet";
+}
+
+function latestUpdateLabel(events: TeamRunEventRecord[], agent: TeamRunAgentRecord) {
+  const event = latestAgentEvent(events, agent.id);
+  if (!event) {
+    return "No session update yet";
+  }
+
+  return event.title;
+}
+
+export function AgentTeamStrip({ agents, events, leadAgentId }: AgentTeamStripProps) {
   return (
     <section aria-label="Agent team strip" className="agent-team-strip">
       {agents.map((agent) => {
@@ -74,19 +112,30 @@ export function AgentTeamStrip({ agents, leadAgentId }: AgentTeamStripProps) {
                   </span>
                 </div>
               </div>
-              <span className="agent-team-strip__status">{formatAgentStatus(agent.status)}</span>
+              <div className="agent-team-strip__presence">
+                {isLead ? <span className="agent-team-strip__lead">Lead agent</span> : null}
+                <span className="agent-team-strip__status">
+                  <span
+                    aria-hidden="true"
+                    className={`agent-team-strip__status-light agent-team-strip__status-light--${agentStatusTone(agent.status)}`}
+                  />
+                  {formatAgentStatus(agent.status)}
+                </span>
+              </div>
             </div>
             <div className="agent-team-strip__detail-stack">
               <div className="agent-team-strip__detail">
-                <span className="agent-team-strip__detail-label">Session work</span>
+                <span className="agent-team-strip__detail-label">Current work</span>
                 <p>{workLabel(agent)}</p>
               </div>
-              {agent.lastToolActivity ? (
-                <div className="agent-team-strip__detail">
-                  <span className="agent-team-strip__detail-label">Recent activity</span>
-                  <p>{humanizeActivityLabel(agent.lastToolActivity)}</p>
-                </div>
-              ) : null}
+              <div className="agent-team-strip__detail">
+                <span className="agent-team-strip__detail-label">Latest update</span>
+                <p>{latestUpdateLabel(events, agent)}</p>
+              </div>
+              <div className="agent-team-strip__detail">
+                <span className="agent-team-strip__detail-label">Tool state</span>
+                <p>{toolStateLabel(agent)}</p>
+              </div>
             </div>
           </article>
         );
