@@ -711,14 +711,14 @@ button {
 .memory-graph__node {
   position: absolute;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--memory-node-border);
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
   border-radius: 18px;
-  background: var(--memory-node-background);
+  background: transparent;
   color: #3d342d;
   text-align: left;
   box-shadow: none;
@@ -727,6 +727,28 @@ button {
 .memory-graph__node:focus-visible {
   outline: 2px solid rgba(182, 157, 122, 0.82);
   outline-offset: 2px;
+}
+
+.memory-graph__node-dot {
+  width: 14px;
+  height: 14px;
+  margin-top: 4px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--memory-node-border) 70%, white 30%);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.48) 24%, transparent 46%),
+    color-mix(in srgb, var(--memory-node-background) 86%, white 14%);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--memory-node-background) 18%, transparent),
+    0 0 16px color-mix(in srgb, var(--memory-node-background) 50%, transparent);
+}
+
+.memory-graph__node-label-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .memory-graph__node-eyebrow,
@@ -748,12 +770,9 @@ button {
   line-height: 1.25;
 }
 
-.memory-graph__node-body {
-  color: #6b6259;
-  font-size: 12px;
-  line-height: 1.45;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.memory-graph__node-badge {
+  margin-left: auto;
+  align-self: flex-start;
 }
 
 .memory-page__body,
@@ -787,6 +806,8 @@ button {
 }
 
 .memory-page__body {
+  align-items: stretch;
+  flex-direction: row;
   gap: 16px;
 }
 
@@ -858,11 +879,86 @@ button {
   padding: 12px;
 }
 
+.memory-owner-rail,
 .memory-controls {
   gap: 8px;
   padding: 8px 10px;
   border-radius: 18px;
   background: rgba(247, 241, 233, 0.86);
+}
+
+.memory-owner-rail {
+  display: flex;
+  min-width: 208px;
+  max-width: 224px;
+  flex: 0 0 224px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 12px;
+  border: 1px solid rgba(217, 205, 190, 0.78);
+}
+
+.memory-owner-rail__section,
+.memory-owner-rail__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.memory-owner-rail__section {
+  gap: 8px;
+}
+
+.memory-owner-rail__heading {
+  color: #766d63;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.memory-owner-rail__list {
+  gap: 6px;
+}
+
+.memory-owner-rail__item {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: rgba(255, 250, 244, 0.74);
+  color: #54483c;
+  text-align: left;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.memory-owner-rail__item:hover,
+.memory-owner-rail__item:focus-visible {
+  border-color: rgba(193, 176, 154, 0.8);
+  background: rgba(255, 252, 248, 0.94);
+}
+
+.memory-owner-rail__item.is-active {
+  border-color: rgba(173, 150, 120, 0.82);
+  background: rgba(255, 248, 238, 0.96);
+  color: #352b22;
+}
+
+.memory-owner-rail__item-label,
+.memory-owner-rail__empty {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.memory-owner-rail__empty {
+  color: rgba(118, 109, 99, 0.6);
+  padding: 8px 10px;
 }
 
 .memory-node-detail__panel-header {
@@ -879,7 +975,7 @@ button {
 }
 
 .memory-controls__row {
-  grid-template-columns: minmax(0, 180px) minmax(0, 1.8fr) minmax(0, 180px);
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 180px);
 }
 
 .memory-controls__input,
@@ -934,6 +1030,10 @@ button {
   min-height: 0;
 }
 
+.memory-page__main {
+  min-width: 0;
+}
+
 .memory-node-overlay {
   position: absolute;
   top: 12px;
@@ -948,6 +1048,10 @@ button {
   box-shadow:
     0 18px 38px rgba(88, 69, 47, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.memory-node-overlay--drawer {
+  width: min(360px, calc(100% - 24px));
 }
 
 .memory-node-detail {
@@ -1085,6 +1189,15 @@ button {
 }
 
 @media (max-width: 900px) {
+  .memory-page__body {
+    flex-direction: column;
+  }
+
+  .memory-owner-rail {
+    max-width: none;
+    flex: 0 0 auto;
+  }
+
   .memory-graph__toolbar {
     flex-direction: column;
   }

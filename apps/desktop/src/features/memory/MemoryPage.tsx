@@ -149,6 +149,7 @@ export function MemoryPage() {
         })),
     [scopes],
   );
+  const ownerSections = useMemo(() => buildOwnerSections(scopes), [scopes]);
 
   useEffect(() => {
     const preferredScopeId = scopeOptions[0]?.id ?? null;
@@ -401,6 +402,38 @@ export function MemoryPage() {
   return (
     <div className="page-layout memory-page">
       <div className="page-layout__body memory-page__body">
+        <aside className="memory-owner-rail" data-testid="memory-owner-rail">
+          {ownerSections.map((section) => (
+            <section className="memory-owner-rail__section" key={section.title}>
+              <span className="memory-owner-rail__heading">{section.title}</span>
+              <div className="memory-owner-rail__list">
+                {section.owners.length === 0 ? (
+                  <span className="memory-owner-rail__empty">No memory yet</span>
+                ) : (
+                  section.owners.map((owner) => (
+                    <button
+                      aria-pressed={selectedScopeId === owner.id}
+                      className={`memory-owner-rail__item${selectedScopeId === owner.id ? " is-active" : ""}`}
+                      key={owner.id}
+                      onClick={() => {
+                        setSelectedScopeId(owner.id);
+                        setDetailOpen(false);
+                        setDeleteReview(null);
+                        setError(null);
+                        setFilterKind("all");
+                        setSearchQuery("");
+                      }}
+                      type="button"
+                    >
+                      <span className="memory-owner-rail__item-label">{owner.label}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </section>
+          ))}
+        </aside>
+
         <div className="memory-page__main">
           {loadError ? (
             <section className="memory-empty-state memory-empty-state--error">
@@ -421,17 +454,7 @@ export function MemoryPage() {
                     kindOptions={[...MEMORY_KIND_OPTIONS]}
                     onFilterKindChange={setFilterKind}
                     onSearchQueryChange={setSearchQuery}
-                    onScopeIdChange={(nextScopeId) => {
-                      setSelectedScopeId(nextScopeId);
-                      setDetailOpen(false);
-                      setDeleteReview(null);
-                      setError(null);
-                      setFilterKind("all");
-                      setSearchQuery("");
-                    }}
                     searchQuery={searchQuery}
-                    scopeOptions={scopeOptions}
-                    selectedScopeId={selectedScopeId ?? ""}
                   />
                 </div>
 
@@ -464,7 +487,11 @@ export function MemoryPage() {
                       />
 
                       {detailOpen && selectedNode ? (
-                        <aside className="memory-node-overlay" data-testid="memory-node-detail">
+                        <aside
+                          className="memory-node-overlay memory-node-overlay--drawer"
+                          data-detail-presentation="drawer"
+                          data-testid="memory-node-detail"
+                        >
                           <MemoryNodeInspector
                             bodyDraft={bodyDraft}
                             busy={busy}
@@ -565,6 +592,48 @@ function scopeLabel(scope: MemoryScope) {
 
   if (scope.kind === "agent") {
     return `Agent · ${scope.title}`;
+  }
+
+  return scope.title;
+}
+
+function buildOwnerSections(scopes: MemoryScope[]) {
+  const directOwners: Array<{ id: string; label: string }> = [];
+  const teamOwners: Array<{ id: string; label: string }> = [];
+
+  for (const scope of scopes.sort((left, right) => scopePriority(left) - scopePriority(right))) {
+    const owner = {
+      id: scope.id,
+      label: normalizeOwnerLabel(scope),
+    };
+
+    if (scope.workflowId?.startsWith("team:")) {
+      teamOwners.push(owner);
+      continue;
+    }
+
+    directOwners.push(owner);
+  }
+
+  return [
+    {
+      title: "Direct chat",
+      owners: directOwners,
+    },
+    {
+      title: "Teams",
+      owners: teamOwners,
+    },
+  ];
+}
+
+function normalizeOwnerLabel(scope: MemoryScope) {
+  if (scope.kind === "session" && !scope.workflowId?.startsWith("team:")) {
+    return "Direct chat";
+  }
+
+  if (scope.kind === "workflow" && scope.workflowId?.startsWith("team:")) {
+    return scope.title;
   }
 
   return scope.title;

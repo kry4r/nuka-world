@@ -7,46 +7,20 @@ type MemoryGraphControlsProps = {
     value: string;
   }>;
   searchQuery: string;
-  scopeOptions: Array<{
-    id: string;
-    label: string;
-  }>;
-  selectedScopeId: string;
   onFilterKindChange: (value: string) => void;
   onSearchQueryChange: (value: string) => void;
-  onScopeIdChange: (value: string) => void;
 };
 
 export function MemoryGraphControls({
   filterKind,
   kindOptions,
-  scopeOptions,
   searchQuery,
-  selectedScopeId,
   onFilterKindChange,
   onSearchQueryChange,
-  onScopeIdChange,
 }: MemoryGraphControlsProps) {
   return (
     <div className="memory-controls">
       <div className="memory-controls__row">
-        <label className="memory-controls__field">
-          <span className="memory-controls__label">Scope</span>
-          <FlatSelect
-            aria-label="Memory scope"
-            className="memory-controls__select"
-            onChange={(event) => onScopeIdChange(event.target.value)}
-            shellClassName="memory-controls__select-shell"
-            value={selectedScopeId}
-          >
-            {scopeOptions.map((scope) => (
-              <option key={scope.id} value={scope.id}>
-                {scope.label}
-              </option>
-            ))}
-          </FlatSelect>
-        </label>
-
         <label className="memory-controls__field memory-controls__field--search">
           <span className="memory-controls__label">Search</span>
           <input

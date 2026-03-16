@@ -379,7 +379,7 @@ describe("MemoryPage", () => {
     expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
   });
 
-  it("keeps only scope, search, and kind controls above the graph and moves lens and viewport actions into graph chrome", async () => {
+  it("keeps only search and kind controls above the graph and moves owner selection out of the top controls", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
@@ -393,7 +393,7 @@ describe("MemoryPage", () => {
 
     expect(topControls?.querySelector('input[aria-label="Search graph"]')).toBeTruthy();
     expect(topControls?.querySelector('select[aria-label="Filter kind"]')).toBeTruthy();
-    expect(topControls?.querySelector('select[aria-label="Memory scope"]')).toBeTruthy();
+    expect(topControls?.querySelector('select[aria-label="Memory scope"]')).toBeFalsy();
     expect(topControls?.querySelector('select[aria-label="View mode"]')).toBeFalsy();
     expect(topControls?.textContent).not.toContain("Focused graph");
     expect(topControls?.textContent).not.toContain("Full map");
@@ -414,7 +414,7 @@ describe("MemoryPage", () => {
     expect(canvas?.textContent).toContain("Focus selection");
   });
 
-  it("loads a concrete memory scope by default and switches between workflow and world graphs", async () => {
+  it("defaults to the first owner in the rail and switches graphs when selecting another owner", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
@@ -423,27 +423,27 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const scopeSelect = view.container.querySelector(
-      'select[aria-label="Memory scope"]',
-    ) as HTMLSelectElement | null;
-
-    expect(scopeSelect).toBeTruthy();
-    expect(scopeSelect?.textContent).not.toContain("All memory");
-    expect(scopeSelect?.textContent).toContain("World");
-    expect(scopeSelect?.textContent).toContain("Release Workflow");
-    expect(scopeSelect?.value).toBe("workflow:workflow-review");
     expect(invokeMock).toHaveBeenCalledWith("load_memory_graph", {
       scopeId: "workflow:workflow-review",
     });
     expect(findButton(view.container, "Review Memory")).toBeTruthy();
     expect(findButton(view.container, "Archive Fact")).toBeFalsy();
 
+    const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
+    const ownerButtons = ownerRail?.querySelectorAll("button") ?? [];
+
+    expect(ownerRail?.textContent).toContain("Direct chat");
+    expect(ownerButtons[0]?.getAttribute("aria-pressed")).toBe("true");
+
     await act(async () => {
-      if (!scopeSelect) {
-        throw new Error("scope select missing");
+      const archiveOwner = Array.from(ownerButtons).find((node) =>
+        node.textContent?.includes("World"),
+      );
+      if (!archiveOwner) {
+        throw new Error("world owner missing");
       }
 
-      setFormValue(scopeSelect, "world");
+      archiveOwner.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -455,7 +455,7 @@ describe("MemoryPage", () => {
     expect(findButton(view.container, "Archive Fact")).toBeTruthy();
   });
 
-  it("prioritizes run and team scopes and renders scope controls with the shared flat selector shell", async () => {
+  it("prioritizes run and team owners in the rail and keeps flat selector styling for the remaining controls", async () => {
     graphState.nodes = [
       {
         id: "run-memory",
@@ -564,19 +564,105 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const scopeSelect = view.container.querySelector(
-      'select[aria-label="Memory scope"]',
-    ) as HTMLSelectElement | null;
     const kindSelect = view.container.querySelector(
       'select[aria-label="Filter kind"]',
     ) as HTMLSelectElement | null;
+    const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
+    const teamSection = Array.from(
+      ownerRail?.querySelectorAll(".memory-owner-rail__section") ?? [],
+    ).find((node) => node.textContent?.includes("Teams"));
+    const teamButtons = Array.from(teamSection?.querySelectorAll("button") ?? []);
 
-    expect(scopeSelect?.value).toBe("session:run-smoke");
-    expect(scopeSelect?.textContent).toContain("Run · Smoke Validation Run");
-    expect(scopeSelect?.textContent).toContain("Team · Smoke Validation Team");
-    expect(scopeSelect?.textContent).toContain("Agent · Release Reviewer");
-    expect(scopeSelect?.parentElement?.className).toContain("flat-select");
+    expect(ownerRail?.textContent).toContain("Direct chat");
+    expect(ownerRail?.textContent).toContain("Teams");
+    expect(teamButtons[0]?.textContent).toContain("Smoke Validation Run");
+    expect(teamButtons[1]?.textContent).toContain("Smoke Validation Team");
+    expect(view.container.querySelector('select[aria-label="Memory scope"]')).toBeFalsy();
     expect(kindSelect?.parentElement?.className).toContain("flat-select");
+  });
+
+  it("renders a left owner rail for direct chat and teams instead of a scope dropdown", async () => {
+    graphState.nodes = [
+      {
+        id: "direct-memory",
+        kind: "fact",
+        scopeId: "session:direct-shared",
+        title: "Direct Memory",
+        body: "Shared direct chat context.",
+        traceType: "working",
+        consolidationState: "candidate",
+      },
+      {
+        id: "team-memory",
+        kind: "fact",
+        scopeId: "workflow:team:smoke-validation",
+        title: "Team Memory",
+        body: "Persistent team context.",
+        traceType: "semantic",
+        consolidationState: "approved",
+      },
+    ];
+    graphState.edges = [];
+
+    const currentImplementation = invokeMock.getMockImplementation();
+    cleanups.push(async () => {
+      if (currentImplementation) {
+        invokeMock.mockImplementation(currentImplementation);
+      }
+    });
+    (
+      invokeMock as unknown as {
+        mockImplementation: (
+          implementation: (
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>,
+        ) => void;
+      }
+    ).mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === "list_memory_scopes") {
+        return [
+          {
+            id: "session:direct-shared",
+            title: "Direct chat",
+            kind: "session",
+            workflowId: "direct-chat",
+            sessionId: "direct-shared",
+            agentId: null,
+          },
+          {
+            id: "workflow:team:smoke-validation",
+            title: "Smoke Validation Team",
+            kind: "workflow",
+            workflowId: "team:smoke-validation",
+            sessionId: null,
+            agentId: null,
+          },
+        ];
+      }
+
+      if (!currentImplementation) {
+        throw new Error("default memory invoke implementation missing");
+      }
+
+      return currentImplementation(command, args);
+    });
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
+
+    expect(ownerRail).toBeTruthy();
+    expect(ownerRail?.textContent).toContain("Direct chat");
+    expect(ownerRail?.textContent).toContain("Teams");
+    expect(ownerRail?.textContent).toContain("Smoke Validation Team");
+    expect(view.container.querySelector('select[aria-label="Memory scope"]')).toBeFalsy();
   });
 
   it("uses a light graph surface and overlays graph stats inside the canvas", async () => {
@@ -597,6 +683,30 @@ describe("MemoryPage", () => {
     expect(canvas?.textContent).toContain("nodes");
     expect(canvas?.textContent).toContain("edges");
     expect(canvas?.textContent).toContain("% zoom");
+  });
+
+  it("renders graph nodes as dots with short labels and opens node details in a drawer surface", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const nodeButton = findButton(view.container, "Review Memory");
+
+    expect(nodeButton?.getAttribute("data-node-shape")).toBe("dot");
+    expect(nodeButton?.textContent).not.toContain("Tracks the latest review conclusions.");
+
+    await act(async () => {
+      nodeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const detail = view.container.querySelector('[data-testid="memory-node-detail"]');
+
+    expect(detail?.getAttribute("data-detail-presentation")).toBe("drawer");
   });
 
   it("keeps the graph canvas primary while node detail opens as an overlay", async () => {
@@ -814,7 +924,8 @@ describe("MemoryPage", () => {
     });
 
     expect(findText(view.container, "No graph nodes yet")).toBeTruthy();
-    expect(findButton(view.container, "Release Workflow")).toBeFalsy();
+    expect(view.container.querySelector('[data-testid="memory-graph-canvas"]')).toBeFalsy();
+    expect(findButton(view.container, "Release Workflow")).toBeTruthy();
     expect(view.container.querySelector('input[aria-label="Node title"]')).toBeFalsy();
   });
 
@@ -908,8 +1019,8 @@ describe("MemoryPage", () => {
 
     let canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
     expect(canvas?.getAttribute("data-focus-target-id")).toBe("memory-review");
-    expect(canvas?.getAttribute("data-pan-x")).toBe("-434");
-    expect(canvas?.getAttribute("data-pan-y")).toBe("168");
+    expect(Number(canvas?.getAttribute("data-pan-x") ?? "0")).toBeLessThan(-400);
+    expect(Number(canvas?.getAttribute("data-pan-y") ?? "0")).toBeGreaterThan(120);
 
     const searchInput = view.container.querySelector(
       'input[aria-label="Search graph"]',

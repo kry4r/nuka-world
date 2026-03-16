@@ -229,6 +229,7 @@ export function MemoryGraphCanvas({
               data-consolidation-state={node.consolidationState}
               data-node-depth={depth}
               data-node-emphasis={emphasis}
+              data-node-shape="dot"
               data-trace-type={node.traceType}
               onClick={() => onSelectNode(node.id)}
               style={
@@ -246,12 +247,12 @@ export function MemoryGraphCanvas({
               }
               type="button"
             >
-              <span className="memory-graph__node-eyebrow">
-                {node.kind} · {node.traceType}
-              </span>
-              <span className="memory-graph__node-title">{node.title}</span>
-              <span className="memory-graph__node-body">
-                {node.body ?? "No note yet."}
+              <span aria-hidden="true" className="memory-graph__node-dot" />
+              <span className="memory-graph__node-label-stack">
+                <span className="memory-graph__node-eyebrow">
+                  {node.kind} · {node.traceType}
+                </span>
+                <span className="memory-graph__node-title">{node.title}</span>
               </span>
               <span className="memory-graph__node-badge">
                 {workbenchView === "schema"
@@ -331,7 +332,7 @@ export function buildLayout(nodes: MemoryGraphNode[]) {
 
     layout.set(node.id, {
       x: 72 + column * 188,
-      y: 96 + row * 148,
+      y: 108 + row * 132,
     });
   }
 
