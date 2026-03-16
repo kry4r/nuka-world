@@ -224,7 +224,7 @@ function nextStepCopy(value: string, t: ReturnType<typeof useI18n>["t"]) {
 function groupFileChanges(run: TeamRunRecord) {
   const batches = new Map<
     string,
-    { label: string; changes: TeamRunRecord["events"] }
+    { id: string; label: string; changes: TeamRunRecord["events"]; latestSequence: number }
   >();
 
   for (const event of run.events) {
@@ -240,16 +240,89 @@ function groupFileChanges(run: TeamRunRecord) {
     }
 
     batches.set(key, {
+      id: key,
       label: event.title,
       changes: [event],
+      latestSequence: event.sequence,
     });
   }
 
-  return Array.from(batches.values());
+  return Array.from(batches.values())
+    .map((batch) => ({
+      ...batch,
+      changes: [...batch.changes].sort((left, right) => right.sequence - left.sequence),
+    }))
+    .sort((left, right) => right.latestSequence - left.latestSequence);
 }
 
 function statusEvents(run: TeamRunRecord) {
   return run.events.filter((event) => event.kind.startsWith("run_"));
+}
+
+function filePath(event: TeamRunEventRecord) {
+  return (event.toolTarget ?? event.content).replace(/\\/g, "/");
+}
+
+function fileName(event: TeamRunEventRecord) {
+  const normalizedPath = filePath(event);
+  const segments = normalizedPath.split("/").filter(Boolean);
+  return segments[segments.length - 1] ?? event.content;
+}
+
+function fileChangeMarker(status: string | null) {
+  switch (status) {
+    case "created":
+      return "A";
+    case "modified":
+    case "updated":
+      return "M";
+    case "deleted":
+      return "D";
+    case "renamed":
+      return "R";
+    default:
+      return (status ?? "?").slice(0, 1).toUpperCase();
+  }
+}
+
+function fileChangeStatusLabel(status: string | null, t: ReturnType<typeof useI18n>["t"]) {
+  switch (status) {
+    case "created":
+      return t("teamRun.files.status.created");
+    case "modified":
+    case "updated":
+      return t("teamRun.files.status.modified");
+    case "deleted":
+      return t("teamRun.files.status.deleted");
+    case "renamed":
+      return t("teamRun.files.status.renamed");
+    default:
+      return status ? titleCase(status) : t("teamRun.state.unknown");
+  }
+}
+
+function fileChangeTone(status: string | null) {
+  switch (status) {
+    case "created":
+      return "added";
+    case "modified":
+    case "updated":
+      return "modified";
+    case "deleted":
+      return "deleted";
+    case "renamed":
+      return "renamed";
+    default:
+      return "neutral";
+  }
+}
+
+function eventAgentLabel(
+  event: TeamRunEventRecord,
+  run: TeamRunRecord,
+  t: ReturnType<typeof useI18n>["t"],
+) {
+  return run.agents.find((agent) => agent.id === event.agentId)?.name ?? t("teamRun.speaker.system");
 }
 
 function StatusLight({ status }: { status: string | null }) {
@@ -331,7 +404,32 @@ function StatusView({ run }: { run: TeamRunRecord }) {
 
 function FilesView({ run }: { run: TeamRunRecord }) {
   const { t } = useI18n();
-  const fileChangeBatches = groupFileChanges(run);
+  const fileChangeBatches = useMemo(() => groupFileChanges(run), [run]);
+  const batchIdsKey = useMemo(
+    () => fileChangeBatches.map((batch) => `${batch.id}:${batch.changes.length}`).join("|"),
+    [fileChangeBatches],
+  );
+  const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setExpandedBatches((current) => {
+      const next: Record<string, boolean> = {};
+      fileChangeBatches.forEach((batch, index) => {
+        next[batch.id] = current[batch.id] ?? index === 0;
+      });
+      return next;
+    });
+  }, [batchIdsKey, fileChangeBatches]);
+
+  useEffect(() => {
+    const allChanges = fileChangeBatches.flatMap((batch) => batch.changes);
+    setSelectedFileId((current) =>
+      current && allChanges.some((change) => change.id === current)
+        ? current
+        : allChanges[0]?.id ?? null,
+    );
+  }, [batchIdsKey, fileChangeBatches]);
 
   if (fileChangeBatches.length === 0) {
     return (
@@ -344,25 +442,108 @@ function FilesView({ run }: { run: TeamRunRecord }) {
     );
   }
 
+  const selectedBatch =
+    fileChangeBatches.find((batch) => batch.changes.some((change) => change.id === selectedFileId)) ??
+    fileChangeBatches[0];
+  const selectedFile =
+    selectedBatch?.changes.find((change) => change.id === selectedFileId) ??
+    selectedBatch?.changes[0] ??
+    null;
+
   return (
     <section aria-label={t("teamRun.files.title")} className="team-run-panel__timeline">
-      <div className="team-run-panel__timeline-header">
-        <h2>{t("teamRun.files.title")}</h2>
-      </div>
-      <div className="team-run-panel__timeline-groups">
-        {fileChangeBatches.map((batch) => (
-          <article className="team-run-panel__timeline-group ui-card" key={batch.label}>
-            <h3>{batch.label}</h3>
-            <ul className="team-run-panel__timeline-list">
-              {batch.changes.map((change) => (
-                <li className="team-run-panel__timeline-item" key={change.id}>
-                  <span className="team-run-panel__timeline-file">{change.content}</span>
-                  <span className="team-run-panel__timeline-kind">{change.status}</span>
-                </li>
-              ))}
-            </ul>
-          </article>
-        ))}
+      <div className="team-run-panel__files-layout">
+        <aside className="team-run-panel__files-tree">
+          <div className="team-run-panel__files-pane-header">
+            <h2>{t("teamRun.files.title")}</h2>
+          </div>
+          <div className="team-run-panel__files-groups">
+            {fileChangeBatches.map((batch) => (
+              <section className="team-run-panel__file-group" key={batch.id}>
+                <button
+                  aria-expanded={expandedBatches[batch.id] ?? false}
+                  className="team-run-panel__file-group-toggle"
+                  onClick={() =>
+                    setExpandedBatches((current) => ({
+                      ...current,
+                      [batch.id]: !current[batch.id],
+                    }))
+                  }
+                  type="button"
+                >
+                  <strong>{batch.label}</strong>
+                  <span>{t("teamRun.files.count", { count: batch.changes.length })}</span>
+                </button>
+                {expandedBatches[batch.id] ? (
+                  <div className="team-run-panel__file-group-list">
+                    {batch.changes.map((change) => (
+                      <button
+                        aria-pressed={selectedFile?.id === change.id}
+                        className={`team-run-panel__file-row${selectedFile?.id === change.id ? " is-selected" : ""}`}
+                        key={change.id}
+                        onClick={() => setSelectedFileId(change.id)}
+                        type="button"
+                      >
+                        <span
+                          className={`team-run-panel__file-marker team-run-panel__file-marker--${fileChangeTone(change.status)}`}
+                        >
+                          {fileChangeMarker(change.status)}
+                        </span>
+                        <span className="team-run-panel__file-copy">
+                          <strong>{fileName(change)}</strong>
+                          <span>{filePath(change)}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ))}
+          </div>
+        </aside>
+
+        <section className="team-run-panel__file-preview ui-card">
+          {selectedFile ? (
+            <>
+              <div className="team-run-panel__files-pane-header">
+                <h2>{t("teamRun.files.preview")}</h2>
+              </div>
+              <div className="team-run-panel__file-preview-header">
+                <div className="team-run-panel__file-preview-copy">
+                  <strong>{fileName(selectedFile)}</strong>
+                  <span>{filePath(selectedFile)}</span>
+                </div>
+                <span
+                  className={`team-run-panel__file-status team-run-panel__file-status--${fileChangeTone(selectedFile.status)}`}
+                >
+                  {fileChangeStatusLabel(selectedFile.status, t)}
+                </span>
+              </div>
+              <dl className="team-run-panel__file-preview-meta">
+                <div>
+                  <dt>{t("teamRun.files.batch")}</dt>
+                  <dd>{selectedBatch?.label ?? t("teamRun.files.title")}</dd>
+                </div>
+                <div>
+                  <dt>{t("teamRun.files.changedBy")}</dt>
+                  <dd>{eventAgentLabel(selectedFile, run, t)}</dd>
+                </div>
+                <div>
+                  <dt>{t("teamRun.files.changeType")}</dt>
+                  <dd>{fileChangeStatusLabel(selectedFile.status, t)}</dd>
+                </div>
+                <div>
+                  <dt>{t("teamRun.files.path")}</dt>
+                  <dd>{filePath(selectedFile)}</dd>
+                </div>
+              </dl>
+              <article className="team-run-panel__file-preview-fallback">
+                <strong>{t("teamRun.files.previewFallbackTitle")}</strong>
+                <p>{t("teamRun.files.previewFallback")}</p>
+              </article>
+            </>
+          ) : null}
+        </section>
       </div>
     </section>
   );

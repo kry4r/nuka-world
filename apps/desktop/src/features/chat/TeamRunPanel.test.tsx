@@ -327,7 +327,12 @@ describe("TeamRunPanel", () => {
     await clickButton(view.container, "Files");
 
     expect(findText(view.container, "File timeline")).toBeTruthy();
+    expect(view.container.querySelector(".team-run-panel__files-layout")).toBeTruthy();
+    expect(view.container.querySelector(".team-run-panel__files-tree")).toBeTruthy();
+    expect(view.container.querySelector(".team-run-panel__file-preview")).toBeTruthy();
+    expect(findText(view.container, "Round 1")).toBeTruthy();
     expect(findText(view.container, "checkpoint.md")).toBeTruthy();
+    expect(findText(view.container, "Diff preview unavailable")).toBeTruthy();
 
     await view.cleanup();
   });
@@ -344,10 +349,17 @@ describe("TeamRunPanel", () => {
 
     await clickButton(view.container, "Files");
 
-    expect(findText(view.container, "File timeline")).toBeTruthy();
+    const filesLayout = view.container.querySelector(".team-run-panel__files-layout");
+    expect(filesLayout).toBeTruthy();
     expect(findText(view.container, "Round 1")).toBeTruthy();
     expect(findText(view.container, "checkpoint.md")).toBeTruthy();
-    expect(findText(view.container, "created")).toBeTruthy();
+    expect(findText(view.container, "position-card-coordinator.md")).toBeTruthy();
+    expect(findText(view.container, "Diff preview unavailable")).toBeTruthy();
+
+    await clickButton(view.container, "position-card-coordinator.md");
+
+    const selectedFile = view.container.querySelector('.team-run-panel__file-row.is-selected');
+    expect(selectedFile?.textContent).toContain("position-card-coordinator.md");
 
     await view.cleanup();
   });
