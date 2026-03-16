@@ -235,7 +235,6 @@ export function AgentsPage() {
             <div className="agents-create__header">
               <span className="agents-section__eyebrow">Agents</span>
               <h1>Generate an agent</h1>
-              <p>Describe the role in one sentence, then refine the draft before saving it.</p>
             </div>
 
             {providerGate.blocked ? (

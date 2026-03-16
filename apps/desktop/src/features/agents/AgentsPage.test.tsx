@@ -143,6 +143,9 @@ describe("AgentsPage", () => {
     expect(view.container.querySelector('[aria-label="Agent request"]')).toBeTruthy();
     expect(view.container.textContent).not.toContain("Agent Details");
     expect(view.container.textContent).not.toContain("Agent Library");
+    expect(view.container.textContent).not.toContain(
+      "Describe the role in one sentence, then refine the draft before saving it.",
+    );
     expect(view.container.querySelector('[data-testid="agents-list"]')).toBeFalsy();
     expect(view.container.querySelector('[data-testid="agents-detail"]')).toBeFalsy();
   });

@@ -675,6 +675,9 @@ describe("MemoryPage", () => {
     expect(bodyInput?.value).toBe("Tracks the latest review conclusions.");
     expect(view.container.querySelector('[data-testid="memory-node-detail"]')).toBeTruthy();
     expect(view.container.textContent).not.toContain("Node Inspector");
+    expect(view.container.textContent).not.toContain(
+      "Update local memory, review consolidation state, and manage connected edges inline.",
+    );
   });
 
   it("renders a dedicated close button in the node detail header and dismisses the overlay", async () => {

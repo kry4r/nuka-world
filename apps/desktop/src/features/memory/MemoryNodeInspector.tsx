@@ -73,7 +73,6 @@ export function MemoryNodeInspector({
         <div className="memory-node-detail__copy">
           <span className="memory-page__eyebrow">Node detail</span>
           <h2>{node.title}</h2>
-          <p>Update local memory, review consolidation state, and manage connected edges inline.</p>
         </div>
         <button
           aria-label="Close node detail"
