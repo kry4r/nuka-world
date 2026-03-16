@@ -334,6 +334,7 @@ const {
     (
       teamId: string,
       routing?: { requestedProviderId: string | null; requestedModel: string | null },
+      prompt?: string,
     ) => Promise<TeamRunRecord>
   >(
     async () => sampleRun,
@@ -949,7 +950,7 @@ describe("ChatPage", () => {
     }
   });
 
-  it("starts a run from a selected team and continues it with the kickoff prompt", async () => {
+  it("starts a run from a selected team using the first prompt as the opening team round", async () => {
     const updatedRun = {
       ...sampleRun,
       currentPhase: "analysis",
@@ -983,7 +984,7 @@ describe("ChatPage", () => {
           updatedAt: "2026-03-11T12:15:00Z",
         },
       ]);
-    continueTeamRunMock.mockResolvedValueOnce(updatedRun);
+    startTeamRunMock.mockResolvedValueOnce(updatedRun);
     loadWorkspaceSessionMock.mockResolvedValueOnce({
       kind: "team_run",
       run: updatedRun,
@@ -1003,11 +1004,12 @@ describe("ChatPage", () => {
     await setComposerValue(view.container, "Re-check the remaining validation blocker.");
     await clickButton(view.container, "Send");
 
-    expect(startTeamRunMock).toHaveBeenCalledWith("team-release");
-    expect(continueTeamRunMock).toHaveBeenCalledWith(
-      "run-release",
+    expect(startTeamRunMock).toHaveBeenCalledWith(
+      "team-release",
+      undefined,
       "Re-check the remaining validation blocker.",
     );
+    expect(continueTeamRunMock).not.toHaveBeenCalled();
     expect(findText(view.container, "Coordinator agenda")).toBeTruthy();
   });
 
@@ -1207,7 +1209,7 @@ describe("ChatPage", () => {
       await Promise.resolve();
     });
 
-    const tabList = view.container.querySelector(".session-tabs");
+    const tabList = view.container.querySelector(".session-tabs") as HTMLElement | null;
     const tabs = Array.from(view.container.querySelectorAll(".session-tab"));
     const titlebar = view.container.querySelector('[data-testid="chat-session-titlebar"]');
     const title = view.container.querySelector(".chat-session-titlebar__title");
@@ -1219,6 +1221,9 @@ describe("ChatPage", () => {
     expect(tabList?.className).toContain("session-tabs--scrollable");
     expect(tabList?.className).toContain("session-tabs--browser");
     expect(tabList?.className).toContain("session-tabs--dense");
+    expect(tabList?.style.maxWidth).toBe("100%");
+    expect(tabList?.style.overflowY).toBe("hidden");
+    expect(tabList?.style.width).toBe("100%");
     expect(tabs.length).toBeGreaterThan(1);
     expect(view.container.querySelector(".session-tab__meta")).toBeFalsy();
     expect(view.container.querySelector(".session-tab__kind")).toBeFalsy();
@@ -2579,17 +2584,6 @@ describe("ChatPage", () => {
         failoverReason: "missing_model",
       },
     } as TeamRunRecord);
-    continueTeamRunMock.mockResolvedValueOnce({
-      ...sampleRun,
-      routing: {
-        requestedProviderId: "provider-broken",
-        requestedModel: null,
-        effectiveProviderId: "provider-fallback",
-        effectiveModel: "gpt-oss-fallback",
-        fallbackProviderId: "provider-fallback",
-        failoverReason: "missing_model",
-      },
-    } as TeamRunRecord);
 
     const view = await renderIntoDocument(<ChatPage />);
     cleanups.push(view.cleanup);
@@ -2607,18 +2601,15 @@ describe("ChatPage", () => {
     await setComposerValue(view.container, "Kick off the release");
     await clickButton(view.container, "Send");
 
-    expect(startTeamRunMock).toHaveBeenCalledWith("team-release", {
-      requestedProviderId: "provider-broken",
-      requestedModel: null,
-    });
-    expect(continueTeamRunMock).toHaveBeenCalledWith(
-      "run-release",
-      "Kick off the release",
+    expect(startTeamRunMock).toHaveBeenCalledWith(
+      "team-release",
       {
         requestedProviderId: "provider-broken",
         requestedModel: null,
       },
+      "Kick off the release",
     );
+    expect(continueTeamRunMock).not.toHaveBeenCalled();
 
     expect(view.container.querySelector('[data-testid="team-run-routing-state"]')).toBeFalsy();
     expect(view.container.querySelector(".chat-route-card")).toBeFalsy();

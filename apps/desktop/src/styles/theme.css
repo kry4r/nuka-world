@@ -130,6 +130,7 @@ button {
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 
 .page-layout__body {
@@ -137,6 +138,7 @@ button {
   flex: 1;
   gap: 18px;
   min-height: 0;
+  min-width: 0;
 }
 
 .page-layout__main {
@@ -1120,8 +1122,13 @@ button {
 
 .session-tabs {
   display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
   gap: 8px;
   overflow-x: auto;
+  overflow-y: hidden;
   align-items: center;
   padding: 0 2px 4px;
   scrollbar-width: thin;

@@ -25,6 +25,7 @@ export function SessionTabs({
       aria-label="Workspace sessions"
       className="session-tabs session-tabs--scrollable session-tabs--browser session-tabs--dense"
       role="tablist"
+      style={{ maxWidth: "100%", overflowY: "hidden", width: "100%" }}
     >
       {sessions.map((session) => {
         const sessionKey = `${session.kind}:${session.id}`;
