@@ -55,9 +55,12 @@ export function AgentTeamStrip({ agents, leadAgentId }: AgentTeamStripProps) {
             key={agent.id}
           >
             <div className="agent-team-strip__card-top">
-              <div className="agent-team-strip__identity">
-                <strong>{agent.name}</strong>
-                <span>{agent.role}</span>
+              <div className="agent-team-strip__identity-line">
+                <span aria-hidden="true" className="agent-team-strip__avatar" />
+                <div className="agent-team-strip__identity">
+                  <strong>{agent.name}</strong>
+                  <span>{agent.role}</span>
+                </div>
               </div>
               <span className="agent-team-strip__status">{formatAgentStatus(agent.status)}</span>
             </div>

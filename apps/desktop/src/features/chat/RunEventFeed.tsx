@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { TeamRunAgentRecord, TeamRunEventRecord } from "@/lib/team";
 
 type RunEventFeedProps = {
@@ -12,10 +12,13 @@ const PRIMARY_EVENT_KINDS = new Set([
   "round_agenda",
   "position_card",
   "checkpoint_summary",
+  "compaction_summary",
   "run_started",
   "run_queued",
   "run_blocked",
   "run_resumed",
+  "run_stuck",
+  "run_retry",
 ]);
 
 function titleCase(value: string) {
@@ -45,6 +48,8 @@ function formatEventKindLabel(kind: string) {
       return "Position card";
     case "checkpoint_summary":
       return "Checkpoint summary";
+    case "compaction_summary":
+      return "Compacted context";
     case "run_started":
       return "Run started";
     case "run_queued":
@@ -53,6 +58,10 @@ function formatEventKindLabel(kind: string) {
       return "Blocked";
     case "run_resumed":
       return "Resumed";
+    case "run_stuck":
+      return "Stuck";
+    case "run_retry":
+      return "Retry";
     default:
       return titleCase(kind);
   }
@@ -88,6 +97,10 @@ function eventTone(event: TeamRunEventRecord) {
   }
 
   return "system";
+}
+
+function isThinkingEvent(event: TeamRunEventRecord) {
+  return event.status === "thinking";
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
@@ -257,14 +270,20 @@ function MarkdownMessage({ content }: { content: string }) {
 
             if (block.level === 2) {
               return (
-                <h5 className="run-markdown__heading run-markdown__heading--sub" key={`heading-${index}`}>
+                <h5
+                  className="run-markdown__heading run-markdown__heading--sub"
+                  key={`heading-${index}`}
+                >
                   {block.text}
                 </h5>
               );
             }
 
             return (
-              <h6 className="run-markdown__heading run-markdown__heading--minor" key={`heading-${index}`}>
+              <h6
+                className="run-markdown__heading run-markdown__heading--minor"
+                key={`heading-${index}`}
+              >
                 {block.text}
               </h6>
             );
@@ -290,43 +309,42 @@ function MarkdownMessage({ content }: { content: string }) {
                 <code>{block.text}</code>
               </pre>
             );
-          case "table":
-            {
-              const [headerLine, dividerLine, ...bodyLines] = block.lines;
-              const hasDivider = Boolean(dividerLine) && /^[\s|:-]+$/.test(dividerLine.trim());
-              const headers = headerLine
-                .split("|")
-                .map((cell) => cell.trim())
-                .filter(Boolean);
-              const rows = (hasDivider ? bodyLines : [dividerLine, ...bodyLines].filter(Boolean))
-                .map((line) => line.split("|").map((cell) => cell.trim()).filter(Boolean))
-                .filter((cells) => cells.length > 0);
+          case "table": {
+            const [headerLine, dividerLine, ...bodyLines] = block.lines;
+            const hasDivider = Boolean(dividerLine) && /^[\s|:-]+$/.test(dividerLine.trim());
+            const headers = headerLine
+              .split("|")
+              .map((cell) => cell.trim())
+              .filter(Boolean);
+            const rows = (hasDivider ? bodyLines : [dividerLine, ...bodyLines].filter(Boolean))
+              .map((line) => line.split("|").map((cell) => cell.trim()).filter(Boolean))
+              .filter((cells) => cells.length > 0);
 
-              return (
-                <div className="run-markdown__table-wrap" key={`table-${index}`}>
-                  <table className="run-markdown__table">
-                    <thead>
-                      <tr>
-                        {headers.map((header, headerIndex) => (
-                          <th key={`header-${headerIndex}`}>{renderInlineMarkdown(header)}</th>
+            return (
+              <div className="run-markdown__table-wrap" key={`table-${index}`}>
+                <table className="run-markdown__table">
+                  <thead>
+                    <tr>
+                      {headers.map((header, headerIndex) => (
+                        <th key={`header-${headerIndex}`}>{renderInlineMarkdown(header)}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, rowIndex) => (
+                      <tr key={`row-${rowIndex}`}>
+                        {row.map((cell, cellIndex) => (
+                          <td key={`cell-${rowIndex}-${cellIndex}`}>
+                            {renderInlineMarkdown(cell)}
+                          </td>
                         ))}
                       </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((row, rowIndex) => (
-                        <tr key={`row-${rowIndex}`}>
-                          {row.map((cell, cellIndex) => (
-                            <td key={`cell-${rowIndex}-${cellIndex}`}>
-                              {renderInlineMarkdown(cell)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            }
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          }
           case "blockquote":
             return (
               <blockquote className="run-markdown__quote" key={`quote-${index}`}>
@@ -353,6 +371,106 @@ function MarkdownMessage({ content }: { content: string }) {
   );
 }
 
+function RunEventBranchAnchor({
+  isVisible,
+  onBranch,
+}: {
+  isVisible: boolean;
+  onBranch: () => void;
+}) {
+  return (
+    <button
+      aria-label="Branch from this event"
+      className={`run-event-feed__branch run-event-feed__branch--anchor${isVisible ? " is-visible" : ""}`}
+      onClick={onBranch}
+      title="Branch from this event"
+      type="button"
+    >
+      <svg aria-hidden="true" className="run-event-feed__branch-icon" viewBox="0 0 16 16">
+        <path d="M5 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
+        <path d="M5 7.5v5" />
+        <path d="M5 12.5h6.5" />
+        <path d="M8.5 5.5h3v3" />
+        <path d="M11.5 5.5 8 9" />
+      </svg>
+    </button>
+  );
+}
+
+function RunEventCard({
+  agents,
+  event,
+  onBranch,
+}: {
+  agents: TeamRunAgentRecord[];
+  event: TeamRunEventRecord;
+  onBranch?: (eventId: string) => void;
+}) {
+  const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+  const [isBranchVisible, setIsBranchVisible] = useState(false);
+  const speaker = event.kind === "user_instruction" ? "You" : agentName(agents, event.agentId);
+  const kindLabel = formatEventKindLabel(event.kind);
+  const statusLabel = formatEventStatus(event.status);
+  const thinking = isThinkingEvent(event);
+
+  return (
+    <article
+      className={`run-event-feed__item run-event-feed__item--${eventTone(event)}${thinking ? " is-thinking" : ""}`}
+      onBlur={(inputEvent) => {
+        const nextTarget = inputEvent.relatedTarget;
+        if (nextTarget instanceof Node && inputEvent.currentTarget.contains(nextTarget)) {
+          return;
+        }
+
+        setIsBranchVisible(false);
+      }}
+      onFocus={() => setIsBranchVisible(true)}
+      onMouseEnter={() => setIsBranchVisible(true)}
+      onMouseLeave={() => setIsBranchVisible(false)}
+    >
+      <div className="run-event-feed__meta-row">
+        <div className="run-event-feed__meta">
+          <span className="run-event-feed__agent">{speaker}</span>
+          <span className="run-event-feed__kind">{kindLabel}</span>
+          {statusLabel ? <span className="run-event-feed__status">{statusLabel}</span> : null}
+        </div>
+        {onBranch ? (
+          <RunEventBranchAnchor
+            isVisible={isBranchVisible}
+            onBranch={() => onBranch(event.id)}
+          />
+        ) : null}
+      </div>
+      <h3>{event.title}</h3>
+      {thinking ? (
+        <div className="run-event-feed__thinking">
+          <div className="run-event-feed__thinking-summary">
+            <strong>Thinking</strong>
+            <span>{speaker} is working through the next step.</span>
+          </div>
+          <button
+            aria-label={isThinkingExpanded ? "Hide thinking trace" : "Show thinking trace"}
+            className="run-event-feed__thinking-toggle"
+            onClick={() => setIsThinkingExpanded((current) => !current)}
+            type="button"
+          >
+            {isThinkingExpanded ? "Hide thinking trace" : "Show thinking trace"}
+          </button>
+          {isThinkingExpanded ? <MarkdownMessage content={event.content} /> : null}
+        </div>
+      ) : (
+        <MarkdownMessage content={event.content} />
+      )}
+      {event.toolName ? (
+        <div className="run-event-feed__tool">
+          <span>{humanizeToolLabel(event.toolName)}</span>
+          {event.toolTarget ? <span>{event.toolTarget}</span> : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 export function RunEventFeed({ agents, events, onBranch }: RunEventFeedProps) {
   const visibleEvents = events.filter(
     (event) => event.kind !== "file_change" && PRIMARY_EVENT_KINDS.has(event.kind),
@@ -360,44 +478,9 @@ export function RunEventFeed({ agents, events, onBranch }: RunEventFeedProps) {
 
   return (
     <section aria-label="Team run conversation" className="run-event-feed">
-      {visibleEvents.map((event) => {
-        const speaker = event.kind === "user_instruction" ? "You" : agentName(agents, event.agentId);
-        const kindLabel = formatEventKindLabel(event.kind);
-        const statusLabel = formatEventStatus(event.status);
-
-        return (
-          <article
-            className={`run-event-feed__item run-event-feed__item--${eventTone(event)}`}
-            key={event.id}
-          >
-            <div className="run-event-feed__meta-row">
-              <div className="run-event-feed__meta">
-                <span className="run-event-feed__agent">{speaker}</span>
-                <span className="run-event-feed__kind">{kindLabel}</span>
-                {statusLabel ? <span className="run-event-feed__status">{statusLabel}</span> : null}
-              </div>
-              {onBranch ? (
-                <button
-                  aria-label="Branch from this event"
-                  className="run-event-feed__branch"
-                  onClick={() => onBranch(event.id)}
-                  type="button"
-                >
-                  Branch
-                </button>
-              ) : null}
-            </div>
-            <h3>{event.title}</h3>
-            <MarkdownMessage content={event.content} />
-            {event.toolName ? (
-              <div className="run-event-feed__tool">
-                <span>{humanizeToolLabel(event.toolName)}</span>
-                {event.toolTarget ? <span>{event.toolTarget}</span> : null}
-              </div>
-            ) : null}
-          </article>
-        );
-      })}
+      {visibleEvents.map((event) => (
+        <RunEventCard agents={agents} event={event} key={event.id} onBranch={onBranch} />
+      ))}
     </section>
   );
 }

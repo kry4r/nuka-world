@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { TeamRunRecord } from "@/lib/team";
+import { useMemo, useState } from "react";
+import type { TeamRunEventRecord, TeamRunRecord } from "@/lib/team";
 import { AgentTeamStrip } from "./AgentTeamStrip";
 import { RunCharterCard } from "./RunCharterCard";
 import { RunEventFeed } from "./RunEventFeed";
@@ -17,6 +17,32 @@ type TeamRunPanelProps = {
   onBranchEvent?: (eventId: string) => Promise<void> | void;
   onContinue: (prompt: string) => Promise<void> | void;
 };
+
+type TeamRunPanelView = "conversation" | "status" | "agents" | "files";
+
+const VIEW_OPTIONS: Array<{ id: TeamRunPanelView; label: string }> = [
+  { id: "conversation", label: "Conversation" },
+  { id: "status", label: "Status" },
+  { id: "agents", label: "Agents" },
+  { id: "files", label: "Files" },
+];
+
+function titleCase(value: string) {
+  return value
+    .replace(/_/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+function formatRunStatus(value: string) {
+  if (value === "waiting_for_user") {
+    return "Waiting for input";
+  }
+
+  return titleCase(value);
+}
 
 function groupFileChanges(run: TeamRunRecord) {
   const batches = new Map<
@@ -45,6 +71,87 @@ function groupFileChanges(run: TeamRunRecord) {
   return Array.from(batches.values());
 }
 
+function statusEvents(run: TeamRunRecord) {
+  return run.events.filter((event) => event.kind.startsWith("run_"));
+}
+
+function StatusView({ run }: { run: TeamRunRecord }) {
+  const statusTimeline = statusEvents(run);
+
+  return (
+    <div className="team-run-panel__status-stack">
+      <article className="team-run-panel__status-card ui-card">
+        <div className="team-run-panel__status-header">
+          <div className="team-run-panel__status-copy">
+            <span>Run status</span>
+            <strong>{formatRunStatus(run.status)}</strong>
+          </div>
+          <span className="status-badge status-badge--soft">{titleCase(run.currentPhase)}</span>
+        </div>
+        <p>{run.goal}</p>
+      </article>
+
+      {statusTimeline.length > 0 ? (
+        <section aria-label="Team run status timeline" className="team-run-panel__status-timeline">
+          {statusTimeline.map((event: TeamRunEventRecord) => (
+            <article className="team-run-panel__status-item ui-card" key={event.id}>
+              <div className="team-run-panel__status-item-header">
+                <strong>{event.title}</strong>
+                {event.status ? (
+                  <span className="status-badge status-badge--soft">
+                    {formatRunStatus(event.status)}
+                  </span>
+                ) : null}
+              </div>
+              <p>{event.content}</p>
+            </article>
+          ))}
+        </section>
+      ) : null}
+
+      <RunCharterCard run={run} />
+    </div>
+  );
+}
+
+function FilesView({ run }: { run: TeamRunRecord }) {
+  const fileChangeBatches = groupFileChanges(run);
+
+  if (fileChangeBatches.length === 0) {
+    return (
+      <section aria-label="File timeline" className="team-run-panel__timeline">
+        <article className="team-run-panel__timeline-empty ui-card">
+          <strong>File timeline</strong>
+          <p>No run artifacts have been written yet.</p>
+        </article>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-label="File timeline" className="team-run-panel__timeline">
+      <div className="team-run-panel__timeline-header">
+        <h2>File timeline</h2>
+      </div>
+      <div className="team-run-panel__timeline-groups">
+        {fileChangeBatches.map((batch) => (
+          <article className="team-run-panel__timeline-group ui-card" key={batch.label}>
+            <h3>{batch.label}</h3>
+            <ul className="team-run-panel__timeline-list">
+              {batch.changes.map((change) => (
+                <li className="team-run-panel__timeline-item" key={change.id}>
+                  <span className="team-run-panel__timeline-file">{change.content}</span>
+                  <span className="team-run-panel__timeline-kind">{change.status}</span>
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function TeamRunPanel({
   run,
   isBusy,
@@ -52,40 +159,62 @@ export function TeamRunPanel({
   onBranchEvent,
   onContinue,
 }: TeamRunPanelProps) {
+  const [activeView, setActiveView] = useState<TeamRunPanelView>("conversation");
   const [followUp, setFollowUp] = useState("");
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
   const [agentName, setAgentName] = useState("");
   const [agentRole, setAgentRole] = useState("");
   const [agentResponsibility, setAgentResponsibility] = useState("");
-  const fileChangeBatches = groupFileChanges(run);
+  const activeViewBody = useMemo(() => {
+    switch (activeView) {
+      case "status":
+        return <StatusView run={run} />;
+      case "agents":
+        return (
+          <div className="team-run-panel__agents-view">
+            <AgentTeamStrip agents={run.agents} leadAgentId={run.leadAgentId} />
+          </div>
+        );
+      case "files":
+        return <FilesView run={run} />;
+      case "conversation":
+      default:
+        return (
+          <div className="team-run-panel__conversation-view">
+            <AgentTeamStrip agents={run.agents} leadAgentId={run.leadAgentId} />
+            <RunCharterCard run={run} />
+            <RunEventFeed agents={run.agents} events={run.events} onBranch={onBranchEvent} />
+          </div>
+        );
+    }
+  }, [activeView, onBranchEvent, run]);
 
   return (
     <section aria-label="Team run session" className="team-run-panel">
-      <AgentTeamStrip agents={run.agents} leadAgentId={run.leadAgentId} />
-      <RunCharterCard run={run} />
-      <RunEventFeed agents={run.agents} events={run.events} onBranch={onBranchEvent} />
-      {fileChangeBatches.length > 0 ? (
-        <section aria-label="File timeline" className="team-run-panel__timeline">
-          <div className="team-run-panel__timeline-header">
-            <h2>File timeline</h2>
-          </div>
-          <div className="team-run-panel__timeline-groups">
-            {fileChangeBatches.map((batch) => (
-              <article className="team-run-panel__timeline-group ui-card" key={batch.label}>
-                <h3>{batch.label}</h3>
-                <ul className="team-run-panel__timeline-list">
-                  {batch.changes.map((change) => (
-                    <li className="team-run-panel__timeline-item" key={change.id}>
-                      <span className="team-run-panel__timeline-file">{change.content}</span>
-                      <span className="team-run-panel__timeline-kind">{change.status}</span>
-                    </li>
-                  ))}
-                </ul>
-              </article>
+      <div className="team-run-panel__views ui-card">
+        <div className="team-run-panel__views-header">
+          <div className="team-run-panel__view-tabs" role="tablist">
+            {VIEW_OPTIONS.map((view) => (
+              <button
+                aria-selected={activeView === view.id}
+                className={`team-run-panel__view-tab${activeView === view.id ? " is-active" : ""}`}
+                key={view.id}
+                onClick={() => setActiveView(view.id)}
+                role="tab"
+                type="button"
+              >
+                {view.label}
+              </button>
             ))}
           </div>
-        </section>
-      ) : null}
+          <div className="team-run-panel__views-summary">
+            <span className="status-badge status-badge--soft">{formatRunStatus(run.status)}</span>
+            <span className="status-badge status-badge--soft">{titleCase(run.currentPhase)}</span>
+          </div>
+        </div>
+
+        <div className="team-run-panel__view-body">{activeViewBody}</div>
+      </div>
 
       <div className="team-run-panel__composer ui-card">
         <label className="team-run-panel__field">

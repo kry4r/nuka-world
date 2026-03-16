@@ -1,3 +1,4 @@
+import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TeamRunPanel } from "./TeamRunPanel";
 import { findText, renderIntoDocument } from "@/test/render";
@@ -95,7 +96,97 @@ function sampleRun(): TeamRunRecord {
   };
 }
 
+async function clickButton(container: HTMLElement, text: string) {
+  const button = Array.from(container.querySelectorAll("button")).find(
+    (node) =>
+      node.textContent?.trim() === text || node.getAttribute("aria-label") === text,
+  ) as HTMLButtonElement | undefined;
+
+  await act(async () => {
+    button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+  });
+}
+
 describe("TeamRunPanel", () => {
+  it("renders conversation-first secondary tabs and switches between status, agents, and files", async () => {
+    const run = sampleRun();
+    run.agents = [
+      ...run.agents,
+      {
+        id: "agent-reviewer",
+        runId: "run-release",
+        sourceAgentId: "agent-reviewer",
+        sourceTeamAssignmentId: "assign-reviewer",
+        sourceTeamAgentId: "team-agent-reviewer",
+        name: "Reviewer",
+        role: "Reviewer",
+        responsibility: "Validate the final notes",
+        systemPrompt: "Review the final notes.",
+        toolBindings: [],
+        toolUsePolicy: {
+          maxCallsPerRound: 1,
+          summarizeOutput: true,
+        },
+        status: "thinking",
+        currentWork: "Checking the sign-off matrix",
+        lastToolActivity: "session_artifacts",
+        joinedAt: "2026-03-13T00:01:00Z",
+      },
+    ];
+    run.events = [
+      {
+        id: "event-blocked",
+        runId: "run-release",
+        kind: "run_blocked",
+        agentId: null,
+        title: "Run blocked",
+        content: "Waiting for provider route confirmation.",
+        status: "blocked",
+        toolName: null,
+        toolCallId: null,
+        toolTarget: null,
+        sequence: 1,
+        createdAt: "2026-03-13T00:01:00Z",
+      },
+      ...run.events,
+    ];
+
+    const view = await renderIntoDocument(
+      <TeamRunPanel
+        isBusy={false}
+        onAddAgent={vi.fn()}
+        onContinue={vi.fn()}
+        run={run}
+      />,
+    );
+
+    expect(findText(view.container, "Conversation")).toBeTruthy();
+    expect(findText(view.container, "Status")).toBeTruthy();
+    expect(findText(view.container, "Agents")).toBeTruthy();
+    expect(findText(view.container, "Files")).toBeTruthy();
+    expect(findText(view.container, "Round 1 checkpoint")).toBeTruthy();
+    expect(findText(view.container, "File timeline")).toBeFalsy();
+
+    await clickButton(view.container, "Status");
+
+    expect(findText(view.container, "Waiting for input")).toBeTruthy();
+    expect(findText(view.container, "Run blocked")).toBeTruthy();
+
+    await clickButton(view.container, "Agents");
+
+    expect(view.container.querySelector(".agent-team-strip__avatar")).toBeTruthy();
+    expect(findText(view.container, "Reviewer")).toBeTruthy();
+    expect(findText(view.container, "Reviewer")).toBeTruthy();
+
+    await clickButton(view.container, "Files");
+
+    expect(findText(view.container, "File timeline")).toBeTruthy();
+    expect(findText(view.container, "checkpoint.md")).toBeTruthy();
+
+    await view.cleanup();
+  });
+
   it("renders a file timeline grouped by round for active run artifacts", async () => {
     const view = await renderIntoDocument(
       <TeamRunPanel
@@ -105,6 +196,8 @@ describe("TeamRunPanel", () => {
         run={sampleRun()}
       />,
     );
+
+    await clickButton(view.container, "Files");
 
     expect(findText(view.container, "File timeline")).toBeTruthy();
     expect(findText(view.container, "Round 1")).toBeTruthy();
@@ -157,6 +250,55 @@ describe("TeamRunPanel", () => {
     expect(findText(view.container, "Coordinator")).toBeTruthy();
     expect(findText(view.container, "session_artifacts")).toBeFalsy();
     expect(findText(view.container, "Session Artifacts")).toBeTruthy();
+
+    await view.cleanup();
+  });
+
+  it("renders thinking updates as disclosures and uses an anchor-style branch affordance", async () => {
+    const run = sampleRun();
+    run.events = [
+      {
+        id: "event-thinking",
+        runId: "run-release",
+        kind: "position_card",
+        agentId: "agent-coordinator",
+        title: "Coordinator reasoning",
+        content: [
+          "## Thinking",
+          "",
+          "- Check the unresolved sign-off owner",
+          "- Verify the draft release note path",
+        ].join("\n"),
+        status: "thinking",
+        toolName: null,
+        toolCallId: null,
+        toolTarget: null,
+        sequence: 1,
+        createdAt: "2026-03-13T00:03:00Z",
+      },
+    ];
+
+    const view = await renderIntoDocument(
+      <TeamRunPanel
+        isBusy={false}
+        onAddAgent={vi.fn()}
+        onBranchEvent={vi.fn()}
+        onContinue={vi.fn()}
+        run={run}
+      />,
+    );
+
+    const branchButton = view.container.querySelector(
+      '[aria-label="Branch from this event"]',
+    ) as HTMLButtonElement | null;
+
+    expect(findText(view.container, "Thinking")).toBeTruthy();
+    expect(findText(view.container, "Check the unresolved sign-off owner")).toBeFalsy();
+    expect(branchButton?.className).toContain("run-event-feed__branch--anchor");
+
+    await clickButton(view.container, "Show thinking trace");
+
+    expect(findText(view.container, "Check the unresolved sign-off owner")).toBeTruthy();
 
     await view.cleanup();
   });
