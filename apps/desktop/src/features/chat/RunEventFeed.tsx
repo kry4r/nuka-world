@@ -1,6 +1,15 @@
 import { useState, type ReactNode } from "react";
 import type { TeamRunAgentRecord, TeamRunEventRecord } from "@/lib/team";
 import { useI18n } from "@/lib/i18n";
+import {
+  compactionEntryMatchesAgent,
+  firstMarkdownHeading,
+  headingsOverlap,
+  humanizeTeamRunAgentRole,
+  humanizeTeamRunProtocolCopy,
+  parseTeamRunCompactionEntries,
+  titleCase,
+} from "./teamRunPresentation";
 
 type RunEventFeedProps = {
   agents: TeamRunAgentRecord[];
@@ -10,6 +19,11 @@ type RunEventFeedProps = {
   selectedAgentId?: string | null;
 };
 
+type FeedEvent = TeamRunEventRecord & {
+  branchable?: boolean;
+  branchEventId?: string;
+};
+
 const PRIMARY_EVENT_KINDS = new Set([
   "user_instruction",
   "round_agenda",
@@ -17,21 +31,14 @@ const PRIMARY_EVENT_KINDS = new Set([
   "checkpoint_summary",
   "compaction_summary",
   "run_started",
+  "run_heartbeat",
   "run_queued",
   "run_blocked",
   "run_resumed",
   "run_stuck",
   "run_retry",
+  "provider_check_passed",
 ]);
-
-function titleCase(value: string) {
-  return value
-    .replace(/_/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(" ");
-}
 
 function agentRecord(agents: TeamRunAgentRecord[], agentId: string | null) {
   if (!agentId) {
@@ -41,7 +48,37 @@ function agentRecord(agents: TeamRunAgentRecord[], agentId: string | null) {
   return agents.find((agent) => agent.id === agentId) ?? null;
 }
 
-function formatEventKindLabel(kind: string, t: ReturnType<typeof useI18n>["t"]) {
+function normalizeAgentName(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+}
+
+function resolveAgentIdByName(
+  agents: TeamRunAgentRecord[],
+  agentName: string | null,
+) {
+  const normalized = normalizeAgentName(agentName);
+  if (!normalized) {
+    return null;
+  }
+
+  return (
+    agents.find((agent) => normalizeAgentName(agent.name) === normalized)?.id ??
+    null
+  );
+}
+
+function formatEventKindLabel(
+  kind: string,
+  t: ReturnType<typeof useI18n>["t"],
+) {
   switch (kind) {
     case "user_instruction":
       return t("teamRun.event.followUp");
@@ -55,6 +92,8 @@ function formatEventKindLabel(kind: string, t: ReturnType<typeof useI18n>["t"]) 
       return t("teamRun.event.compactedContext");
     case "run_started":
       return t("teamRun.event.runStarted");
+    case "run_heartbeat":
+      return t("teamRun.event.runHeartbeat");
     case "run_queued":
       return t("teamRun.event.queued");
     case "run_blocked":
@@ -65,6 +104,8 @@ function formatEventKindLabel(kind: string, t: ReturnType<typeof useI18n>["t"]) 
       return t("teamRun.event.stuck");
     case "run_retry":
       return t("teamRun.event.retry");
+    case "provider_check_passed":
+      return t("teamRun.event.providerCheckPassed");
     default:
       return titleCase(kind);
   }
@@ -79,7 +120,7 @@ function eventCardKind(event: TeamRunEventRecord) {
     return "thinking";
   }
 
-  if (event.kind.startsWith("run_")) {
+  if (event.kind.startsWith("run_") || event.kind === "provider_check_passed") {
     return "status";
   }
 
@@ -109,7 +150,10 @@ function formatEventCardLabel(
   }
 }
 
-function formatEventStatus(status: string | null, t: ReturnType<typeof useI18n>["t"]) {
+function formatEventStatus(
+  status: string | null,
+  t: ReturnType<typeof useI18n>["t"],
+) {
   if (!status) {
     return null;
   }
@@ -138,7 +182,7 @@ function formatEventStatus(status: string | null, t: ReturnType<typeof useI18n>[
     return t("teamRun.state.queued");
   }
 
-  if (status === "running") {
+  if (status === "running" || status === "active") {
     return t("teamRun.state.running");
   }
 
@@ -171,6 +215,30 @@ function humanizeToolLabel(value: string, t: ReturnType<typeof useI18n>["t"]) {
   return value.includes("_") ? titleCase(value) : value;
 }
 
+function formatEventRelationship(
+  event: TeamRunEventRecord,
+  speaker: string,
+  agents: TeamRunAgentRecord[],
+  t: ReturnType<typeof useI18n>["t"],
+) {
+  if (event.kind === "user_instruction") {
+    const recipient =
+      agentRecord(agents, event.agentId)?.name ??
+      t("teamRun.relationship.team");
+    return `${speaker} → ${recipient}`;
+  }
+
+  if (event.toolName) {
+    return `${speaker} → ${humanizeToolLabel(event.toolName, t)}`;
+  }
+
+  if (event.kind.startsWith("run_")) {
+    return `${t("teamRun.speaker.system")} → ${t("teamRun.relationship.team")}`;
+  }
+
+  return `${speaker} → ${t("teamRun.relationship.team")}`;
+}
+
 function eventTone(event: TeamRunEventRecord) {
   if (event.kind === "user_instruction") {
     return "user";
@@ -185,6 +253,143 @@ function eventTone(event: TeamRunEventRecord) {
 
 function isThinkingEvent(event: TeamRunEventRecord) {
   return event.status === "thinking";
+}
+
+function buildAgentTimelineEvents(
+  agents: TeamRunAgentRecord[],
+  events: TeamRunEventRecord[],
+  selectedAgentId: string,
+) {
+  const selectedAgent = agentRecord(agents, selectedAgentId);
+  if (!selectedAgent) {
+    return [] as FeedEvent[];
+  }
+
+  const timeline: FeedEvent[] = [];
+
+  for (const event of events) {
+    if (event.kind === "file_change") {
+      if (event.agentId === selectedAgentId) {
+        timeline.push({ ...event, branchable: true });
+      }
+      continue;
+    }
+
+    if (event.kind === "compaction_summary") {
+      const entries = parseTeamRunCompactionEntries(event.content).filter(
+        (entry) =>
+          compactionEntryMatchesAgent(entry, selectedAgent.name) ||
+          entry.kind === "run_started" ||
+          entry.kind === "user_instruction" ||
+          entry.kind === "run_heartbeat" ||
+          entry.kind === "provider_check_passed" ||
+          entry.kind === "round_agenda" ||
+          entry.kind === "checkpoint_summary",
+      );
+
+      entries.forEach((entry, index) => {
+        timeline.push({
+          id: `${event.id}:compaction:${index}`,
+          runId: event.runId,
+          kind: entry.kind,
+          agentId:
+            entry.kind === "user_instruction" ||
+            compactionEntryMatchesAgent(entry, selectedAgent.name)
+              ? selectedAgentId
+              : null,
+          title: entry.title,
+          content: entry.content,
+          status: event.status,
+          toolName: null,
+          toolCallId: null,
+          toolTarget: null,
+          sequence: event.sequence * 100 + index,
+          createdAt: event.createdAt,
+          branchable: true,
+          branchEventId: event.id,
+        });
+      });
+      continue;
+    }
+
+    const includePrimary =
+      PRIMARY_EVENT_KINDS.has(event.kind) ||
+      event.kind === "run_heartbeat" ||
+      event.kind === "provider_check_passed";
+    if (!includePrimary) {
+      continue;
+    }
+
+    if (
+      event.agentId === selectedAgentId ||
+      event.kind === "user_instruction" ||
+      event.kind === "round_agenda" ||
+      event.kind === "run_heartbeat" ||
+      event.kind === "provider_check_passed" ||
+      event.kind.startsWith("run_")
+    ) {
+      timeline.push({ ...event, branchable: true });
+    }
+  }
+
+  return timeline.sort((left, right) =>
+    left.sequence === right.sequence
+      ? left.createdAt.localeCompare(right.createdAt)
+      : left.sequence - right.sequence,
+  );
+}
+
+function expandCompactionSummary(
+  agents: TeamRunAgentRecord[],
+  event: TeamRunEventRecord,
+) {
+  const entries = parseTeamRunCompactionEntries(event.content);
+  if (entries.length === 0) {
+    return [{ ...event }] as FeedEvent[];
+  }
+
+  return entries.map((entry, index) => ({
+    id: `${event.id}:compaction:${index}`,
+    runId: event.runId,
+    kind: entry.kind,
+    agentId: resolveAgentIdByName(agents, entry.agentName),
+    title: entry.title,
+    content: entry.content,
+    status: event.status,
+    toolName: null,
+    toolCallId: null,
+    toolTarget: null,
+    sequence: event.sequence * 100 + index,
+    createdAt: event.createdAt,
+    branchable: true,
+    branchEventId: event.id,
+  }));
+}
+
+function buildConversationTimelineEvents(
+  agents: TeamRunAgentRecord[],
+  events: TeamRunEventRecord[],
+) {
+  const timeline: FeedEvent[] = [];
+
+  for (const event of events) {
+    if (event.kind === "file_change" || !PRIMARY_EVENT_KINDS.has(event.kind)) {
+      continue;
+    }
+
+    if (event.kind === "compaction_summary") {
+      timeline.push(...expandCompactionSummary(agents, event));
+      continue;
+    }
+
+    timeline.push({ ...event });
+  }
+
+  return timeline.sort((left, right) =>
+    left.sequence === right.sequence
+      ? left.createdAt.localeCompare(right.createdAt)
+      : left.sequence - right.sequence,
+  );
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
@@ -202,7 +407,12 @@ function renderInlineMarkdown(text: string): ReactNode[] {
     const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
       return (
-        <a href={linkMatch[2]} key={`link-${index}`} rel="noreferrer" target="_blank">
+        <a
+          href={linkMatch[2]}
+          key={`link-${index}`}
+          rel="noreferrer"
+          target="_blank"
+        >
           {linkMatch[1]}
         </a>
       );
@@ -336,7 +546,7 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
   return blocks;
 }
 
-function MarkdownMessage({ content }: { content: string }) {
+export function MarkdownMessage({ content }: { content: string }) {
   const blocks = parseMarkdownBlocks(content);
 
   return (
@@ -375,15 +585,22 @@ function MarkdownMessage({ content }: { content: string }) {
             return (
               <ul className="run-markdown__list" key={`list-${index}`}>
                 {block.items.map((item, itemIndex) => (
-                  <li key={`list-item-${itemIndex}`}>{renderInlineMarkdown(item)}</li>
+                  <li key={`list-item-${itemIndex}`}>
+                    {renderInlineMarkdown(item)}
+                  </li>
                 ))}
               </ul>
             );
           case "ordered-list":
             return (
-              <ol className="run-markdown__list run-markdown__list--ordered" key={`olist-${index}`}>
+              <ol
+                className="run-markdown__list run-markdown__list--ordered"
+                key={`olist-${index}`}
+              >
                 {block.items.map((item, itemIndex) => (
-                  <li key={`olist-item-${itemIndex}`}>{renderInlineMarkdown(item)}</li>
+                  <li key={`olist-item-${itemIndex}`}>
+                    {renderInlineMarkdown(item)}
+                  </li>
                 ))}
               </ol>
             );
@@ -395,13 +612,23 @@ function MarkdownMessage({ content }: { content: string }) {
             );
           case "table": {
             const [headerLine, dividerLine, ...bodyLines] = block.lines;
-            const hasDivider = Boolean(dividerLine) && /^[\s|:-]+$/.test(dividerLine.trim());
+            const hasDivider =
+              Boolean(dividerLine) && /^[\s|:-]+$/.test(dividerLine.trim());
             const headers = headerLine
               .split("|")
               .map((cell) => cell.trim())
               .filter(Boolean);
-            const rows = (hasDivider ? bodyLines : [dividerLine, ...bodyLines].filter(Boolean))
-              .map((line) => line.split("|").map((cell) => cell.trim()).filter(Boolean))
+            const rows = (
+              hasDivider
+                ? bodyLines
+                : [dividerLine, ...bodyLines].filter(Boolean)
+            )
+              .map((line) =>
+                line
+                  .split("|")
+                  .map((cell) => cell.trim())
+                  .filter(Boolean),
+              )
               .filter((cells) => cells.length > 0);
 
             return (
@@ -410,7 +637,9 @@ function MarkdownMessage({ content }: { content: string }) {
                   <thead>
                     <tr>
                       {headers.map((header, headerIndex) => (
-                        <th key={`header-${headerIndex}`}>{renderInlineMarkdown(header)}</th>
+                        <th key={`header-${headerIndex}`}>
+                          {renderInlineMarkdown(header)}
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -431,9 +660,14 @@ function MarkdownMessage({ content }: { content: string }) {
           }
           case "blockquote":
             return (
-              <blockquote className="run-markdown__quote" key={`quote-${index}`}>
+              <blockquote
+                className="run-markdown__quote"
+                key={`quote-${index}`}
+              >
                 {block.lines.map((line, lineIndex) => (
-                  <p key={`quote-line-${lineIndex}`}>{renderInlineMarkdown(line)}</p>
+                  <p key={`quote-line-${lineIndex}`}>
+                    {renderInlineMarkdown(line)}
+                  </p>
                 ))}
               </blockquote>
             );
@@ -472,7 +706,11 @@ function RunEventBranchAnchor({
       title={t("teamRun.event.branch")}
       type="button"
     >
-      <svg aria-hidden="true" className="run-event-feed__branch-icon" viewBox="0 0 16 16">
+      <svg
+        aria-hidden="true"
+        className="run-event-feed__branch-icon"
+        viewBox="0 0 16 16"
+      >
         <path d="M5 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
         <path d="M5 7.5v5" />
         <path d="M5 12.5h6.5" />
@@ -490,25 +728,42 @@ function RunEventCard({
   onBranch,
 }: {
   agents: TeamRunAgentRecord[];
-  event: TeamRunEventRecord;
+  event: FeedEvent;
   mode: "conversation" | "agent";
   onBranch?: (eventId: string) => void;
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   const [isBranchVisible, setIsBranchVisible] = useState(false);
   const linkedAgent = agentRecord(agents, event.agentId);
   const speaker =
     event.kind === "user_instruction"
       ? t("teamRun.speaker.you")
-      : linkedAgent?.name ?? t("teamRun.speaker.system");
-  const speakerRole = linkedAgent?.role ?? null;
+      : (linkedAgent?.name ?? t("teamRun.speaker.system"));
+  const speakerRole =
+    humanizeTeamRunAgentRole(linkedAgent?.role ?? null, t) ?? null;
   const cardKind = eventCardKind(event);
   const kindLabel =
-    mode === "agent" ? formatEventCardLabel(cardKind, t) : formatEventKindLabel(event.kind, t);
+    mode === "agent"
+      ? formatEventCardLabel(cardKind, t)
+      : formatEventKindLabel(event.kind, t);
   const statusLabel = formatEventStatus(event.status, t);
   const statusTone = eventStatusTone(event.status);
   const thinking = isThinkingEvent(event);
+  const displayTitle =
+    locale === "zh-CN"
+      ? humanizeTeamRunProtocolCopy(event.title, t)
+      : event.title;
+  const displayContent =
+    locale === "zh-CN"
+      ? humanizeTeamRunProtocolCopy(event.content, t)
+      : event.content;
+  const contentHeading = firstMarkdownHeading(displayContent);
+  const relationshipLabel = formatEventRelationship(event, speaker, agents, t);
+  const shouldShowTitle =
+    event.kind !== "compaction_summary" &&
+    !headingsOverlap(displayTitle, contentHeading) &&
+    !headingsOverlap(kindLabel, displayTitle);
 
   return (
     <article
@@ -516,7 +771,10 @@ function RunEventCard({
       data-event-card-kind={cardKind}
       onBlur={(inputEvent) => {
         const nextTarget = inputEvent.relatedTarget;
-        if (nextTarget instanceof Node && inputEvent.currentTarget.contains(nextTarget)) {
+        if (
+          nextTarget instanceof Node &&
+          inputEvent.currentTarget.contains(nextTarget)
+        ) {
           return;
         }
 
@@ -535,7 +793,19 @@ function RunEventCard({
               className={`run-event-feed__speaker-dot run-event-feed__speaker-dot--${eventTone(event)}`}
             />
             <span className="run-event-feed__agent">{speaker}</span>
-            {speakerRole ? <span className="run-event-feed__role">{speakerRole}</span> : null}
+            {speakerRole ? (
+              <span className="run-event-feed__role">{speakerRole}</span>
+            ) : null}
+          </div>
+          <div className="run-event-feed__activity-row">
+            <span className="run-event-feed__relationship">
+              {relationshipLabel}
+            </span>
+            {event.toolName ? (
+              <span className="run-event-feed__activity-pill">
+                {t("teamRun.eventCard.tool")}
+              </span>
+            ) : null}
           </div>
         </div>
         {statusLabel || onBranch ? (
@@ -549,16 +819,16 @@ function RunEventCard({
                 <span className="composer__visually-hidden">{statusLabel}</span>
               </span>
             ) : null}
-            {onBranch ? (
+            {onBranch && event.branchable !== false ? (
               <RunEventBranchAnchor
                 isVisible={isBranchVisible}
-                onBranch={() => onBranch(event.id)}
+                onBranch={() => onBranch(event.branchEventId ?? event.id)}
               />
             ) : null}
           </div>
         ) : null}
       </div>
-      <h3>{event.title}</h3>
+      {shouldShowTitle ? <h3>{displayTitle}</h3> : null}
       {thinking ? (
         <div className="run-event-feed__thinking">
           <div className="run-event-feed__thinking-summary">
@@ -566,22 +836,36 @@ function RunEventCard({
             <span>{t("teamRun.thinking.summary", { name: speaker })}</span>
           </div>
           <button
-            aria-label={isThinkingExpanded ? t("teamRun.thinking.hide") : t("teamRun.thinking.show")}
+            aria-label={
+              isThinkingExpanded
+                ? t("teamRun.thinking.hide")
+                : t("teamRun.thinking.show")
+            }
             className="run-event-feed__thinking-toggle"
             onClick={() => setIsThinkingExpanded((current) => !current)}
             type="button"
           >
-            {isThinkingExpanded ? t("teamRun.thinking.hide") : t("teamRun.thinking.show")}
+            {isThinkingExpanded
+              ? t("teamRun.thinking.hide")
+              : t("teamRun.thinking.show")}
           </button>
-          {isThinkingExpanded ? <MarkdownMessage content={event.content} /> : null}
+          {isThinkingExpanded ? (
+            <MarkdownMessage content={displayContent} />
+          ) : null}
         </div>
       ) : (
-        <MarkdownMessage content={event.content} />
+        <MarkdownMessage content={displayContent} />
       )}
       {event.toolName ? (
         <div className="run-event-feed__tool">
-          <span>{humanizeToolLabel(event.toolName, t)}</span>
-          {event.toolTarget ? <span>{event.toolTarget}</span> : null}
+          <span className="run-event-feed__tool-label">
+            {humanizeToolLabel(event.toolName, t)}
+          </span>
+          {event.toolTarget ? (
+            <span className="run-event-feed__tool-target">
+              {event.toolTarget}
+            </span>
+          ) : null}
         </div>
       ) : null}
     </article>
@@ -596,25 +880,16 @@ export function RunEventFeed({
   selectedAgentId = null,
 }: RunEventFeedProps) {
   const { t } = useI18n();
-  const visibleEvents = events.filter((event) => {
-    if (event.kind === "file_change" || !PRIMARY_EVENT_KINDS.has(event.kind)) {
-      return false;
-    }
-
-    if (mode !== "agent" || !selectedAgentId) {
-      return true;
-    }
-
-    return (
-      event.agentId === selectedAgentId ||
-      event.kind === "user_instruction" ||
-      event.kind === "round_agenda" ||
-      event.kind.startsWith("run_")
-    );
-  });
+  const visibleEvents =
+    mode === "agent" && selectedAgentId
+      ? buildAgentTimelineEvents(agents, events, selectedAgentId)
+      : buildConversationTimelineEvents(agents, events);
 
   return (
-    <section aria-label={t("teamRun.view.conversation")} className="run-event-feed">
+    <section
+      aria-label={t("teamRun.view.conversation")}
+      className="run-event-feed"
+    >
       {visibleEvents.map((event) => (
         <RunEventCard
           agents={agents}

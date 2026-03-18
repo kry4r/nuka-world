@@ -307,8 +307,8 @@ async fn list_pending_memory_candidates_inner(
     owner_id: String,
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<Vec<MemoryCandidateResponse>> {
-    let surface = nuka_domain::memory::MemorySurface::from_str(&surface)
-        .map_err(anyhow::Error::msg)?;
+    let surface =
+        nuka_domain::memory::MemorySurface::from_str(&surface).map_err(anyhow::Error::msg)?;
     let graph = state.memory_service().load_graph().await?;
 
     Ok(state
@@ -383,7 +383,10 @@ fn memory_candidate_response_from_graph(
     candidate: nuka_domain::memory::MemoryCandidate,
     graph: &nuka_domain::memory::MemoryGraph,
 ) -> MemoryCandidateResponse {
-    let node = graph.nodes.iter().find(|entry| entry.id == candidate.node_id);
+    let node = graph
+        .nodes
+        .iter()
+        .find(|entry| entry.id == candidate.node_id);
     let related_titles = node
         .map(|node| {
             graph
@@ -483,9 +486,7 @@ mod tests {
             .await
             .unwrap();
 
-        let graph = super::load_memory_graph_inner(None, &state)
-            .await
-            .unwrap();
+        let graph = super::load_memory_graph_inner(None, &state).await.unwrap();
 
         assert_eq!(graph.nodes.len(), 2);
         assert_eq!(graph.edges.len(), 1);
@@ -581,12 +582,10 @@ mod tests {
             .await
             .unwrap();
 
-        let graph = super::load_memory_graph_inner(
-            Some("workflow:workflow-review".to_string()),
-            &state,
-        )
-        .await
-        .unwrap();
+        let graph =
+            super::load_memory_graph_inner(Some("workflow:workflow-review".to_string()), &state)
+                .await
+                .unwrap();
 
         assert_eq!(graph.nodes.len(), 1);
         assert_eq!(graph.nodes[0].id, "memory-workflow");
@@ -676,18 +675,22 @@ mod tests {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         state
             .memory_service()
-            .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
-                session_id: "session-1".to_string(),
-                prompt: "Capture the release policy".to_string(),
-            })
+            .handle_runtime_event(
+                nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                    session_id: "session-1".to_string(),
+                    prompt: "Capture the release policy".to_string(),
+                },
+            )
             .await
             .unwrap();
         state
             .memory_service()
-            .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
-                session_id: "session-2".to_string(),
-                prompt: "Ignore this other chat cue".to_string(),
-            })
+            .handle_runtime_event(
+                nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                    session_id: "session-2".to_string(),
+                    prompt: "Ignore this other chat cue".to_string(),
+                },
+            )
             .await
             .unwrap();
         state
@@ -720,20 +723,23 @@ mod tests {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         state
             .memory_service()
-            .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
-                session_id: "session-1".to_string(),
-                prompt: "Capture release blockers and owners".to_string(),
-            })
+            .handle_runtime_event(
+                nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                    session_id: "session-1".to_string(),
+                    prompt: "Capture release blockers and owners".to_string(),
+                },
+            )
             .await
             .unwrap();
 
-        let graph = state.memory_service().load_graph().await.unwrap();
-        let candidate_node = graph
-            .nodes
-            .iter()
-            .find(|node| node.title == "Capture release blockers and owners")
-            .cloned()
-            .expect("candidate node should exist");
+        let candidate = state
+            .memory_service()
+            .list_pending_candidates()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.owner_id == "session-1")
+            .expect("pending candidate should exist");
 
         state
             .memory_service()
@@ -763,7 +769,7 @@ mod tests {
             .memory_service()
             .create_edge(nuka_domain::memory::MemoryGraphEdge {
                 id: "edge-release-workflow".to_string(),
-                source_id: candidate_node.id.clone(),
+                source_id: candidate.node_id.clone(),
                 target_id: "workflow-release".to_string(),
                 relation: "supports".to_string(),
             })
@@ -774,7 +780,7 @@ mod tests {
             .create_edge(nuka_domain::memory::MemoryGraphEdge {
                 id: "edge-owner-register".to_string(),
                 source_id: "owner-register".to_string(),
-                target_id: candidate_node.id.clone(),
+                target_id: candidate.node_id.clone(),
                 relation: "references".to_string(),
             })
             .await
@@ -791,6 +797,13 @@ mod tests {
 
         assert_eq!(
             json["body"],
+            serde_json::Value::String(
+                "详细记录：release blockers and owners\n记录缘由：这条对话已进入记忆审核。"
+                    .to_string(),
+            )
+        );
+        assert_ne!(
+            json["title"],
             serde_json::Value::String("Capture release blockers and owners".to_string())
         );
         assert_eq!(
@@ -804,10 +817,12 @@ mod tests {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
         state
             .memory_service()
-            .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
-                session_id: "session-review".to_string(),
-                prompt: "Keep the release retro as episodic memory".to_string(),
-            })
+            .handle_runtime_event(
+                nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                    session_id: "session-review".to_string(),
+                    prompt: "Keep the release retro as episodic memory".to_string(),
+                },
+            )
             .await
             .unwrap();
 

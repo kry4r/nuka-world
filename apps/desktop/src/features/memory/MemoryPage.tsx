@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import {
   createMemoryEdge,
@@ -10,15 +10,21 @@ import {
   type MemoryScope,
   updateMemoryNode,
 } from "@/lib/memory";
-import { MemoryGraphCanvas, buildLayout, canvasSize, nodeSize } from "./MemoryGraphCanvas";
+import {
+  MemoryGraphCanvas,
+  buildLayout,
+  canvasSize,
+  nodeSize,
+} from "./MemoryGraphCanvas";
 import { MemoryGraphControls } from "./MemoryGraphControls";
 import { MemoryNodeInspector } from "./MemoryNodeInspector";
 
 const defaultView = { x: 72, y: 52 };
 const defaultZoom = 1;
+type ViewportSize = { height: number; width: number };
 const MEMORY_KIND_OPTIONS = [
   { label: "全部", value: "all" },
-  { label: "工作流", value: "workflow" },
+  { label: "流程", value: "workflow" },
   { label: "对话", value: "session" },
   { label: "智能体", value: "agent" },
   { label: "回复", value: "message" },
@@ -26,6 +32,7 @@ const MEMORY_KIND_OPTIONS = [
 ] as const;
 
 export function MemoryPage() {
+  const canvasFrameRef = useRef<HTMLDivElement | null>(null);
   const [graph, setGraph] = useState<MemoryGraph>({ nodes: [], edges: [] });
   const [scopes, setScopes] = useState<MemoryScope[]>([]);
   const [scopesLoaded, setScopesLoaded] = useState(false);
@@ -43,6 +50,8 @@ export function MemoryPage() {
     "activation" | "consolidation" | "schema"
   >("activation");
   const [pan, setPan] = useState(defaultView);
+  const [viewportSize, setViewportSize] =
+    useState<ViewportSize>(canvasSize);
   const [zoom, setZoom] = useState(defaultZoom);
   const [deleteReview, setDeleteReview] = useState<{
     connectedTitles: string[];
@@ -50,7 +59,7 @@ export function MemoryPage() {
     nodeId: string;
   } | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     let alive = true;
 
     void listMemoryScopes()
@@ -68,11 +77,60 @@ export function MemoryPage() {
         }
 
         setScopesLoaded(true);
-        setLoadError(reason instanceof Error ? reason.message : "Failed to load memory scopes.");
+        setLoadError(
+          reason instanceof Error
+            ? reason.message
+            : "Failed to load memory scopes.",
+        );
       });
 
     return () => {
       alive = false;
+    };
+  }, [graph.nodes.length]);
+
+  useEffect(() => {
+    const frame = canvasFrameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    let animationFrame = 0;
+
+    const measure = () => {
+      const rect = frame.getBoundingClientRect();
+      const nextWidth = Math.max(320, Math.round(rect.width));
+      const nextHeight = Math.max(320, Math.round(rect.height));
+
+      if (nextWidth === 320 && nextHeight === 320 && rect.width === 0) {
+        return;
+      }
+
+      setViewportSize((current) =>
+        current.width === nextWidth && current.height === nextHeight
+          ? current
+          : { width: nextWidth, height: nextHeight },
+      );
+    };
+    const scheduleMeasure = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(measure);
+    };
+
+    measure();
+
+    const ResizeObserverCtor = globalThis.ResizeObserver;
+    const resizeObserver = ResizeObserverCtor
+      ? new ResizeObserverCtor(scheduleMeasure)
+      : null;
+
+    resizeObserver?.observe(frame);
+    window.addEventListener("resize", scheduleMeasure);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
     };
   }, []);
 
@@ -94,13 +152,31 @@ export function MemoryPage() {
         }
 
         const nextSelectedNodeId = nextGraph.nodes[0]?.id ?? null;
-        const nextLayout = buildLayout(nextGraph.nodes, nextGraph.edges, nextSelectedNodeId);
-        const nextPoint = nextSelectedNodeId ? nextLayout.get(nextSelectedNodeId) : null;
+        const nextLayout = buildLayout(
+          nextGraph.nodes,
+          nextGraph.edges,
+          nextSelectedNodeId,
+        );
+        const nextPoint = nextSelectedNodeId
+          ? nextLayout.get(nextSelectedNodeId)
+          : null;
         const nextViewport =
           nextGraph.nodes.length <= 2
-            ? fitGraph(nextGraph.nodes, nextGraph.edges, nextSelectedNodeId)
+            ? fitGraph(
+                nextGraph.nodes,
+                nextGraph.edges,
+                nextSelectedNodeId,
+                resolveViewportSize(canvasFrameRef.current, viewportSize),
+              )
             : nextPoint
-              ? { pan: centerPan(nextPoint, defaultZoom), zoom: defaultZoom }
+              ? {
+                  pan: centerPan(
+                    nextPoint,
+                    defaultZoom,
+                    resolveViewportSize(canvasFrameRef.current, viewportSize),
+                  ),
+                  zoom: defaultZoom,
+                }
               : null;
 
         setGraph(nextGraph);
@@ -118,7 +194,11 @@ export function MemoryPage() {
           return;
         }
 
-        setLoadError(reason instanceof Error ? reason.message : "Failed to load memory graph.");
+        setLoadError(
+          reason instanceof Error
+            ? reason.message
+            : "Failed to load memory graph.",
+        );
       });
 
     return () => {
@@ -160,7 +240,10 @@ export function MemoryPage() {
       return;
     }
 
-    if (!selectedScopeId || !scopeOptions.some((scope) => scope.id === selectedScopeId)) {
+    if (
+      !selectedScopeId ||
+      !scopeOptions.some((scope) => scope.id === selectedScopeId)
+    ) {
       setSelectedScopeId(preferredScopeId);
     }
   }, [ownerSections, scopeOptions, selectedScopeId]);
@@ -170,7 +253,12 @@ export function MemoryPage() {
     [filterKind, graph, searchQuery, selectedNodeId],
   );
   const layout = useMemo(
-    () => buildLayout(visibleState.graph.nodes, visibleState.graph.edges, selectedNodeId),
+    () =>
+      buildLayout(
+        visibleState.graph.nodes,
+        visibleState.graph.edges,
+        selectedNodeId,
+      ),
     [selectedNodeId, visibleState.graph.edges, visibleState.graph.nodes],
   );
   const selectedNode =
@@ -210,7 +298,10 @@ export function MemoryPage() {
         return null;
       }
 
-      if (current && visibleState.graph.nodes.some((node) => node.id === current)) {
+      if (
+        current &&
+        visibleState.graph.nodes.some((node) => node.id === current)
+      ) {
         return current;
       }
 
@@ -237,12 +328,21 @@ export function MemoryPage() {
 
     const point = layout.get(selectedNode.id);
     if (point) {
-      setPan(centerPan(point, zoom));
+      setPan(
+        centerPan(
+          point,
+          zoom,
+          resolveViewportSize(canvasFrameRef.current, viewportSize),
+        ),
+      );
     }
-  }, [selectedNode?.id, selectedNodePositionKey]);
+  }, [selectedNode?.id, selectedNodePositionKey, viewportSize, zoom]);
 
   useEffect(() => {
-    if (visibleState.graph.nodes.length === 0 || visibleState.graph.nodes.length > 2) {
+    if (
+      visibleState.graph.nodes.length === 0 ||
+      visibleState.graph.nodes.length > 2
+    ) {
       return;
     }
 
@@ -250,6 +350,7 @@ export function MemoryPage() {
       visibleState.graph.nodes,
       visibleState.graph.edges,
       selectedNode?.id ?? selectedNodeId,
+      resolveViewportSize(canvasFrameRef.current, viewportSize),
     );
     setPan(fitPan);
     setZoom(fitZoom);
@@ -261,6 +362,7 @@ export function MemoryPage() {
     visibleNodeIdsKey,
     visibleState.graph.edges,
     visibleState.graph.nodes,
+    viewportSize,
   ]);
 
   useEffect(() => {
@@ -269,7 +371,11 @@ export function MemoryPage() {
   }, [selectedNode?.id, selectedNode?.title, selectedNode?.body]);
 
   const connectedEdges = selectedNode
-    ? graph.edges.filter((edge) => edge.sourceId === selectedNode.id || edge.targetId === selectedNode.id)
+    ? graph.edges.filter(
+        (edge) =>
+          edge.sourceId === selectedNode.id ||
+          edge.targetId === selectedNode.id,
+      )
     : [];
 
   const handleSave = async () => {
@@ -289,10 +395,14 @@ export function MemoryPage() {
 
       setGraph((current) => ({
         ...current,
-        nodes: current.nodes.map((node) => (node.id === updatedNode.id ? updatedNode : node)),
+        nodes: current.nodes.map((node) =>
+          node.id === updatedNode.id ? updatedNode : node,
+        ),
       }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Failed to update node.");
+      setError(
+        reason instanceof Error ? reason.message : "Failed to update node.",
+      );
     } finally {
       setBusy(false);
     }
@@ -305,7 +415,8 @@ export function MemoryPage() {
 
     const connectedTitles = connectedEdges
       .map((edge) => {
-        const peerId = edge.sourceId === selectedNode.id ? edge.targetId : edge.sourceId;
+        const peerId =
+          edge.sourceId === selectedNode.id ? edge.targetId : edge.sourceId;
         return graph.nodes.find((node) => node.id === peerId)?.title ?? peerId;
       })
       .sort((left, right) => left.localeCompare(right));
@@ -329,13 +440,17 @@ export function MemoryPage() {
       await deleteMemoryNode(selectedNode.id);
       setGraph((current) => ({
         edges: current.edges.filter(
-          (edge) => edge.sourceId !== selectedNode.id && edge.targetId !== selectedNode.id,
+          (edge) =>
+            edge.sourceId !== selectedNode.id &&
+            edge.targetId !== selectedNode.id,
         ),
         nodes: current.nodes.filter((node) => node.id !== selectedNode.id),
       }));
       setDeleteReview(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Failed to delete node.");
+      setError(
+        reason instanceof Error ? reason.message : "Failed to delete node.",
+      );
     } finally {
       setBusy(false);
     }
@@ -362,7 +477,9 @@ export function MemoryPage() {
         edges: upsertEdge(current.edges, nextEdge),
       }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Failed to create edge.");
+      setError(
+        reason instanceof Error ? reason.message : "Failed to create edge.",
+      );
     } finally {
       setBusy(false);
     }
@@ -379,7 +496,9 @@ export function MemoryPage() {
         edges: current.edges.filter((edge) => edge.id !== edgeId),
       }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Failed to delete edge.");
+      setError(
+        reason instanceof Error ? reason.message : "Failed to delete edge.",
+      );
     } finally {
       setBusy(false);
     }
@@ -397,7 +516,13 @@ export function MemoryPage() {
 
     const point = layout.get(selectedNode.id);
     if (point) {
-      setPan(centerPan(point, zoom));
+      setPan(
+        centerPan(
+          point,
+          zoom,
+          resolveViewportSize(canvasFrameRef.current, viewportSize),
+        ),
+      );
     }
   };
 
@@ -412,6 +537,7 @@ export function MemoryPage() {
       visibleState.graph.nodes,
       visibleState.graph.edges,
       selectedNode?.id ?? selectedNodeId,
+      resolveViewportSize(canvasFrameRef.current, viewportSize),
     );
     setPan(fitPan);
     setZoom(fitZoom);
@@ -423,10 +549,14 @@ export function MemoryPage() {
         <aside className="memory-owner-rail" data-testid="memory-owner-rail">
           {ownerSections.map((section) => (
             <section className="memory-owner-rail__section" key={section.title}>
-              <span className="memory-owner-rail__heading">{section.title}</span>
-                <div className="memory-owner-rail__list">
+              <span className="memory-owner-rail__heading">
+                {section.title}
+              </span>
+              <div className="memory-owner-rail__list">
                 {section.owners.length === 0 ? (
-                  <span className="memory-owner-rail__empty">还没有协作团队记忆</span>
+                  <span className="memory-owner-rail__empty">
+                    还没有协作团队记忆
+                  </span>
                 ) : (
                   section.owners.map((owner) => (
                     <button
@@ -443,7 +573,9 @@ export function MemoryPage() {
                       }}
                       type="button"
                     >
-                      <span className="memory-owner-rail__item-label">{owner.label}</span>
+                      <span className="memory-owner-rail__item-label">
+                        {owner.label}
+                      </span>
                     </button>
                   ))
                 )}
@@ -459,8 +591,12 @@ export function MemoryPage() {
               <h1>记忆图暂时不可用</h1>
               <p>{loadError}</p>
             </section>
-          ) : (scopesLoaded && scopeOptions.length === 0) || graph.nodes.length === 0 ? (
-            <div className="memory-page__empty-copy" data-testid="memory-empty-copy">
+          ) : (scopesLoaded && scopeOptions.length === 0) ||
+            graph.nodes.length === 0 ? (
+            <div
+              className="memory-page__empty-copy"
+              data-testid="memory-empty-copy"
+            >
               还没有记忆节点
             </div>
           ) : (
@@ -484,7 +620,10 @@ export function MemoryPage() {
                       tone="soft"
                     />
                   ) : (
-                    <div className="memory-stage__canvas-frame memory-stage__canvas-frame--fill">
+                    <div
+                      className="memory-stage__canvas-frame memory-stage__canvas-frame--fill"
+                      ref={canvasFrameRef}
+                    >
                       <MemoryGraphCanvas
                         depthByNodeId={visibleState.depthByNodeId}
                         focusTargetId={selectedNode?.id ?? null}
@@ -495,8 +634,12 @@ export function MemoryPage() {
                         onSelectNode={handleSelectNode}
                         onWorkbenchViewChange={setWorkbenchView}
                         onZoomChange={setZoom}
-                        onZoomIn={() => setZoom((current) => Math.min(1.8, current + 0.12))}
-                        onZoomOut={() => setZoom((current) => Math.max(0.55, current - 0.12))}
+                        onZoomIn={() =>
+                          setZoom((current) => Math.min(1.8, current + 0.12))
+                        }
+                        onZoomOut={() =>
+                          setZoom((current) => Math.max(0.55, current - 0.12))
+                        }
                         pan={pan}
                         selectedNodeId={selectedNode?.id ?? null}
                         selectedNodeTitle={selectedNode?.title ?? null}
@@ -506,8 +649,8 @@ export function MemoryPage() {
 
                       {detailOpen && selectedNode ? (
                         <aside
-                          className="memory-node-overlay memory-node-overlay--drawer"
-                          data-detail-presentation="drawer"
+                          className="memory-node-overlay memory-node-overlay--popover"
+                          data-detail-presentation="popover"
                           data-testid="memory-node-detail"
                         >
                           <MemoryNodeInspector
@@ -515,9 +658,11 @@ export function MemoryPage() {
                             busy={busy}
                             connectedEdges={connectedEdges}
                             deleteImpact={
-                              deleteReview && deleteReview.nodeId === selectedNode?.id
+                              deleteReview &&
+                              deleteReview.nodeId === selectedNode?.id
                                 ? {
-                                    connectedTitles: deleteReview.connectedTitles,
+                                    connectedTitles:
+                                      deleteReview.connectedTitles,
                                     edgeCount: deleteReview.edgeCount,
                                   }
                                 : null
@@ -597,19 +742,19 @@ function scopePriority(scope: MemoryScope) {
 
 function scopeLabel(scope: MemoryScope) {
   if (scope.kind === "world") {
-    return "World";
+    return "对话";
   }
 
   if (scope.kind === "session") {
-    return `${scope.workflowId?.startsWith("team:") ? "Run" : "Session"} · ${scope.title}`;
+    return `${scope.workflowId?.startsWith("team:") ? "协作运行" : "对话"} · ${scope.title}`;
   }
 
   if (scope.kind === "workflow") {
-    return `${scope.workflowId?.startsWith("team:") ? "Team" : "Workflow"} · ${scope.title}`;
+    return `${scope.workflowId?.startsWith("team:") ? "协作团队" : "流程"} · ${scope.title}`;
   }
 
   if (scope.kind === "agent") {
-    return `Agent · ${scope.title}`;
+    return `智能体 · ${scope.title}`;
   }
 
   return scope.title;
@@ -619,7 +764,9 @@ function buildOwnerSections(scopes: MemoryScope[]) {
   const directScopes: MemoryScope[] = [];
   const teamOwners: Array<{ id: string; label: string }> = [];
 
-  for (const scope of scopes.sort((left, right) => scopePriority(left) - scopePriority(right))) {
+  for (const scope of scopes.sort(
+    (left, right) => scopePriority(left) - scopePriority(right),
+  )) {
     if (scope.workflowId?.startsWith("team:")) {
       teamOwners.push({
         id: scope.id,
@@ -654,7 +801,19 @@ function buildOwnerSections(scopes: MemoryScope[]) {
 }
 
 function normalizeOwnerLabel(scope: MemoryScope) {
-  if (scope.kind === "workflow" && scope.workflowId?.startsWith("team:")) {
+  if (scope.workflowId?.startsWith("team:")) {
+    const rawTeamTitle = scope.title.trim();
+    const looksLikeRawTeamId =
+      /^team[\s-]+[0-9a-f]{8}\b(?:[\s-]+[0-9a-f]{4,})+$/i.test(rawTeamTitle);
+    const teamKey =
+      scope.workflowId.match(/^team:([0-9a-f]{8})/i)?.[1] ??
+      rawTeamTitle.match(/^team[\s-]+([0-9a-f]{8})/i)?.[1] ??
+      null;
+
+    if (looksLikeRawTeamId && teamKey) {
+      return `协作团队 ${teamKey.toLowerCase()}`;
+    }
+
     return scope.title;
   }
 
@@ -670,7 +829,10 @@ function selectDirectOwnerScope(scopes: MemoryScope[]) {
   );
 }
 
-function upsertEdge(edges: MemoryGraph["edges"], nextEdge: MemoryGraph["edges"][number]) {
+function upsertEdge(
+  edges: MemoryGraph["edges"],
+  nextEdge: MemoryGraph["edges"][number],
+) {
   const existingIndex = edges.findIndex(
     (edge) =>
       edge.id === nextEdge.id ||
@@ -683,7 +845,9 @@ function upsertEdge(edges: MemoryGraph["edges"], nextEdge: MemoryGraph["edges"][
     return [...edges, nextEdge];
   }
 
-  return edges.map((edge, index) => (index === existingIndex ? nextEdge : edge));
+  return edges.map((edge, index) =>
+    index === existingIndex ? nextEdge : edge,
+  );
 }
 
 function buildVisibleGraph(
@@ -709,9 +873,12 @@ function buildVisibleGraph(
       .map((node) => node.id),
   );
 
-  const visibleNodes = graph.nodes.filter((node) => visibleNodeIds.has(node.id));
+  const visibleNodes = graph.nodes.filter((node) =>
+    visibleNodeIds.has(node.id),
+  );
   const visibleEdges = graph.edges.filter(
-    (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId),
+    (edge) =>
+      visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId),
   );
 
   return {
@@ -741,11 +908,19 @@ function buildDepthMap(graph: MemoryGraph, selectedNodeId: string | null) {
   }
 
   for (const edge of graph.edges) {
-    adjacency.set(edge.sourceId, [...(adjacency.get(edge.sourceId) ?? []), edge.targetId]);
-    adjacency.set(edge.targetId, [...(adjacency.get(edge.targetId) ?? []), edge.sourceId]);
+    adjacency.set(edge.sourceId, [
+      ...(adjacency.get(edge.sourceId) ?? []),
+      edge.targetId,
+    ]);
+    adjacency.set(edge.targetId, [
+      ...(adjacency.get(edge.targetId) ?? []),
+      edge.sourceId,
+    ]);
   }
 
-  const queue: Array<{ depth: number; id: string }> = [{ depth: 0, id: selectedNodeId }];
+  const queue: Array<{ depth: number; id: string }> = [
+    { depth: 0, id: selectedNodeId },
+  ];
   const visited = new Set<string>();
 
   while (queue.length > 0) {
@@ -767,17 +942,22 @@ function buildDepthMap(graph: MemoryGraph, selectedNodeId: string | null) {
   return depthByNodeId;
 }
 
-function centerPan(point: { x: number; y: number }, zoom: number) {
+export function centerPan(
+  point: { x: number; y: number },
+  zoom: number,
+  viewport: ViewportSize,
+) {
   return {
-    x: canvasSize.width / 2 - (point.x + nodeSize.width / 2) * zoom,
-    y: canvasSize.height / 2 - (point.y + nodeSize.height / 2) * zoom,
+    x: viewport.width / 2 - (point.x + nodeSize.width / 2) * zoom,
+    y: viewport.height / 2 - (point.y + nodeSize.height / 2) * zoom,
   };
 }
 
-function fitGraph(
+export function fitGraph(
   nodes: MemoryGraph["nodes"],
   edges: MemoryGraph["edges"] = [],
   focusTargetId: string | null = null,
+  viewport: ViewportSize = canvasSize,
 ) {
   const layout = buildLayout(nodes, edges, focusTargetId);
   const points = nodes
@@ -794,11 +974,12 @@ function fitGraph(
   const maxY = Math.max(...points.map((point) => point.y + nodeSize.height));
   const width = Math.max(maxX - minX, nodeSize.width);
   const height = Math.max(maxY - minY, nodeSize.height);
-  const maxFitZoom = points.length === 1 ? 1.8 : points.length === 2 ? 1.45 : 1.15;
+  const maxFitZoom =
+    points.length === 1 ? 1.8 : points.length === 2 ? 1.45 : 1.15;
   const nextZoom = clamp(
     Math.min(
-      (canvasSize.width - 160) / width,
-      (canvasSize.height - 160) / height,
+      (viewport.width - 160) / width,
+      (viewport.height - 160) / height,
       maxFitZoom,
     ),
     0.55,
@@ -807,17 +988,45 @@ function fitGraph(
 
   return {
     pan: {
-      x: (canvasSize.width - width * nextZoom) / 2 - minX * nextZoom,
-      y: (canvasSize.height - height * nextZoom) / 2 - minY * nextZoom,
+      x: (viewport.width - width * nextZoom) / 2 - minX * nextZoom,
+      y: (viewport.height - height * nextZoom) / 2 - minY * nextZoom,
     },
     zoom: nextZoom,
   };
 }
 
 function slug(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "link";
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "link"
+  );
 }
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function resolveViewportSize(
+  frame: HTMLDivElement | null,
+  fallback: ViewportSize,
+): ViewportSize {
+  if (!frame) {
+    return fallback;
+  }
+
+  const rect = frame.getBoundingClientRect();
+  const width = Math.round(rect.width);
+  const height = Math.round(rect.height);
+
+  if (width <= 0 || height <= 0) {
+    return fallback;
+  }
+
+  return {
+    width,
+    height,
+  };
 }

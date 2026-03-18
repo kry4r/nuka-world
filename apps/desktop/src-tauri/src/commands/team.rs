@@ -195,9 +195,10 @@ pub async fn delete_team(team_id: String, state: tauri::State<'_, AppState>) -> 
 pub async fn start_team_run(
     team_id: String,
     routing: Option<super::chat::ProviderRoutingInput>,
+    prompt: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<TeamRunRecord, String> {
-    start_team_run_inner(team_id, routing, &state)
+    start_team_run_with_prompt_inner(team_id, routing, prompt, &state)
         .await
         .map_err(|error| error.to_string())
 }
@@ -302,15 +303,45 @@ pub(crate) async fn start_team_run_inner(
     routing: Option<super::chat::ProviderRoutingInput>,
     state: &AppState,
 ) -> anyhow::Result<TeamRunRecord> {
-    Ok(TeamRunRecord::from(
-        state
-            .team_run_service()
-            .start_team_run_with_route(
-                &team_id,
-                routing.map(nuka_domain::provider::ProviderRouteRequest::from),
-            )
-            .await?,
-    ))
+    start_team_run_with_prompt_inner(team_id, routing, None, state).await
+}
+
+async fn start_team_run_with_prompt_inner(
+    team_id: String,
+    routing: Option<super::chat::ProviderRoutingInput>,
+    prompt: Option<String>,
+    state: &AppState,
+) -> anyhow::Result<TeamRunRecord> {
+    let prompt = prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let route_request = routing.map(nuka_domain::provider::ProviderRouteRequest::from);
+    let run = match prompt {
+        Some(prompt) => {
+            state
+                .team_run_service()
+                .start_team_run_with_initial_prompt(&team_id, prompt, route_request)
+                .await?
+        }
+        None => {
+            state
+                .team_run_service()
+                .start_team_run_with_route(&team_id, route_request)
+                .await?
+        }
+    };
+
+    state
+        .memory_service()
+        .handle_runtime_event(nuka_runtime::runtime_events::RuntimeEvent::TeamRunStarted {
+            run_id: run.id.clone(),
+            team_id: run.team_id.clone(),
+            prompt: prompt.unwrap_or(run.goal.as_str()).to_string(),
+        })
+        .await?;
+
+    Ok(TeamRunRecord::from(run))
 }
 
 async fn load_team_run_inner(
@@ -330,16 +361,27 @@ async fn continue_team_run_inner(
     routing: Option<super::chat::ProviderRoutingInput>,
     state: &AppState,
 ) -> anyhow::Result<TeamRunRecord> {
-    Ok(TeamRunRecord::from(
-        state
-            .team_run_service()
-            .continue_team_run_with_route(
-                &run_id,
-                &prompt,
-                routing.map(nuka_domain::provider::ProviderRouteRequest::from),
-            )
-            .await?,
-    ))
+    let run = state
+        .team_run_service()
+        .continue_team_run_with_route(
+            &run_id,
+            &prompt,
+            routing.map(nuka_domain::provider::ProviderRouteRequest::from),
+        )
+        .await?;
+
+    state
+        .memory_service()
+        .handle_runtime_event(
+            nuka_runtime::runtime_events::RuntimeEvent::TeamRunRoundCompleted {
+                run_id: run.id.clone(),
+                team_id: run.team_id.clone(),
+                prompt: prompt.clone(),
+            },
+        )
+        .await?;
+
+    Ok(TeamRunRecord::from(run))
 }
 
 async fn add_team_run_agent_inner(
@@ -810,6 +852,58 @@ mod tests {
             .agents
             .iter()
             .all(|agent| agent.source_team_assignment_id.is_some()));
+    }
+
+    #[tokio::test]
+    async fn team_commands_record_team_memory_scope_and_graph_links() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        configure_default_provider(&state).await;
+
+        let team = super::create_team_from_goal_inner("Ship the release".to_string(), &state)
+            .await
+            .unwrap();
+        let run = super::start_team_run_with_prompt_inner(
+            team.id.clone(),
+            None,
+            Some("Create an initial team memory note".to_string()),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let updated_run = super::continue_team_run_inner(
+            run.id.clone(),
+            "Record the follow-up review outcome".to_string(),
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
+
+        let scope_id = format!("team:{}", team.id);
+        let scopes = state.memory_service().list_scopes().await.unwrap();
+        let graph = state
+            .memory_service()
+            .load_graph_for_scope(Some(&scope_id))
+            .await
+            .unwrap();
+
+        assert!(
+            scopes.iter().any(|scope| {
+                scope.id == scope_id
+                    && scope.workflow_id.as_deref() == Some(scope_id.as_str())
+                    && scope.session_id.as_deref() == Some(updated_run.id.as_str())
+            }),
+            "expected a persisted team memory scope for the active run"
+        );
+        assert!(
+            graph.nodes.len() >= 2,
+            "expected multiple persisted memory nodes for the team scope"
+        );
+        assert!(
+            !graph.edges.is_empty(),
+            "expected the team memory graph to preserve at least one relation edge"
+        );
     }
 
     #[tokio::test]

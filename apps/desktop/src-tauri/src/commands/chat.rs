@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
+use tauri::Emitter;
 
-#[derive(Debug, Serialize)]
+const CHAT_STREAM_EVENT: &str = "nuka://chat-stream";
+
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatRouteResponse {
     pub session: ChatSessionResponse,
@@ -10,7 +13,7 @@ pub struct ChatRouteResponse {
     pub context: ChatContextResponse,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatSessionResponse {
     pub id: String,
@@ -20,7 +23,7 @@ pub struct ChatSessionResponse {
     pub routing: Option<ProviderRoutingResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessageResponse {
     pub id: String,
@@ -28,7 +31,7 @@ pub struct ChatMessageResponse {
     pub content: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatProviderResponse {
     pub id: String,
@@ -37,7 +40,7 @@ pub struct ChatProviderResponse {
     pub base_url: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatContextResponse {
     pub attached_agents: Vec<String>,
@@ -80,6 +83,19 @@ pub struct PromptExecutionRoute {
     pub kind: String,
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatStreamEventResponse {
+    pub request_id: String,
+    pub kind: String,
+    pub session: Option<ChatSessionResponse>,
+    pub provider: Option<ChatProviderResponse>,
+    pub routing: Option<ProviderRoutingResponse>,
+    pub delta: Option<String>,
+    pub response: Option<ChatRouteResponse>,
+    pub error: Option<String>,
+}
+
 #[tauri::command]
 pub async fn route_world_prompt(
     prompt: String,
@@ -90,6 +106,185 @@ pub async fn route_world_prompt(
     route_world_prompt_inner(prompt, session_id, routing, &state)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn route_world_prompt_stream(
+    request_id: String,
+    prompt: String,
+    session_id: Option<String>,
+    routing: Option<ProviderRoutingInput>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::app_state::AppState>,
+) -> Result<(), String> {
+    let world_runtime = state.world_runtime().clone();
+    let memory_service = state.memory_service().clone();
+
+    tauri::async_runtime::spawn(async move {
+        let prompt_for_memory = prompt.clone();
+        let streaming_result = async {
+            let turn = match session_id.as_deref() {
+                Some(session_id) => {
+                    world_runtime
+                        .continue_session_with_route_streaming(
+                            session_id,
+                            &prompt,
+                            routing
+                                .clone()
+                                .map(nuka_domain::provider::ProviderRouteRequest::from),
+                            |session, provider| {
+                                emit_chat_stream_event(
+                                    &app,
+                                    ChatStreamEventResponse {
+                                        request_id: request_id.clone(),
+                                        kind: "started".to_string(),
+                                        session: Some(ChatSessionResponse::from(session.clone())),
+                                        provider: Some(ChatProviderResponse::from(
+                                            provider.clone(),
+                                        )),
+                                        routing: session
+                                            .routing
+                                            .clone()
+                                            .map(ProviderRoutingResponse::from),
+                                        delta: None,
+                                        response: None,
+                                        error: None,
+                                    },
+                                )
+                            },
+                            |delta| {
+                                emit_chat_stream_event(
+                                    &app,
+                                    ChatStreamEventResponse {
+                                        request_id: request_id.clone(),
+                                        kind: "delta".to_string(),
+                                        session: None,
+                                        provider: None,
+                                        routing: None,
+                                        delta: Some(delta.to_string()),
+                                        response: None,
+                                        error: None,
+                                    },
+                                )
+                            },
+                        )
+                        .await
+                }
+                None => {
+                    world_runtime
+                        .start_session_with_route_streaming(
+                            &prompt,
+                            routing
+                                .clone()
+                                .map(nuka_domain::provider::ProviderRouteRequest::from),
+                            |session, provider| {
+                                emit_chat_stream_event(
+                                    &app,
+                                    ChatStreamEventResponse {
+                                        request_id: request_id.clone(),
+                                        kind: "started".to_string(),
+                                        session: Some(ChatSessionResponse::from(session.clone())),
+                                        provider: Some(ChatProviderResponse::from(
+                                            provider.clone(),
+                                        )),
+                                        routing: session
+                                            .routing
+                                            .clone()
+                                            .map(ProviderRoutingResponse::from),
+                                        delta: None,
+                                        response: None,
+                                        error: None,
+                                    },
+                                )
+                            },
+                            |delta| {
+                                emit_chat_stream_event(
+                                    &app,
+                                    ChatStreamEventResponse {
+                                        request_id: request_id.clone(),
+                                        kind: "delta".to_string(),
+                                        session: None,
+                                        provider: None,
+                                        routing: None,
+                                        delta: Some(delta.to_string()),
+                                        response: None,
+                                        error: None,
+                                    },
+                                )
+                            },
+                        )
+                        .await
+                }
+            }?;
+
+            let chat_turn = turn.chat_turn;
+            let session = ChatSessionResponse::from(chat_turn.session.clone());
+            let messages = chat_turn
+                .messages
+                .into_iter()
+                .map(ChatMessageResponse::from)
+                .collect();
+            let provider = Some(ChatProviderResponse::from(chat_turn.provider));
+            let routing = chat_turn
+                .session
+                .routing
+                .clone()
+                .map(ProviderRoutingResponse::from);
+
+            memory_service
+                .handle_runtime_event(
+                    nuka_runtime::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                        session_id: session.id.clone(),
+                        prompt: prompt_for_memory,
+                    },
+                )
+                .await?;
+
+            let response = ChatRouteResponse {
+                session,
+                messages,
+                provider,
+                routing,
+                context: ChatContextResponse {
+                    attached_agents: Vec::new(),
+                    attached_knowledge_libraries: Vec::new(),
+                },
+            };
+
+            emit_chat_stream_event(
+                &app,
+                ChatStreamEventResponse {
+                    request_id: request_id.clone(),
+                    kind: "completed".to_string(),
+                    session: None,
+                    provider: None,
+                    routing: None,
+                    delta: None,
+                    response: Some(response),
+                    error: None,
+                },
+            )
+        }
+        .await;
+
+        if let Err(error) = streaming_result {
+            let _ = emit_chat_stream_event(
+                &app,
+                ChatStreamEventResponse {
+                    request_id,
+                    kind: "error".to_string(),
+                    session: None,
+                    provider: None,
+                    routing: None,
+                    delta: None,
+                    response: None,
+                    error: Some(error.to_string()),
+                },
+            );
+        }
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -260,6 +455,14 @@ impl From<nuka_domain::provider::ProviderRouteState> for ProviderRoutingResponse
     }
 }
 
+fn emit_chat_stream_event(
+    app: &tauri::AppHandle,
+    payload: ChatStreamEventResponse,
+) -> anyhow::Result<()> {
+    app.emit(CHAT_STREAM_EVENT, payload)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     async fn configure_provider_chain(
@@ -296,15 +499,14 @@ mod tests {
     async fn route_world_prompt_requires_default_provider() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
 
-        let error =
-            super::route_world_prompt_inner(
-                "summarize today's notes".to_string(),
-                None,
-                None,
-                &state,
-            )
-                .await
-                .unwrap_err();
+        let error = super::route_world_prompt_inner(
+            "summarize today's notes".to_string(),
+            None,
+            None,
+            &state,
+        )
+        .await
+        .unwrap_err();
 
         assert!(error
             .to_string()
@@ -333,15 +535,14 @@ mod tests {
             .await
             .unwrap();
 
-        let response =
-            super::route_world_prompt_inner(
-                "summarize today's notes".to_string(),
-                None,
-                None,
-                &state,
-            )
-                .await
-                .unwrap();
+        let response = super::route_world_prompt_inner(
+            "summarize today's notes".to_string(),
+            None,
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
 
         assert!(!response.session.id.is_empty());
         assert_eq!(response.messages.len(), 2);
@@ -420,15 +621,14 @@ mod tests {
             .await
             .unwrap();
 
-        let first =
-            super::route_world_prompt_inner(
-                "summarize today's notes".to_string(),
-                None,
-                None,
-                &state,
-            )
-                .await
-                .unwrap();
+        let first = super::route_world_prompt_inner(
+            "summarize today's notes".to_string(),
+            None,
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
         let next = super::route_world_prompt_inner(
             "continue the same conversation".to_string(),
             Some(first.session.id.clone()),
@@ -465,15 +665,14 @@ mod tests {
             .await
             .unwrap();
 
-        let response =
-            super::execute_prompt_json_inner(
-                "summarize today's notes".to_string(),
-                None,
-                None,
-                &state,
-            )
-                .await
-                .unwrap();
+        let response = super::execute_prompt_json_inner(
+            "summarize today's notes".to_string(),
+            None,
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(response.exit_status, "success");
         assert_eq!(response.run_id, None);
@@ -568,21 +767,29 @@ mod tests {
         };
         configure_provider_chain(&state, broken_provider, fallback_provider).await;
 
-        let response =
-            super::route_world_prompt_inner(
-                "summarize today's notes".to_string(),
-                None,
-                None,
-                &state,
-            )
-                .await
-                .unwrap();
+        let response = super::route_world_prompt_inner(
+            "summarize today's notes".to_string(),
+            None,
+            None,
+            &state,
+        )
+        .await
+        .unwrap();
         let response_json = serde_json::to_value(&response).unwrap();
 
         assert_eq!(response_json["provider"]["id"], "provider-fallback");
-        assert_eq!(response_json["session"]["routing"]["effectiveProviderId"], "provider-fallback");
-        assert_eq!(response_json["session"]["routing"]["effectiveModel"], "gpt-oss-fallback");
-        assert_eq!(response_json["session"]["routing"]["fallbackProviderId"], "provider-fallback");
+        assert_eq!(
+            response_json["session"]["routing"]["effectiveProviderId"],
+            "provider-fallback"
+        );
+        assert_eq!(
+            response_json["session"]["routing"]["effectiveModel"],
+            "gpt-oss-fallback"
+        );
+        assert_eq!(
+            response_json["session"]["routing"]["fallbackProviderId"],
+            "provider-fallback"
+        );
         assert_eq!(
             response_json["session"]["routing"]["failoverReason"],
             "missing_model"

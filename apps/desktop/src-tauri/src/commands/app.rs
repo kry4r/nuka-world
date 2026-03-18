@@ -17,9 +17,7 @@ pub struct RuntimeStatusResponse {
 }
 
 #[tauri::command]
-pub fn close_policy_minimizes_to_tray(
-    state: tauri::State<'_, crate::app_state::AppState>,
-) -> bool {
+pub fn close_policy_minimizes_to_tray(state: tauri::State<'_, crate::app_state::AppState>) -> bool {
     let settings = state.settings();
     crate::tray::ClosePolicy::from_settings(&settings).minimize_to_tray
 }
@@ -37,23 +35,38 @@ pub async fn app_runtime_status_inner(
     state: &crate::app_state::AppState,
 ) -> anyhow::Result<RuntimeStatusResponse> {
     let runtime_status = state.runtime_status();
-    let provider = match state.provider_service().resolve_default_provider().await {
-        Ok(provider) => RuntimeCapabilityStatusResponse {
-            kind: "ready".to_string(),
-            message: "Default provider configured".to_string(),
-            label: Some(provider.name),
-        },
-        Err(error) if error.to_string().contains("default provider is not configured") => {
-            RuntimeCapabilityStatusResponse {
-                kind: "missing".to_string(),
-                message: "Provider required".to_string(),
-                label: None,
-            }
-        }
-        Err(error) => RuntimeCapabilityStatusResponse {
-            kind: "degraded".to_string(),
-            message: error.to_string(),
+    let settings = state.settings_service().load().await?;
+    let providers = state.provider_service().list_providers().await?;
+    let provider = match settings.default_provider_id.as_ref() {
+        None => RuntimeCapabilityStatusResponse {
+            kind: "missing".to_string(),
+            message: "Provider required".to_string(),
             label: None,
+        },
+        Some(default_provider_id) => match providers
+            .into_iter()
+            .find(|provider| provider.id == *default_provider_id)
+        {
+            None => RuntimeCapabilityStatusResponse {
+                kind: "degraded".to_string(),
+                message: "Default provider is unavailable".to_string(),
+                label: None,
+            },
+            Some(provider) if !provider.enabled => RuntimeCapabilityStatusResponse {
+                kind: "degraded".to_string(),
+                message: "Default provider is disabled".to_string(),
+                label: Some(provider.name),
+            },
+            Some(provider) if provider.validate().is_err() => RuntimeCapabilityStatusResponse {
+                kind: "degraded".to_string(),
+                message: "Default provider configuration is invalid".to_string(),
+                label: Some(provider.name),
+            },
+            Some(provider) => RuntimeCapabilityStatusResponse {
+                kind: "ready".to_string(),
+                message: "Default provider configured".to_string(),
+                label: Some(provider.name),
+            },
         },
     };
 
@@ -97,7 +110,11 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        state.provider_service().save_provider(provider).await.unwrap();
+        state
+            .provider_service()
+            .save_provider(provider)
+            .await
+            .unwrap();
         state
             .provider_service()
             .set_default_provider(&provider_id)
@@ -127,8 +144,16 @@ mod tests {
         );
         let provider_b_id = provider_b.id.clone();
 
-        state.provider_service().save_provider(provider_a).await.unwrap();
-        state.provider_service().save_provider(provider_b).await.unwrap();
+        state
+            .provider_service()
+            .save_provider(provider_a)
+            .await
+            .unwrap();
+        state
+            .provider_service()
+            .save_provider(provider_b)
+            .await
+            .unwrap();
         state
             .provider_service()
             .set_default_provider(&provider_b_id)
@@ -138,5 +163,33 @@ mod tests {
         let status = super::app_runtime_status_inner(&state).await.unwrap();
 
         assert_eq!(status.provider.label.as_deref(), Some("Provider B"));
+    }
+
+    #[tokio::test]
+    async fn app_runtime_status_reports_configured_remote_provider_without_route_preflight() {
+        let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Remote Provider",
+            "https://api.invalid/v1",
+            "sk-test",
+            "MiniMax-M2.5",
+        );
+        let provider_id = provider.id.clone();
+
+        state
+            .provider_service()
+            .save_provider(provider)
+            .await
+            .unwrap();
+        state
+            .provider_service()
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+
+        let status = super::app_runtime_status_inner(&state).await.unwrap();
+
+        assert_eq!(status.provider.kind, "ready");
+        assert_eq!(status.provider.label.as_deref(), Some("Remote Provider"));
     }
 }

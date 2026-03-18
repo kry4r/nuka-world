@@ -1,13 +1,23 @@
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { AgentRecord } from "@/lib/agents";
+import { humanizeGeneratedAgentDescription } from "@/lib/agentPresentation";
 import type { TeamRecord } from "@/lib/team";
 import { TeamAgentCard } from "./TeamAgentCard";
 
 type TeamEditorProps = {
   availableAgents: AgentRecord[];
+  createGoalDraft: string;
   isSaving: boolean;
   isStartingRun: boolean;
+  isGeneratingTeam: boolean;
+  recentLaunches: Array<{
+    id: string;
+    summary: string;
+    title: string;
+    updatedAt: string;
+  }>;
   team: TeamRecord | null;
+  teamStatusLabel: string;
   onAddAssignedAgent: (agentId: string) => void;
   onChangeField: (
     field:
@@ -18,6 +28,9 @@ type TeamEditorProps = {
       | "coordinationPolicy",
     value: string,
   ) => void;
+  onCreateGoalDraftChange: (value: string) => void;
+  onCreateTeamFromGoal: () => void;
+  onOpenLaunchInChat: (sessionId: string) => void;
   onRemoveAssignedAgent: (agentId: string) => void;
   onSave: () => void;
   onStartRun: () => void;
@@ -29,6 +42,15 @@ type PairEntry = {
   value: string;
 };
 
+type PromptConstraintsState = {
+  executorAgentsMin: string;
+  extras: Record<string, unknown>;
+  language: string;
+  operationalRules: string[];
+  schedulerAgents: string;
+  scope: string[];
+};
+
 type PermissionPolicyState = {
   allowedResources: string[];
   deniedActions: string[];
@@ -37,11 +59,11 @@ type PermissionPolicyState = {
 };
 
 type CoordinationPolicyState = {
-  flow: string;
-  feedbackLoop: string;
   errorHandling: string;
-  roleHierarchy: PairEntry[];
   extras: Record<string, unknown>;
+  feedbackLoop: string;
+  flow: string;
+  roleHierarchy: PairEntry[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -59,16 +81,6 @@ function parseJsonValue(value: string): unknown {
 function parseJsonRecord(value: string): Record<string, unknown> {
   const parsed = parseJsonValue(value);
   return isRecord(parsed) ? parsed : {};
-}
-
-function parseStringArray(value: string): string[] {
-  const parsed = parseJsonValue(value);
-
-  if (!Array.isArray(parsed)) {
-    return value.trim() ? [value.trim()] : [];
-  }
-
-  return parsed.map((item) => String(item));
 }
 
 function formatInputValue(value: unknown): string {
@@ -117,15 +129,75 @@ function stringifyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function parsePromptConstraints(value: string): PromptConstraintsState {
+  const parsed = parseJsonValue(value);
+
+  if (Array.isArray(parsed)) {
+    return {
+      executorAgentsMin: "",
+      extras: {},
+      language: "zh-CN",
+      operationalRules: parsed.map((item) => String(item)),
+      schedulerAgents: "",
+      scope: [],
+    };
+  }
+
+  const record = isRecord(parsed) ? parsed : {};
+  const { language, mustHaveRoles, operationalRules, scope, ...extras } =
+    record;
+  const roleRecord = isRecord(mustHaveRoles) ? mustHaveRoles : {};
+
+  return {
+    executorAgentsMin: formatInputValue(roleRecord.executorAgentsMin),
+    extras,
+    language: formatInputValue(language) || "zh-CN",
+    operationalRules: Array.isArray(operationalRules)
+      ? operationalRules.map((item) => String(item))
+      : [],
+    schedulerAgents: formatInputValue(roleRecord.schedulerAgents),
+    scope: Array.isArray(scope) ? scope.map((item) => String(item)) : [],
+  };
+}
+
+function serializePromptConstraints(state: PromptConstraintsState): string {
+  const mustHaveRoles: Record<string, unknown> = {};
+
+  if (state.schedulerAgents.trim()) {
+    mustHaveRoles.schedulerAgents = coerceInputValue(state.schedulerAgents);
+  }
+
+  if (state.executorAgentsMin.trim()) {
+    mustHaveRoles.executorAgentsMin = coerceInputValue(state.executorAgentsMin);
+  }
+
+  return stringifyJson({
+    ...state.extras,
+    language: state.language.trim() || "zh-CN",
+    mustHaveRoles,
+    operationalRules: state.operationalRules
+      .map((item) => item.trim())
+      .filter(Boolean),
+    scope: state.scope.map((item) => item.trim()).filter(Boolean),
+  });
+}
+
 function parsePermissionPolicy(value: string): PermissionPolicyState {
   const record = parseJsonRecord(value);
-  const { allowedResources, deniedActions, maxExecutionTimeMinutes, ...extras } = record;
+  const {
+    allowedResources,
+    deniedActions,
+    maxExecutionTimeMinutes,
+    ...extras
+  } = record;
 
   return {
     allowedResources: Array.isArray(allowedResources)
       ? allowedResources.map((item) => String(item))
       : [],
-    deniedActions: Array.isArray(deniedActions) ? deniedActions.map((item) => String(item)) : [],
+    deniedActions: Array.isArray(deniedActions)
+      ? deniedActions.map((item) => String(item))
+      : [],
     maxExecutionTimeMinutes: formatInputValue(maxExecutionTimeMinutes),
     extras,
   };
@@ -134,8 +206,12 @@ function parsePermissionPolicy(value: string): PermissionPolicyState {
 function serializePermissionPolicy(state: PermissionPolicyState): string {
   return stringifyJson({
     ...state.extras,
-    allowedResources: state.allowedResources.map((item) => item.trim()).filter(Boolean),
-    deniedActions: state.deniedActions.map((item) => item.trim()).filter(Boolean),
+    allowedResources: state.allowedResources
+      .map((item) => item.trim())
+      .filter(Boolean),
+    deniedActions: state.deniedActions
+      .map((item) => item.trim())
+      .filter(Boolean),
     maxExecutionTimeMinutes: state.maxExecutionTimeMinutes.trim()
       ? coerceInputValue(state.maxExecutionTimeMinutes)
       : null,
@@ -143,10 +219,12 @@ function serializePermissionPolicy(state: PermissionPolicyState): string {
 }
 
 function parsePairEntries(value: string): PairEntry[] {
-  return Object.entries(parseJsonRecord(value)).map(([entryKey, entryValue]) => ({
-    key: entryKey,
-    value: formatInputValue(entryValue),
-  }));
+  return Object.entries(parseJsonRecord(value)).map(
+    ([entryKey, entryValue]) => ({
+      key: entryKey,
+      value: formatInputValue(entryValue),
+    }),
+  );
 }
 
 function serializePairEntries(entries: PairEntry[]): string {
@@ -166,7 +244,8 @@ function serializePairEntries(entries: PairEntry[]): string {
 
 function parseCoordinationPolicy(value: string): CoordinationPolicyState {
   const record = parseJsonRecord(value);
-  const { flow, feedbackLoop, errorHandling, roleHierarchy, ...extras } = record;
+  const { flow, feedbackLoop, errorHandling, roleHierarchy, ...extras } =
+    record;
   const hierarchyEntries = isRecord(roleHierarchy)
     ? Object.entries(roleHierarchy).map(([entryKey, entryValue]) => ({
         key: entryKey,
@@ -175,11 +254,11 @@ function parseCoordinationPolicy(value: string): CoordinationPolicyState {
     : [];
 
   return {
-    flow: formatInputValue(flow),
-    feedbackLoop: formatInputValue(feedbackLoop),
     errorHandling: formatInputValue(errorHandling),
-    roleHierarchy: hierarchyEntries,
     extras,
+    feedbackLoop: formatInputValue(feedbackLoop),
+    flow: formatInputValue(flow),
+    roleHierarchy: hierarchyEntries,
   };
 }
 
@@ -197,40 +276,66 @@ function serializeCoordinationPolicy(state: CoordinationPolicyState): string {
 
   return stringifyJson({
     ...state.extras,
-    flow: state.flow.trim(),
-    feedbackLoop: state.feedbackLoop.trim(),
     errorHandling: state.errorHandling.trim(),
+    feedbackLoop: state.feedbackLoop.trim(),
+    flow: state.flow.trim(),
     roleHierarchy,
   });
 }
 
+function updateListItem(items: string[], index: number, value: string) {
+  return items.map((item, itemIndex) => (itemIndex === index ? value : item));
+}
+
 export function TeamEditor({
   availableAgents,
+  createGoalDraft,
   isSaving,
   isStartingRun,
+  isGeneratingTeam,
+  recentLaunches,
   team,
+  teamStatusLabel,
   onAddAssignedAgent,
   onChangeField,
+  onCreateGoalDraftChange,
+  onCreateTeamFromGoal,
+  onOpenLaunchInChat,
   onRemoveAssignedAgent,
   onSave,
   onStartRun,
   onToggleTool,
 }: TeamEditorProps) {
-  const assignedAgentIds = new Set(team?.agentAssignments.map((assignment) => assignment.agentId) ?? []);
-  const unassignedAgents = availableAgents.filter((agent) => !assignedAgentIds.has(agent.id));
-  const promptConstraints = ensureEditableList(parseStringArray(team?.promptConstraints ?? "[]"));
-  const permissionPolicy = parsePermissionPolicy(team?.permissionPolicy ?? "{}");
-  const allowedResources = ensureEditableList(permissionPolicy.allowedResources);
+  const assignedAgentIds = new Set(
+    team?.agentAssignments.map((assignment) => assignment.agentId) ?? [],
+  );
+  const unassignedAgents = availableAgents.filter(
+    (agent) => !assignedAgentIds.has(agent.id),
+  );
+  const promptConstraints = parsePromptConstraints(
+    team?.promptConstraints ?? "{}",
+  );
+  const operationalRules = ensureEditableList(
+    promptConstraints.operationalRules,
+  );
+  const scopeItems = ensureEditableList(promptConstraints.scope);
+  const permissionPolicy = parsePermissionPolicy(
+    team?.permissionPolicy ?? "{}",
+  );
+  const allowedResources = ensureEditableList(
+    permissionPolicy.allowedResources,
+  );
   const deniedActions = ensureEditableList(permissionPolicy.deniedActions);
-  const successCriteria = ensureEditablePairs(parsePairEntries(team?.successCriteria ?? "{}"));
-  const coordinationPolicy = parseCoordinationPolicy(team?.coordinationPolicy ?? "{}");
+  const successCriteria = ensureEditablePairs(
+    parsePairEntries(team?.successCriteria ?? "{}"),
+  );
+  const coordinationPolicy = parseCoordinationPolicy(
+    team?.coordinationPolicy ?? "{}",
+  );
   const roleHierarchy = ensureEditablePairs(coordinationPolicy.roleHierarchy);
 
-  const updatePromptConstraints = (items: string[]) => {
-    onChangeField(
-      "promptConstraints",
-      stringifyJson(items.map((item) => item.trim()).filter(Boolean)),
-    );
+  const updatePromptConstraints = (nextState: PromptConstraintsState) => {
+    onChangeField("promptConstraints", serializePromptConstraints(nextState));
   };
 
   const updatePermissionPolicy = (nextState: PermissionPolicyState) => {
@@ -252,15 +357,19 @@ export function TeamEditor({
           <div className="team-editor__summary">
             <div className="team-editor__summary-copy">
               <div className="team-editor__summary-badges">
-                <StatusBadge tone="accent">{team.status}</StatusBadge>
-                <StatusBadge tone="soft">{team.agentAssignments.length} assigned</StatusBadge>
+                <StatusBadge tone="accent">{teamStatusLabel}</StatusBadge>
+                <StatusBadge tone="soft">
+                  {team.agentAssignments.length} 个已分配
+                </StatusBadge>
               </div>
               <h2>{team.name}</h2>
               <label className="team-editor__field">
-                <span>Team description</span>
+                <span>协作团队说明</span>
                 <textarea
-                  aria-label="Team description"
-                  onChange={(event) => onChangeField("summary", event.target.value)}
+                  aria-label="协作团队说明"
+                  onChange={(event) =>
+                    onChangeField("summary", event.target.value)
+                  }
                   rows={4}
                   value={team.summary}
                 />
@@ -269,61 +378,188 @@ export function TeamEditor({
 
             <div className="team-editor__summary-grid">
               <div className="team-editor__summary-card team-editor__summary-card--editable">
-                <span>Prompt constraints</span>
-                <div className="team-editor__list">
-                  {promptConstraints.map((constraint, index) => (
-                    <div className="team-editor__row" key={`constraint-${index}`}>
+                <span>协作约束</span>
+                <div className="team-editor__stack">
+                  <label className="team-editor__field team-editor__field--compact">
+                    <span>工作语言</span>
+                    <input
+                      aria-label="工作语言"
+                      className="team-editor__input"
+                      onChange={(event) =>
+                        updatePromptConstraints({
+                          ...promptConstraints,
+                          language: event.target.value,
+                        })
+                      }
+                      type="text"
+                      value={promptConstraints.language}
+                    />
+                  </label>
+
+                  <div className="team-editor__row team-editor__row--split">
+                    <label className="team-editor__field team-editor__field--compact">
+                      <span>调度智能体数量</span>
                       <input
-                        aria-label={`Prompt constraint ${index + 1}`}
+                        aria-label="调度智能体数量"
                         className="team-editor__input"
+                        inputMode="numeric"
                         onChange={(event) =>
-                          updatePromptConstraints(
-                            promptConstraints.map((item, itemIndex) =>
-                              itemIndex === index ? event.target.value : item,
-                            ),
-                          )
+                          updatePromptConstraints({
+                            ...promptConstraints,
+                            schedulerAgents: event.target.value,
+                          })
                         }
                         type="text"
-                        value={constraint}
+                        value={promptConstraints.schedulerAgents}
                       />
-                      <button
-                        onClick={() =>
-                          updatePromptConstraints(
-                            promptConstraints.filter((_, itemIndex) => itemIndex !== index),
-                          )
+                    </label>
+
+                    <label className="team-editor__field team-editor__field--compact">
+                      <span>执行智能体最少数量</span>
+                      <input
+                        aria-label="执行智能体最少数量"
+                        className="team-editor__input"
+                        inputMode="numeric"
+                        onChange={(event) =>
+                          updatePromptConstraints({
+                            ...promptConstraints,
+                            executorAgentsMin: event.target.value,
+                          })
                         }
-                        type="button"
-                      >
-                        Remove
-                      </button>
+                        type="text"
+                        value={promptConstraints.executorAgentsMin}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="team-editor__subsection">
+                    <span>工作规则</span>
+                    <div className="team-editor__list">
+                      {operationalRules.map((rule, index) => (
+                        <div className="team-editor__row" key={`rule-${index}`}>
+                          <input
+                            aria-label={`工作规则 ${index + 1}`}
+                            className="team-editor__input"
+                            onChange={(event) =>
+                              updatePromptConstraints({
+                                ...promptConstraints,
+                                operationalRules: updateListItem(
+                                  operationalRules,
+                                  index,
+                                  event.target.value,
+                                ),
+                              })
+                            }
+                            type="text"
+                            value={rule}
+                          />
+                          <button
+                            onClick={() =>
+                              updatePromptConstraints({
+                                ...promptConstraints,
+                                operationalRules: operationalRules.filter(
+                                  (_, itemIndex) => itemIndex !== index,
+                                ),
+                              })
+                            }
+                            type="button"
+                          >
+                            移除
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                    <button
+                      className="team-editor__add-action"
+                      onClick={() =>
+                        updatePromptConstraints({
+                          ...promptConstraints,
+                          operationalRules: [...operationalRules, ""],
+                        })
+                      }
+                      type="button"
+                    >
+                      添加规则
+                    </button>
+                  </div>
+
+                  <div className="team-editor__subsection">
+                    <span>覆盖范围</span>
+                    <div className="team-editor__list">
+                      {scopeItems.map((scope, index) => (
+                        <div
+                          className="team-editor__row"
+                          key={`scope-${index}`}
+                        >
+                          <input
+                            aria-label={`覆盖范围 ${index + 1}`}
+                            className="team-editor__input"
+                            onChange={(event) =>
+                              updatePromptConstraints({
+                                ...promptConstraints,
+                                scope: updateListItem(
+                                  scopeItems,
+                                  index,
+                                  event.target.value,
+                                ),
+                              })
+                            }
+                            type="text"
+                            value={scope}
+                          />
+                          <button
+                            onClick={() =>
+                              updatePromptConstraints({
+                                ...promptConstraints,
+                                scope: scopeItems.filter(
+                                  (_, itemIndex) => itemIndex !== index,
+                                ),
+                              })
+                            }
+                            type="button"
+                          >
+                            移除
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      className="team-editor__add-action"
+                      onClick={() =>
+                        updatePromptConstraints({
+                          ...promptConstraints,
+                          scope: [...scopeItems, ""],
+                        })
+                      }
+                      type="button"
+                    >
+                      添加范围
+                    </button>
+                  </div>
                 </div>
-                <button
-                  className="team-editor__add-action"
-                  onClick={() => updatePromptConstraints([...promptConstraints, ""])}
-                  type="button"
-                >
-                  Add constraint
-                </button>
               </div>
 
               <div className="team-editor__summary-card team-editor__summary-card--editable">
-                <span>Permission policy</span>
+                <span>权限策略</span>
                 <div className="team-editor__stack">
                   <div className="team-editor__subsection">
-                    <span>Allowed resources</span>
+                    <span>允许访问的资源</span>
                     <div className="team-editor__list">
                       {allowedResources.map((resource, index) => (
-                        <div className="team-editor__row" key={`resource-${index}`}>
+                        <div
+                          className="team-editor__row"
+                          key={`resource-${index}`}
+                        >
                           <input
-                            aria-label={`Allowed resource ${index + 1}`}
+                            aria-label={`允许访问的资源 ${index + 1}`}
                             className="team-editor__input"
                             onChange={(event) =>
                               updatePermissionPolicy({
                                 ...permissionPolicy,
-                                allowedResources: allowedResources.map((item, itemIndex) =>
-                                  itemIndex === index ? event.target.value : item,
+                                allowedResources: updateListItem(
+                                  allowedResources,
+                                  index,
+                                  event.target.value,
                                 ),
                               })
                             }
@@ -341,7 +577,7 @@ export function TeamEditor({
                             }
                             type="button"
                           >
-                            Remove
+                            移除
                           </button>
                         </div>
                       ))}
@@ -356,23 +592,28 @@ export function TeamEditor({
                       }
                       type="button"
                     >
-                      Add resource
+                      添加资源
                     </button>
                   </div>
 
                   <div className="team-editor__subsection">
-                    <span>Denied actions</span>
+                    <span>禁止动作</span>
                     <div className="team-editor__list">
                       {deniedActions.map((action, index) => (
-                        <div className="team-editor__row" key={`denied-action-${index}`}>
+                        <div
+                          className="team-editor__row"
+                          key={`denied-action-${index}`}
+                        >
                           <input
-                            aria-label={`Denied action ${index + 1}`}
+                            aria-label={`禁止动作 ${index + 1}`}
                             className="team-editor__input"
                             onChange={(event) =>
                               updatePermissionPolicy({
                                 ...permissionPolicy,
-                                deniedActions: deniedActions.map((item, itemIndex) =>
-                                  itemIndex === index ? event.target.value : item,
+                                deniedActions: updateListItem(
+                                  deniedActions,
+                                  index,
+                                  event.target.value,
                                 ),
                               })
                             }
@@ -390,7 +631,7 @@ export function TeamEditor({
                             }
                             type="button"
                           >
-                            Remove
+                            移除
                           </button>
                         </div>
                       ))}
@@ -405,14 +646,14 @@ export function TeamEditor({
                       }
                       type="button"
                     >
-                      Add action
+                      添加动作
                     </button>
                   </div>
 
                   <label className="team-editor__field team-editor__field--compact">
-                    <span>Runtime ceiling (minutes)</span>
+                    <span>运行时长上限（分钟）</span>
                     <input
-                      aria-label="Permission max execution time minutes"
+                      aria-label="运行时长上限（分钟）"
                       className="team-editor__input"
                       inputMode="numeric"
                       onChange={(event) =>
@@ -429,17 +670,22 @@ export function TeamEditor({
               </div>
 
               <div className="team-editor__summary-card team-editor__summary-card--editable">
-                <span>Success criteria</span>
+                <span>成功标准</span>
                 <div className="team-editor__list">
                   {successCriteria.map((entry, index) => (
-                    <div className="team-editor__row team-editor__row--split" key={`criteria-${index}`}>
+                    <div
+                      className="team-editor__row team-editor__row--split"
+                      key={`criteria-${index}`}
+                    >
                       <input
-                        aria-label={`Success criteria key ${index + 1}`}
+                        aria-label={`成功标准名称 ${index + 1}`}
                         className="team-editor__input"
                         onChange={(event) =>
                           updateSuccessCriteria(
                             successCriteria.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, key: event.target.value } : item,
+                              itemIndex === index
+                                ? { ...item, key: event.target.value }
+                                : item,
                             ),
                           )
                         }
@@ -447,12 +693,14 @@ export function TeamEditor({
                         value={entry.key}
                       />
                       <input
-                        aria-label={`Success criteria value ${index + 1}`}
+                        aria-label={`成功标准内容 ${index + 1}`}
                         className="team-editor__input"
                         onChange={(event) =>
                           updateSuccessCriteria(
                             successCriteria.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, value: event.target.value } : item,
+                              itemIndex === index
+                                ? { ...item, value: event.target.value }
+                                : item,
                             ),
                           )
                         }
@@ -462,32 +710,39 @@ export function TeamEditor({
                       <button
                         onClick={() =>
                           updateSuccessCriteria(
-                            successCriteria.filter((_, itemIndex) => itemIndex !== index),
+                            successCriteria.filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
                           )
                         }
                         type="button"
                       >
-                        Remove
+                        移除
                       </button>
                     </div>
                   ))}
                 </div>
                 <button
                   className="team-editor__add-action"
-                  onClick={() => updateSuccessCriteria([...successCriteria, { key: "", value: "" }])}
+                  onClick={() =>
+                    updateSuccessCriteria([
+                      ...successCriteria,
+                      { key: "", value: "" },
+                    ])
+                  }
                   type="button"
                 >
-                  Add criteria
+                  添加标准
                 </button>
               </div>
 
               <div className="team-editor__summary-card team-editor__summary-card--editable">
-                <span>Coordination</span>
+                <span>协作方式</span>
                 <div className="team-editor__stack">
                   <label className="team-editor__field team-editor__field--compact">
-                    <span>Flow</span>
+                    <span>流程</span>
                     <input
-                      aria-label="Coordination flow"
+                      aria-label="流程"
                       className="team-editor__input"
                       onChange={(event) =>
                         updateCoordinationPolicy({
@@ -500,9 +755,9 @@ export function TeamEditor({
                     />
                   </label>
                   <label className="team-editor__field team-editor__field--compact">
-                    <span>Feedback loop</span>
+                    <span>反馈回路</span>
                     <textarea
-                      aria-label="Coordination feedback loop"
+                      aria-label="反馈回路"
                       onChange={(event) =>
                         updateCoordinationPolicy({
                           ...coordinationPolicy,
@@ -514,9 +769,9 @@ export function TeamEditor({
                     />
                   </label>
                   <label className="team-editor__field team-editor__field--compact">
-                    <span>Error handling</span>
+                    <span>异常处理</span>
                     <textarea
-                      aria-label="Coordination error handling"
+                      aria-label="异常处理"
                       onChange={(event) =>
                         updateCoordinationPolicy({
                           ...coordinationPolicy,
@@ -528,18 +783,24 @@ export function TeamEditor({
                     />
                   </label>
                   <div className="team-editor__subsection">
-                    <span>Role hierarchy</span>
+                    <span>角色层级</span>
                     <div className="team-editor__list">
                       {roleHierarchy.map((entry, index) => (
-                        <div className="team-editor__row team-editor__row--split" key={`role-${index}`}>
+                        <div
+                          className="team-editor__row team-editor__row--split"
+                          key={`role-${index}`}
+                        >
                           <input
-                            aria-label={`Role hierarchy role ${index + 1}`}
+                            aria-label={`角色层级名称 ${index + 1}`}
                             className="team-editor__input"
                             onChange={(event) =>
                               updateCoordinationPolicy({
                                 ...coordinationPolicy,
-                                roleHierarchy: roleHierarchy.map((item, itemIndex) =>
-                                  itemIndex === index ? { ...item, key: event.target.value } : item,
+                                roleHierarchy: roleHierarchy.map(
+                                  (item, itemIndex) =>
+                                    itemIndex === index
+                                      ? { ...item, key: event.target.value }
+                                      : item,
                                 ),
                               })
                             }
@@ -547,13 +808,16 @@ export function TeamEditor({
                             value={entry.key}
                           />
                           <input
-                            aria-label={`Role hierarchy value ${index + 1}`}
+                            aria-label={`角色层级内容 ${index + 1}`}
                             className="team-editor__input"
                             onChange={(event) =>
                               updateCoordinationPolicy({
                                 ...coordinationPolicy,
-                                roleHierarchy: roleHierarchy.map((item, itemIndex) =>
-                                  itemIndex === index ? { ...item, value: event.target.value } : item,
+                                roleHierarchy: roleHierarchy.map(
+                                  (item, itemIndex) =>
+                                    itemIndex === index
+                                      ? { ...item, value: event.target.value }
+                                      : item,
                                 ),
                               })
                             }
@@ -571,7 +835,7 @@ export function TeamEditor({
                             }
                             type="button"
                           >
-                            Remove
+                            移除
                           </button>
                         </div>
                       ))}
@@ -581,34 +845,77 @@ export function TeamEditor({
                       onClick={() =>
                         updateCoordinationPolicy({
                           ...coordinationPolicy,
-                          roleHierarchy: [...roleHierarchy, { key: "", value: "" }],
+                          roleHierarchy: [
+                            ...roleHierarchy,
+                            { key: "", value: "" },
+                          ],
                         })
                       }
                       type="button"
                     >
-                      Add role
+                      添加角色
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div className="team-editor__summary-card team-editor__summary-card--editable team-editor__summary-card--wide">
+                <span>最近启动</span>
+                {recentLaunches.length === 0 ? (
+                  <p>这个协作团队还没有最近运行记录。</p>
+                ) : (
+                  <div className="team-editor__recent-launches">
+                    {recentLaunches.map((launch) => (
+                      <div
+                        className="team-editor__recent-launch"
+                        key={launch.id}
+                      >
+                        <div className="team-editor__recent-launch-copy">
+                          <strong>{launch.title}</strong>
+                          <span>{launch.summary}</span>
+                        </div>
+                        <button
+                          onClick={() => onOpenLaunchInChat(launch.id)}
+                          type="button"
+                        >
+                          在对话中打开
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
           <div className="team-editor__assignments">
             <div className="team-editor__assignment-list">
-              <h3>Assigned agents</h3>
+              <h3>已加入模板的智能体</h3>
               {team.agentAssignments.map((assignment, index) => {
                 const agent = team.agents[index];
                 const label = agent?.name ?? assignment.agentId;
 
                 return (
-                  <div className="team-editor__assignment-row" key={assignment.id}>
+                  <div
+                    className="team-editor__assignment-row"
+                    key={assignment.id}
+                  >
                     <div className="team-editor__assignment-copy">
                       <strong>{label}</strong>
-                      <span>{agent?.responsibility ?? "Assigned to this template."}</span>
+                      <span>
+                        {agent
+                          ? humanizeGeneratedAgentDescription(
+                              agent.responsibility,
+                            )
+                          : "已加入当前协作团队模板。"}
+                      </span>
                     </div>
-                    <button onClick={() => onRemoveAssignedAgent(assignment.agentId)} type="button">
-                      Remove {label}
+                    <button
+                      aria-label={`移除 ${label}`}
+                      onClick={() => onRemoveAssignedAgent(assignment.agentId)}
+                      type="button"
+                    >
+                      移除 {label}
                     </button>
                   </div>
                 );
@@ -616,13 +923,19 @@ export function TeamEditor({
             </div>
 
             <div className="team-editor__assignment-list">
-              <h3>Available agents</h3>
+              <h3>可加入的智能体</h3>
               {unassignedAgents.length === 0 ? (
-                <div className="team-editor__assignment-empty">All saved agents are assigned.</div>
+                <div className="team-editor__assignment-empty">
+                  当前已把全部已保存智能体加入模板。
+                </div>
               ) : (
                 unassignedAgents.map((agent) => (
-                  <button key={agent.id} onClick={() => onAddAssignedAgent(agent.id)} type="button">
-                    Add {agent.name}
+                  <button
+                    key={agent.id}
+                    onClick={() => onAddAssignedAgent(agent.id)}
+                    type="button"
+                  >
+                    加入 {agent.name}
                   </button>
                 ))
               )}
@@ -646,7 +959,7 @@ export function TeamEditor({
               onClick={onSave}
               type="button"
             >
-              {isSaving ? "Saving..." : "Save Changes"}
+              {isSaving ? "保存中..." : "保存模板"}
             </button>
             <button
               className="settings-button settings-button--accent"
@@ -654,7 +967,7 @@ export function TeamEditor({
               onClick={onStartRun}
               type="button"
             >
-              {isStartingRun ? "Starting..." : "Start Run"}
+              {isStartingRun ? "正在启动..." : "在对话中启动"}
             </button>
           </div>
         </div>
@@ -663,7 +976,35 @@ export function TeamEditor({
           className="team-editor__empty team-editor__empty--centered"
           data-testid="team-editor-empty"
         >
-          No teams yet.
+          <div className="team-editor__summary team-editor__empty-shell">
+            <div className="team-editor__empty-copy">
+              <h2>先用一句话生成协作团队</h2>
+              <p>
+                描述你的目标，我们会先生成一个协作团队模板。生成后你仍然可以在这里继续微调字段、分工和工具权限。
+              </p>
+            </div>
+
+            <label className="team-editor__field">
+              <span>协作团队目标</span>
+              <textarea
+                aria-label="协作团队目标"
+                onChange={(event) => onCreateGoalDraftChange(event.target.value)}
+                placeholder="例如：做一个桌面 P0 验收协作团队，至少 5 个子智能体，分别负责 UI、team run、memory、文件时间线和恢复验证。"
+                value={createGoalDraft}
+              />
+            </label>
+
+            <div className="team-editor__actions">
+              <button
+                className="settings-button settings-button--accent"
+                disabled={isGeneratingTeam || !createGoalDraft.trim()}
+                onClick={onCreateTeamFromGoal}
+                type="button"
+              >
+                {isGeneratingTeam ? "生成中..." : "一句话生成协作团队"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>

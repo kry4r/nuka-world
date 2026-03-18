@@ -1,4 +1,5 @@
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useI18n } from "@/lib/i18n";
 
 type ToolBindingsPanelProps = {
   inputValue?: string;
@@ -13,18 +14,24 @@ export function ToolBindingsPanel({
   toolNames,
   title = "Tool Bindings",
 }: ToolBindingsPanelProps) {
+  const { locale } = useI18n();
+  const helperCopy =
+    locale === "zh-CN" ? "使用逗号分隔工具 ID" : "Comma-separated tool ids";
+  const emptyCopy = locale === "zh-CN" ? "暂未分配工具" : "No tools assigned";
+  const inputLabel = locale === "zh-CN" ? "允许工具" : "Allowed tools";
+
   return (
     <section aria-label={title} className="tool-bindings-panel">
       <div className="tool-bindings-panel__header">
         <h3>{title}</h3>
-        {onInputValueChange ? <span>Comma-separated tool ids</span> : null}
+        {onInputValueChange ? <span>{helperCopy}</span> : null}
       </div>
 
       {onInputValueChange ? (
         <label className="agents-field">
-          <span className="agents-field__label">Allowed tools</span>
+          <span className="agents-field__label">{inputLabel}</span>
           <input
-            aria-label="Allowed tools"
+            aria-label={inputLabel}
             className="field-input"
             onChange={(event) => onInputValueChange(event.target.value)}
             value={inputValue ?? toolNames.join(", ")}
@@ -41,7 +48,7 @@ export function ToolBindingsPanel({
           ))}
         </div>
       ) : (
-        <p className="tool-bindings-panel__empty">No tools assigned</p>
+        <p className="tool-bindings-panel__empty">{emptyCopy}</p>
       )}
     </section>
   );

@@ -57,13 +57,15 @@ async fn build_app_state_from_pool(
     let _ = &provider_secret_root;
 
     #[cfg(test)]
-    let provider_secret_store: std::sync::Arc<dyn crate::provider_secrets::ProviderSecretStore> =
-        std::sync::Arc::new(crate::provider_secrets::InMemoryProviderSecretStore::default());
+    let provider_secret_store: std::sync::Arc<
+        dyn crate::provider_secrets::ProviderSecretStore,
+    > = std::sync::Arc::new(crate::provider_secrets::InMemoryProviderSecretStore::default());
     #[cfg(not(test))]
-    let provider_secret_store: std::sync::Arc<dyn crate::provider_secrets::ProviderSecretStore> =
-        std::sync::Arc::new(crate::provider_secrets::DesktopCredentialSecretStore::new_in(
-            provider_secret_root,
-        )?);
+    let provider_secret_store: std::sync::Arc<
+        dyn crate::provider_secrets::ProviderSecretStore,
+    > = std::sync::Arc::new(
+        crate::provider_secrets::DesktopCredentialSecretStore::new_in(provider_secret_root)?,
+    );
 
     migrate_provider_tokens_to_secret_store(&pool, provider_secret_store.as_ref()).await?;
 
@@ -97,11 +99,12 @@ async fn build_app_state_from_pool(
         provider_service.clone(),
     );
     #[cfg(not(test))]
-    let team_run_service = nuka_runtime::team_run_service::TeamRunService::new_with_provider_service_and_artifact_root(
-        pool.clone(),
-        provider_service.clone(),
-        team_run_artifact_root,
-    );
+    let team_run_service =
+        nuka_runtime::team_run_service::TeamRunService::new_with_provider_service_and_artifact_root(
+            pool.clone(),
+            provider_service.clone(),
+            team_run_artifact_root,
+        );
     let agents_service = nuka_runtime::agents::AgentsService::new(pool.clone());
     let knowledge_service = nuka_runtime::knowledge_service::KnowledgeService::new(
         pool.clone(),
@@ -179,7 +182,10 @@ fn resolve_bundled_pageindex_runtime<R: tauri::Runtime>(
 ) -> anyhow::Result<PathBuf> {
     let bundled = app
         .path()
-        .resolve(PAGEINDEX_RESOURCE_PATH, tauri::path::BaseDirectory::Resource)
+        .resolve(
+            PAGEINDEX_RESOURCE_PATH,
+            tauri::path::BaseDirectory::Resource,
+        )
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
     if bundled.exists() {

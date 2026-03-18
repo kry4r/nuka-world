@@ -1,7 +1,9 @@
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentsPage } from "./AgentsPage";
 import { findText, renderIntoDocument } from "@/test/render";
+
+const DESKTOP_LOCALE_STORAGE_KEY = "nuka.desktop.locale";
 
 const { defaultInvokeImplementation, invokeMock } = vi.hoisted(() => ({
   defaultInvokeImplementation: async (
@@ -89,6 +91,10 @@ vi.mock("@/hooks/useProviderGate", () => ({
 
 const cleanups: Array<() => Promise<void>> = [];
 
+beforeEach(() => {
+  window.localStorage.setItem(DESKTOP_LOCALE_STORAGE_KEY, "en-US");
+});
+
 afterEach(async () => {
   invokeMock.mockClear();
   invokeMock.mockImplementation(defaultInvokeImplementation);
@@ -96,6 +102,7 @@ afterEach(async () => {
   providerGateState.blocked = false;
   providerGateState.message = "Provider ready";
   providerGateState.openSettings.mockReset();
+  window.localStorage.clear();
 
   while (cleanups.length > 0) {
     const cleanup = cleanups.pop();
@@ -112,6 +119,28 @@ function findButton(container: HTMLElement, text: string) {
 }
 
 describe("AgentsPage", () => {
+  it("renders the primary agent editor copy in Chinese when the desktop locale is zh-CN", async () => {
+    window.localStorage.setItem(DESKTOP_LOCALE_STORAGE_KEY, "zh-CN");
+
+    const view = await renderIntoDocument(<AgentsPage />);
+    cleanups.push(view.cleanup);
+
+    expect(findText(view.container, "生成智能体")).toBeTruthy();
+    expect(findText(view.container, "需求")).toBeTruthy();
+    expect(findText(view.container, "描述")).toBeTruthy();
+    expect(findText(view.container, "系统提示词")).toBeTruthy();
+    expect(findText(view.container, "允许工具")).toBeTruthy();
+    expect(findText(view.container, "保存变更")).toBeTruthy();
+    expect(findText(view.container, "删除智能体")).toBeTruthy();
+    expect(findText(view.container, "证据冲突时升级处理")).toBeTruthy();
+    expect(findText(view.container, "Generate an agent")).toBeFalsy();
+    expect(findText(view.container, "System Prompt")).toBeFalsy();
+    expect(findText(view.container, "Delete Agent")).toBeFalsy();
+    expect(
+      findText(view.container, "Escalate when evidence conflicts"),
+    ).toBeFalsy();
+  });
+
   it("blocks draft generation until provider ready", async () => {
     providerGateState.ready = false;
     providerGateState.blocked = true;
@@ -128,26 +157,34 @@ describe("AgentsPage", () => {
   });
 
   it("shows only the generation surface when no agents exist", async () => {
-    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "list_agents") {
-        return [];
-      }
+    invokeMock.mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "list_agents") {
+          return [];
+        }
 
-      return defaultInvokeImplementation(command, args);
-    });
+        return defaultInvokeImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
 
     expect(findButton(view.container, "Create")).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Agent request"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('[aria-label="Agent request"]'),
+    ).toBeTruthy();
     expect(view.container.textContent).not.toContain("Agent Details");
     expect(view.container.textContent).not.toContain("Agent Library");
     expect(view.container.textContent).not.toContain(
       "Describe the role in one sentence, then refine the draft before saving it.",
     );
-    expect(view.container.querySelector('[data-testid="agents-list"]')).toBeFalsy();
-    expect(view.container.querySelector('[data-testid="agents-detail"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('[data-testid="agents-list"]'),
+    ).toBeFalsy();
+    expect(
+      view.container.querySelector('[data-testid="agents-detail"]'),
+    ).toBeFalsy();
   });
 
   it("lists saved agents from the backend", async () => {
@@ -162,11 +199,17 @@ describe("AgentsPage", () => {
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
 
-    expect(view.container.querySelector('[data-testid="agents-list"]')).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="agents-detail"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('[data-testid="agents-list"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('[data-testid="agents-detail"]'),
+    ).toBeTruthy();
     expect(view.container.textContent).not.toContain("Agent Library");
     expect(view.container.textContent).not.toContain("Agent Details");
-    expect(findText(view.container, "Summarize findings and cite sources.")).toBeTruthy();
+    expect(
+      findText(view.container, "Summarize findings and cite sources."),
+    ).toBeTruthy();
     expect(findText(view.container, "search_knowledge")).toBeTruthy();
     expect(findText(view.container, "Provider")).toBeTruthy();
     expect(findText(view.container, "Research Analyst")).toBeTruthy();
@@ -180,21 +223,47 @@ describe("AgentsPage", () => {
     const main = view.container.querySelector(".agents-page__main");
 
     expect(main?.className).toContain("agents-page__main--scrollable");
-    expect(view.container.querySelector('[aria-label="Archetype domain focus"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Archetype objective pattern"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Archetype communication style"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Archetype default tool posture"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Archetype memory posture"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Archetype escalation posture"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Archetype safety posture"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Archetype output contract"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('[aria-label="Archetype domain focus"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        '[aria-label="Archetype objective pattern"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        '[aria-label="Archetype communication style"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        '[aria-label="Archetype default tool posture"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('[aria-label="Archetype memory posture"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        '[aria-label="Archetype escalation posture"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('[aria-label="Archetype safety posture"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('[aria-label="Archetype output contract"]'),
+    ).toBeTruthy();
   });
 
   it("creates an agent draft via backend draft generation", async () => {
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
 
-    const promptInput = view.container.querySelector('input[aria-label="Agent request"]') as HTMLInputElement | null;
+    const promptInput = view.container.querySelector(
+      'input[aria-label="Agent request"]',
+    ) as HTMLInputElement | null;
     const createButton = findButton(view.container, "Create");
 
     await act(async () => {
@@ -202,8 +271,14 @@ describe("AgentsPage", () => {
         throw new Error("Agent request input missing");
       }
 
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-      valueSetter?.call(promptInput, "Create an agent that writes short weekly release digests.");
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      valueSetter?.call(
+        promptInput,
+        "Create an agent that writes short weekly release digests.",
+      );
       promptInput.dispatchEvent(new Event("input", { bubbles: true }));
       promptInput.dispatchEvent(new Event("change", { bubbles: true }));
     });
@@ -228,14 +303,16 @@ describe("AgentsPage", () => {
 
   it("saves custom non-software archetype metadata from the editor", async () => {
     const savedAgents: Array<Record<string, unknown>> = [];
-    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "save_agent") {
-        savedAgents.push(args?.agent as Record<string, unknown>);
-        return args?.agent ?? null;
-      }
+    invokeMock.mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "save_agent") {
+          savedAgents.push(args?.agent as Record<string, unknown>);
+          return args?.agent ?? null;
+        }
 
-      return defaultInvokeImplementation(command, args);
-    });
+        return defaultInvokeImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
@@ -260,7 +337,10 @@ describe("AgentsPage", () => {
         throw new Error("archetype inputs missing");
       }
 
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
       setter?.call(titleInput, "Household Planner");
       titleInput.dispatchEvent(new Event("input", { bubbles: true }));
       setter?.call(familyInput, "household_and_personal_logistics");
@@ -283,22 +363,24 @@ describe("AgentsPage", () => {
   });
 
   it("keeps an explicitly empty tool list empty instead of falling back to defaults", async () => {
-    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "list_agents") {
-        return [
-          {
-            id: "agent-empty-tools",
-            name: "Observer",
-            description: "Review only",
-            systemPrompt: "Observe and summarize.",
-            providerId: "provider-local",
-            toolNames: [],
-          },
-        ];
-      }
+    invokeMock.mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "list_agents") {
+          return [
+            {
+              id: "agent-empty-tools",
+              name: "Observer",
+              description: "Review only",
+              systemPrompt: "Observe and summarize.",
+              providerId: "provider-local",
+              toolNames: [],
+            },
+          ];
+        }
 
-      return defaultInvokeImplementation(command, args);
-    });
+        return defaultInvokeImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
@@ -321,13 +403,15 @@ describe("AgentsPage", () => {
   });
 
   it("shows a visible error when saving a draft fails", async () => {
-    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "save_agent") {
-        throw new Error("save failed");
-      }
+    invokeMock.mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "save_agent") {
+          throw new Error("save failed");
+        }
 
-      return defaultInvokeImplementation(command, args);
-    });
+        return defaultInvokeImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
@@ -352,13 +436,15 @@ describe("AgentsPage", () => {
   });
 
   it("shows a visible error when deleting an agent fails", async () => {
-    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "delete_agent") {
-        throw new Error("delete failed");
-      }
+    invokeMock.mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "delete_agent") {
+          throw new Error("delete failed");
+        }
 
-      return defaultInvokeImplementation(command, args);
-    });
+        return defaultInvokeImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);
@@ -376,13 +462,15 @@ describe("AgentsPage", () => {
   });
 
   it("labels saved-agent save failures separately from draft save failures", async () => {
-    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "save_agent") {
-        throw new Error("save failed");
-      }
+    invokeMock.mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "save_agent") {
+          throw new Error("save failed");
+        }
 
-      return defaultInvokeImplementation(command, args);
-    });
+        return defaultInvokeImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<AgentsPage />);
     cleanups.push(view.cleanup);

@@ -1,6 +1,9 @@
 import { useEffect, useState, type JSX } from "react";
 import { AppShell } from "./components/shell/AppShell";
-import type { ShellNavigationItem, ShellPageId } from "./components/shell/shellNavigation";
+import type {
+  ShellNavigationItem,
+  ShellPageId,
+} from "./components/shell/shellNavigation";
 import { AgentsPage } from "./features/agents/AgentsPage";
 import { ChatPage } from "./features/chat/ChatPage";
 import { KnowledgePage } from "./features/knowledge/KnowledgePage";
@@ -33,7 +36,10 @@ export default function App() {
     window.addEventListener("nuka:navigate", handleNavigation as EventListener);
 
     return () => {
-      window.removeEventListener("nuka:navigate", handleNavigation as EventListener);
+      window.removeEventListener(
+        "nuka:navigate",
+        handleNavigation as EventListener,
+      );
     };
   }, []);
 

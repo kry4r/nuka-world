@@ -52,7 +52,9 @@ export function MemoryNodeInspector({
   const [targetId, setTargetId] = useState("");
   const [relation, setRelation] = useState("关联");
 
-  const availableTargets = nodes.filter((candidate) => candidate.id !== node?.id);
+  const availableTargets = nodes.filter(
+    (candidate) => candidate.id !== node?.id,
+  );
   const defaultTargetId = availableTargets[0]?.id ?? "";
 
   useEffect(() => {
@@ -74,8 +76,14 @@ export function MemoryNodeInspector({
 
   return (
     <div className="memory-node-detail">
-      <div className="memory-node-detail__header">
-        <div className="memory-node-detail__copy">
+      <div
+        className="memory-node-detail__header"
+        style={{ flexWrap: "nowrap" }}
+      >
+        <div
+          className="memory-node-detail__copy"
+          style={{ flex: 1, minWidth: 0 }}
+        >
           <span className="memory-page__eyebrow">节点详情</span>
           <h2>{node.title}</h2>
         </div>
@@ -83,6 +91,7 @@ export function MemoryNodeInspector({
           aria-label="Close node detail"
           className="memory-node-detail__dismiss"
           onClick={onClose}
+          style={{ flexShrink: 0 }}
           type="button"
         >
           <svg
@@ -95,10 +104,20 @@ export function MemoryNodeInspector({
         </button>
       </div>
       <div className="memory-node-detail__actions">
-        <button className="memory-node-detail__action is-primary" disabled={busy} onClick={() => void onSave()} type="button">
+        <button
+          className="memory-node-detail__action is-primary"
+          disabled={busy}
+          onClick={() => void onSave()}
+          type="button"
+        >
           保存节点
         </button>
-        <button className="memory-node-detail__action is-danger" disabled={busy} onClick={onRequestDelete} type="button">
+        <button
+          className="memory-node-detail__action is-danger"
+          disabled={busy}
+          onClick={onRequestDelete}
+          type="button"
+        >
           删除节点
         </button>
       </div>
@@ -158,7 +177,9 @@ export function MemoryNodeInspector({
                 shellClassName="memory-node-detail__select-shell"
                 value={targetId}
               >
-                {availableTargets.length === 0 ? <option value="">没有可连接的节点</option> : null}
+                {availableTargets.length === 0 ? (
+                  <option value="">没有可连接的节点</option>
+                ) : null}
                 {availableTargets.map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
                     {candidate.title}
@@ -192,7 +213,8 @@ export function MemoryNodeInspector({
               <p className="memory-node-detail__empty">还没有关联。</p>
             ) : (
               connectedEdges.map((edge) => {
-                const peerId = edge.sourceId === node.id ? edge.targetId : edge.sourceId;
+                const peerId =
+                  edge.sourceId === node.id ? edge.targetId : edge.sourceId;
                 const peer = nodes.find((candidate) => candidate.id === peerId);
 
                 return (
@@ -201,7 +223,12 @@ export function MemoryNodeInspector({
                       <strong>{edge.relation}</strong>
                       <span>{peer?.title ?? peerId}</span>
                     </div>
-                    <button className="memory-node-detail__action" disabled={busy} onClick={() => void onDeleteEdge(edge.id)} type="button">
+                    <button
+                      className="memory-node-detail__action"
+                      disabled={busy}
+                      onClick={() => void onDeleteEdge(edge.id)}
+                      type="button"
+                    >
                       移除关联
                     </button>
                   </div>
@@ -226,7 +253,9 @@ export function MemoryNodeInspector({
             {deleteImpact.connectedTitles.length === 0 ? (
               <span>这个节点目前没有关联邻居。</span>
             ) : (
-              deleteImpact.connectedTitles.map((title) => <span key={title}>{title}</span>)
+              deleteImpact.connectedTitles.map((title) => (
+                <span key={title}>{title}</span>
+              ))
             )}
           </div>
           <div className="memory-node-detail__actions">
@@ -263,7 +292,7 @@ export function MemoryNodeInspector({
 function memoryKindLabel(kind: string) {
   switch (kind) {
     case "workflow":
-      return "工作流";
+      return "流程";
     case "session":
       return "对话";
     case "agent":

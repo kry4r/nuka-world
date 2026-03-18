@@ -23,6 +23,9 @@ mod tests {
     #[test]
     fn integrated_tool_output_defaults_to_session_scope() {
         let policy = crate::integrated::OutputPolicy::default();
-        assert_eq!(policy.target_scope, crate::integrated::OutputScope::SessionArtifacts);
+        assert_eq!(
+            policy.target_scope,
+            crate::integrated::OutputScope::SessionArtifacts
+        );
     }
 }

@@ -646,6 +646,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn team_repository_separates_assignment_rows_from_team_agents() {
+        let db = crate::db::open_in_memory().await.unwrap();
+        crate::migrations::run(&db).await.unwrap();
+
+        let team = sample_team();
+        let expected_agent_count = team.agents.len() as i64;
+        let expected_assignment_count = team.agent_assignments.len() as i64;
+
+        crate::teams::TeamRepository::new(db.clone())
+            .save_team(team)
+            .await
+            .unwrap();
+
+        let stored_agent_count: i64 =
+            sqlx::query_scalar("select count(*) from team_agents where team_id = ?1")
+                .bind("team-release")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        let stored_assignment_count: i64 =
+            sqlx::query_scalar("select count(*) from team_agent_assignments where team_id = ?1")
+                .bind("team-release")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+
+        assert_eq!(stored_agent_count, expected_agent_count);
+        assert_eq!(stored_assignment_count, expected_assignment_count);
+    }
+
+    #[tokio::test]
     async fn saves_and_reads_team_run_snapshot_and_events() {
         let db = crate::db::open_in_memory().await.unwrap();
         crate::migrations::run(&db).await.unwrap();

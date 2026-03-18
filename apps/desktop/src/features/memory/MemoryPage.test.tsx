@@ -2,66 +2,63 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/styles/tokens.css";
 import "@/styles/theme.css";
-import { MemoryPage } from "./MemoryPage";
-import { buildLayout } from "./MemoryGraphCanvas";
+import { fitGraph, MemoryPage } from "./MemoryPage";
+import { buildLayout, nodeSize } from "./MemoryGraphCanvas";
+import type { MemoryGraphNode } from "@/lib/memory";
 import { findText, renderIntoDocument } from "@/test/render";
 
 const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
-  const initialNodes: Array<{
-    body: string | null;
-    consolidationState: string;
-    id: string;
-    kind: string;
+  type MemoryGraphFixtureNode = MemoryGraphNode & {
     scopeId: string;
-    traceType: string;
-    title: string;
-  }> = [
-      {
-        id: "workflow-review",
-        kind: "workflow",
-        scopeId: "workflow:workflow-review",
-        title: "Release Workflow",
-        body: "Coordinates release validation.",
-        traceType: "semantic",
-        consolidationState: "approved",
-      },
-      {
-        id: "fact-archive",
-        kind: "fact",
-        scopeId: "world",
-        title: "Archive Fact",
-        body: "Older note kept for comparison.",
-        traceType: "semantic",
-        consolidationState: "archived",
-      },
-      {
-        id: "memory-review",
-        kind: "fact",
-        scopeId: "workflow:workflow-review",
-        title: "Review Memory",
-        body: "Tracks the latest review conclusions.",
-        traceType: "episodic",
-        consolidationState: "candidate",
-      },
-      {
-        id: "session-sync",
-        kind: "session",
-        scopeId: "workflow:workflow-review",
-        title: "Review Session",
-        body: "Tracks the active review conversation.",
-        traceType: "working",
-        consolidationState: "none",
-      },
-      {
-        id: "agent-scout",
-        kind: "agent",
-        scopeId: "workflow:workflow-review",
-        title: "Scout Agent",
-        body: "Flags follow-up work.",
-        traceType: "semantic",
-        consolidationState: "rejected",
-      },
-    ];
+  };
+
+  const initialNodes: MemoryGraphFixtureNode[] = [
+    {
+      id: "workflow-review",
+      kind: "workflow",
+      scopeId: "workflow:workflow-review",
+      title: "Release Workflow",
+      body: "Coordinates release validation.",
+      traceType: "semantic",
+      consolidationState: "approved",
+    },
+    {
+      id: "fact-archive",
+      kind: "fact",
+      scopeId: "world",
+      title: "Archive Fact",
+      body: "Older note kept for comparison.",
+      traceType: "semantic",
+      consolidationState: "archived",
+    },
+    {
+      id: "memory-review",
+      kind: "fact",
+      scopeId: "workflow:workflow-review",
+      title: "Review Memory",
+      body: "Tracks the latest review conclusions.",
+      traceType: "episodic",
+      consolidationState: "candidate",
+    },
+    {
+      id: "session-sync",
+      kind: "session",
+      scopeId: "workflow:workflow-review",
+      title: "Review Session",
+      body: "Tracks the active review conversation.",
+      traceType: "working",
+      consolidationState: "none",
+    },
+    {
+      id: "agent-scout",
+      kind: "agent",
+      scopeId: "workflow:workflow-review",
+      title: "Scout Agent",
+      body: "Flags follow-up work.",
+      traceType: "semantic",
+      consolidationState: "rejected",
+    },
+  ];
 
   const initialScopes = [
     {
@@ -83,25 +80,25 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
   ];
 
   const initialEdges = [
-      {
-        id: "edge-review",
-        sourceId: "workflow-review",
-        targetId: "memory-review",
-        relation: "captures",
-      },
-      {
-        id: "edge-session",
-        sourceId: "memory-review",
-        targetId: "session-sync",
-        relation: "informs",
-      },
-      {
-        id: "edge-agent",
-        sourceId: "session-sync",
-        targetId: "agent-scout",
-        relation: "routes_to",
-      },
-    ];
+    {
+      id: "edge-review",
+      sourceId: "workflow-review",
+      targetId: "memory-review",
+      relation: "captures",
+    },
+    {
+      id: "edge-session",
+      sourceId: "memory-review",
+      targetId: "session-sync",
+      relation: "informs",
+    },
+    {
+      id: "edge-agent",
+      sourceId: "session-sync",
+      targetId: "agent-scout",
+      relation: "routes_to",
+    },
+  ];
 
   const graphState: {
     edges: typeof initialEdges;
@@ -119,91 +116,112 @@ const { invokeMock, resetMocks, graphState } = vi.hoisted(() => {
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
 
     return {
-      nodes: visibleNodes.map(({ scopeId: _scopeId, ...node }) => ({ ...node })),
+      nodes: visibleNodes.map(({ scopeId: _scopeId, ...node }) => ({
+        ...node,
+      })),
       edges: graphState.edges.filter(
-        (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId),
+        (edge) =>
+          visibleNodeIds.has(edge.sourceId) &&
+          visibleNodeIds.has(edge.targetId),
       ),
     };
   };
 
-  const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
-    switch (command) {
-      case "load_memory_graph":
-        return serializeGraph(
-          typeof args?.scopeId === "string" ? args.scopeId : undefined,
-        );
-      case "list_memory_scopes":
-        return structuredClone(scopeState);
-      case "list_memory_by_workflow": {
-        const workflowId = String(args?.workflowId ?? "");
-        return scopeState.filter((scope) => scope.workflowId === workflowId);
-      }
-      case "get_memory_node_detail": {
-        const nodeId = String(args?.nodeId ?? "");
-        const node = graphState.nodes.find((entry) => entry.id === nodeId);
-        if (!node) {
+  const invokeMock = vi.fn(
+    async (command: string, args?: Record<string, unknown>) => {
+      switch (command) {
+        case "load_memory_graph":
+          return serializeGraph(
+            typeof args?.scopeId === "string" ? args.scopeId : undefined,
+          );
+        case "list_memory_scopes":
+          return structuredClone(scopeState);
+        case "list_memory_by_workflow": {
+          const workflowId = String(args?.workflowId ?? "");
+          return scopeState.filter((scope) => scope.workflowId === workflowId);
+        }
+        case "get_memory_node_detail": {
+          const nodeId = String(args?.nodeId ?? "");
+          const node = graphState.nodes.find((entry) => entry.id === nodeId);
+          if (!node) {
+            return null;
+          }
+          return {
+            id: node.id,
+            title: node.title,
+            kind: node.kind,
+            body: node.body,
+            traceType: node.traceType,
+            consolidationState: node.consolidationState,
+            relatedIds: graphState.edges
+              .filter(
+                (edge) =>
+                  edge.sourceId === node.id || edge.targetId === node.id,
+              )
+              .flatMap((edge) =>
+                [edge.sourceId, edge.targetId].filter((id) => id !== node.id),
+              ),
+            workflowId: node.kind === "workflow" ? node.id : null,
+            sessionId: null,
+            agentId: null,
+          };
+        }
+        case "update_memory_node": {
+          const nodeId = String(args?.nodeId ?? "");
+          const title = String(args?.title ?? "");
+          const bodyArg = args?.body;
+          const body =
+            typeof bodyArg === "string"
+              ? bodyArg
+              : bodyArg == null
+                ? null
+                : String(bodyArg);
+          const node = graphState.nodes.find((entry) => entry.id === nodeId);
+          if (!node) {
+            throw new Error(`unknown node: ${nodeId}`);
+          }
+          node.title = title;
+          node.body = body;
+          return { ...node };
+        }
+        case "delete_memory_node": {
+          const nodeId = String(args?.nodeId ?? "");
+          graphState.nodes = graphState.nodes.filter(
+            (entry) => entry.id !== nodeId,
+          );
+          graphState.edges = graphState.edges.filter(
+            (edge) => edge.sourceId !== nodeId && edge.targetId !== nodeId,
+          );
           return null;
         }
-        return {
-          id: node.id,
-          title: node.title,
-          kind: node.kind,
-          body: node.body,
-          traceType: node.traceType,
-          consolidationState: node.consolidationState,
-          relatedIds: graphState.edges
-            .filter((edge) => edge.sourceId === node.id || edge.targetId === node.id)
-            .flatMap((edge) => [edge.sourceId, edge.targetId].filter((id) => id !== node.id)),
-          workflowId: node.kind === "workflow" ? node.id : null,
-          sessionId: null,
-          agentId: null,
-        };
-      }
-      case "update_memory_node": {
-        const nodeId = String(args?.nodeId ?? "");
-        const title = String(args?.title ?? "");
-        const bodyArg = args?.body;
-        const body = typeof bodyArg === "string" ? bodyArg : bodyArg == null ? null : String(bodyArg);
-        const node = graphState.nodes.find((entry) => entry.id === nodeId);
-        if (!node) {
-          throw new Error(`unknown node: ${nodeId}`);
-        }
-        node.title = title;
-        node.body = body;
-        return { ...node };
-      }
-      case "delete_memory_node": {
-        const nodeId = String(args?.nodeId ?? "");
-        graphState.nodes = graphState.nodes.filter((entry) => entry.id !== nodeId);
-        graphState.edges = graphState.edges.filter(
-          (edge) => edge.sourceId !== nodeId && edge.targetId !== nodeId,
-        );
-        return null;
-      }
-      case "create_memory_edge": {
-        const sourceId = String(args?.sourceId ?? "");
-        const targetId = String(args?.targetId ?? "");
-        const relation = String(args?.relation ?? "");
-        const existingEdge = graphState.edges.find(
-          (edge) => edge.sourceId === sourceId && edge.targetId === targetId && edge.relation === relation,
-        );
-        if (existingEdge) {
-          return { ...existingEdge };
-        }
+        case "create_memory_edge": {
+          const sourceId = String(args?.sourceId ?? "");
+          const targetId = String(args?.targetId ?? "");
+          const relation = String(args?.relation ?? "");
+          const existingEdge = graphState.edges.find(
+            (edge) =>
+              edge.sourceId === sourceId &&
+              edge.targetId === targetId &&
+              edge.relation === relation,
+          );
+          if (existingEdge) {
+            return { ...existingEdge };
+          }
 
-        const edge = {
-          id: String(args?.edgeId ?? ""),
-          sourceId,
-          targetId,
-          relation,
-        };
-        graphState.edges = [...graphState.edges, edge];
-        return edge;
+          const edge = {
+            id: String(args?.edgeId ?? ""),
+            sourceId,
+            targetId,
+            relation,
+          };
+          graphState.edges = [...graphState.edges, edge];
+          return edge;
+        }
+        default:
+          throw new Error(`unexpected command: ${command}`);
       }
-      default:
-        throw new Error(`unexpected command: ${command}`);
-    }
-  });
+    },
+  );
 
   const resetMocks = () => {
     graphState.nodes = structuredClone(initialNodes);
@@ -268,6 +286,70 @@ function setFormValue(
 }
 
 describe("MemoryPage", () => {
+  it("lays out a three-node chain as a compact relationship graph instead of a vertical stack", () => {
+    const layout = buildLayout(
+      [
+        {
+          id: "workflow",
+          kind: "workflow",
+          title: "流程",
+          body: "聚合主流程。",
+          traceType: "semantic",
+          consolidationState: "approved",
+        },
+        {
+          id: "memory",
+          kind: "fact",
+          title: "要点",
+          body: "记录关键修复。",
+          traceType: "working",
+          consolidationState: "candidate",
+        },
+        {
+          id: "session",
+          kind: "session",
+          title: "对话",
+          body: "承接当前对话上下文。",
+          traceType: "episodic",
+          consolidationState: "none",
+        },
+      ],
+      [
+        {
+          id: "edge-workflow",
+          sourceId: "workflow",
+          targetId: "memory",
+          relation: "captures",
+        },
+        {
+          id: "edge-session",
+          sourceId: "memory",
+          targetId: "session",
+          relation: "informs",
+        },
+      ],
+      "memory",
+    );
+
+    const centers = ["workflow", "memory", "session"].map((nodeId) => {
+      const point = layout.get(nodeId);
+      expect(point).toBeTruthy();
+      return {
+        x: (point?.x ?? 0) + nodeSize.width / 2,
+        y: (point?.y ?? 0) + nodeSize.height / 2,
+      };
+    });
+    const xSpread =
+      Math.max(...centers.map((point) => point.x)) -
+      Math.min(...centers.map((point) => point.x));
+    const ySpread =
+      Math.max(...centers.map((point) => point.y)) -
+      Math.min(...centers.map((point) => point.y));
+
+    expect(xSpread).toBeGreaterThan(180);
+    expect(ySpread).toBeLessThan(180);
+  });
+
   it("switches between activation, consolidation, and schema views", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
@@ -277,7 +359,9 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    const canvas = view.container.querySelector(
+      '[data-testid="memory-graph-canvas"]',
+    );
 
     expect(findText(view.container, "活跃")).toBeTruthy();
     expect(findText(view.container, "沉淀")).toBeTruthy();
@@ -316,7 +400,9 @@ describe("MemoryPage", () => {
     const sessionNode = findButton(view.container, "Review Session");
 
     expect(reviewNode?.getAttribute("data-trace-type")).toBe("episodic");
-    expect(reviewNode?.getAttribute("data-consolidation-state")).toBe("candidate");
+    expect(reviewNode?.getAttribute("data-consolidation-state")).toBe(
+      "candidate",
+    );
     expect(sessionNode?.getAttribute("data-trace-type")).toBe("working");
     expect(sessionNode?.getAttribute("data-consolidation-state")).toBe("none");
   });
@@ -335,8 +421,12 @@ describe("MemoryPage", () => {
 
     expect(view.container.textContent).not.toContain("Graph Utilities");
     expect(view.container.textContent).not.toContain("Node Inspector");
-    expect(view.container.querySelector('[data-testid="memory-graph-utilities"]')).toBeFalsy();
-    expect(view.container.querySelector('input[aria-label="Node title"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('[data-testid="memory-graph-utilities"]'),
+    ).toBeFalsy();
+    expect(
+      view.container.querySelector('input[aria-label="Node title"]'),
+    ).toBeFalsy();
   });
 
   it("auto-fits sparse graphs so a single node does not sit tiny in the canvas", async () => {
@@ -351,9 +441,33 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    const canvas = view.container.querySelector(
+      '[data-testid="memory-graph-canvas"]',
+    );
 
-    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
+    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(
+      1.5,
+    );
+  });
+
+  it("uses the measured viewport when auto-fitting a sparse graph", () => {
+    const nodes = [graphState.nodes[2]!];
+    const layout = buildLayout(nodes, []);
+    const point = layout.get("memory-review");
+    expect(point).toBeTruthy();
+    const fit = fitGraph(nodes, [], "memory-review", {
+      width: 640,
+      height: 480,
+    });
+
+    const expectedPanX =
+      (640 - nodeSize.width * 1.8) / 2 - (point?.x ?? 0) * 1.8;
+    const expectedPanY =
+      (480 - nodeSize.height * 1.8) / 2 - (point?.y ?? 0) * 1.8;
+
+    expect(fit.zoom).toBeCloseTo(1.8, 2);
+    expect(fit.pan.x).toBeCloseTo(expectedPanX, 1);
+    expect(fit.pan.y).toBeCloseTo(expectedPanY, 1);
   });
 
   it("auto-fits the selected workflow scope when search narrows the graph to one node", async () => {
@@ -380,11 +494,15 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    const canvas = view.container.querySelector(
+      '[data-testid="memory-graph-canvas"]',
+    );
 
     expect(canvas?.textContent).toContain("1");
     expect(canvas?.textContent).toContain("节点");
-    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
+    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(
+      1.5,
+    );
   });
 
   it("keeps only search and kind controls above the graph and moves owner selection out of the top controls", async () => {
@@ -397,12 +515,22 @@ describe("MemoryPage", () => {
     });
 
     const topControls = view.container.querySelector(".memory-stage__controls");
-    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    const canvas = view.container.querySelector(
+      '[data-testid="memory-graph-canvas"]',
+    );
 
-    expect(topControls?.querySelector('input[aria-label="Search graph"]')).toBeTruthy();
-    expect(topControls?.querySelector('select[aria-label="Filter kind"]')).toBeTruthy();
-    expect(topControls?.querySelector('select[aria-label="Memory scope"]')).toBeFalsy();
-    expect(topControls?.querySelector('select[aria-label="View mode"]')).toBeFalsy();
+    expect(
+      topControls?.querySelector('input[aria-label="Search graph"]'),
+    ).toBeTruthy();
+    expect(
+      topControls?.querySelector('select[aria-label="Filter kind"]'),
+    ).toBeTruthy();
+    expect(
+      topControls?.querySelector('select[aria-label="Memory scope"]'),
+    ).toBeFalsy();
+    expect(
+      topControls?.querySelector('select[aria-label="View mode"]'),
+    ).toBeFalsy();
     expect(topControls?.textContent).not.toContain("Focused graph");
     expect(topControls?.textContent).not.toContain("Full map");
     expect(topControls?.textContent).not.toContain("活跃");
@@ -420,7 +548,9 @@ describe("MemoryPage", () => {
     expect(canvas?.textContent).toContain("放大");
     expect(canvas?.textContent).toContain("适配");
     expect(canvas?.textContent).toContain("回到焦点");
-    expect(view.container.querySelector('[data-flat-select="true"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('[data-flat-select="true"]'),
+    ).toBeTruthy();
   });
 
   it("defaults to the first owner in the rail and switches graphs when selecting another owner", async () => {
@@ -461,34 +591,36 @@ describe("MemoryPage", () => {
           ) => Promise<unknown>,
         ) => void;
       }
-    ).mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "list_memory_scopes") {
-        return [
-          {
-            id: "workflow:workflow-review",
-            title: "对话",
-            kind: "workflow",
-            workflowId: "workflow-review",
-            sessionId: null,
-            agentId: null,
-          },
-          {
-            id: "workflow:team:smoke-validation",
-            title: "Smoke Validation Team",
-            kind: "workflow",
-            workflowId: "team:smoke-validation",
-            sessionId: null,
-            agentId: null,
-          },
-        ];
-      }
+    ).mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "list_memory_scopes") {
+          return [
+            {
+              id: "workflow:workflow-review",
+              title: "对话",
+              kind: "workflow",
+              workflowId: "workflow-review",
+              sessionId: null,
+              agentId: null,
+            },
+            {
+              id: "workflow:team:smoke-validation",
+              title: "Smoke Validation Team",
+              kind: "workflow",
+              workflowId: "team:smoke-validation",
+              sessionId: null,
+              agentId: null,
+            },
+          ];
+        }
 
-      if (!currentImplementation) {
-        throw new Error("default memory invoke implementation missing");
-      }
+        if (!currentImplementation) {
+          throw new Error("default memory invoke implementation missing");
+        }
 
-      return currentImplementation(command, args);
-    });
+        return currentImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
@@ -504,7 +636,9 @@ describe("MemoryPage", () => {
     expect(findButton(view.container, "Direct Memory")).toBeTruthy();
     expect(findButton(view.container, "Team Memory")).toBeFalsy();
 
-    const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
+    const ownerRail = view.container.querySelector(
+      '[data-testid="memory-owner-rail"]',
+    );
     const ownerButtons = ownerRail?.querySelectorAll("button") ?? [];
 
     expect(ownerRail?.textContent).toContain("对话");
@@ -577,59 +711,61 @@ describe("MemoryPage", () => {
           ) => Promise<unknown>,
         ) => void;
       }
-    ).mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "list_memory_scopes") {
-        const scopeItems: Array<{
-          agentId: string | null;
-          id: string;
-          kind: string;
-          sessionId: string | null;
-          title: string;
-          workflowId: string | null;
-        }> = [
-          {
-            id: "world",
-            title: "World",
-            kind: "world",
-            workflowId: null,
-            sessionId: null,
-            agentId: null,
-          },
-          {
-            id: "workflow:team:smoke-validation",
-            title: "Smoke Validation Team",
-            kind: "workflow",
-            workflowId: "team:smoke-validation",
-            sessionId: null,
-            agentId: null,
-          },
-          {
-            id: "session:run-smoke",
-            title: "Smoke Validation Run",
-            kind: "session",
-            workflowId: "team:smoke-validation",
-            sessionId: "run-smoke",
-            agentId: null,
-          },
-          {
-            id: "agent:release-reviewer",
-            title: "Release Reviewer",
-            kind: "agent",
-            workflowId: null,
-            sessionId: null,
-            agentId: "agent-reviewer",
-          },
-        ];
+    ).mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "list_memory_scopes") {
+          const scopeItems: Array<{
+            agentId: string | null;
+            id: string;
+            kind: string;
+            sessionId: string | null;
+            title: string;
+            workflowId: string | null;
+          }> = [
+            {
+              id: "world",
+              title: "World",
+              kind: "world",
+              workflowId: null,
+              sessionId: null,
+              agentId: null,
+            },
+            {
+              id: "workflow:team:smoke-validation",
+              title: "Smoke Validation Team",
+              kind: "workflow",
+              workflowId: "team:smoke-validation",
+              sessionId: null,
+              agentId: null,
+            },
+            {
+              id: "session:run-smoke",
+              title: "Smoke Validation Run",
+              kind: "session",
+              workflowId: "team:smoke-validation",
+              sessionId: "run-smoke",
+              agentId: null,
+            },
+            {
+              id: "agent:release-reviewer",
+              title: "Release Reviewer",
+              kind: "agent",
+              workflowId: null,
+              sessionId: null,
+              agentId: "agent-reviewer",
+            },
+          ];
 
-        return scopeItems;
-      }
+          return scopeItems;
+        }
 
-      if (!currentImplementation) {
-        throw new Error("default memory invoke implementation missing");
-      }
+        if (!currentImplementation) {
+          throw new Error("default memory invoke implementation missing");
+        }
 
-      return currentImplementation(command, args);
-    });
+        return currentImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
@@ -640,17 +776,23 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
+    const ownerRail = view.container.querySelector(
+      '[data-testid="memory-owner-rail"]',
+    );
     const teamSection = Array.from(
       ownerRail?.querySelectorAll(".memory-owner-rail__section") ?? [],
     ).find((node) => node.textContent?.includes("协作团队"));
-    const teamButtons = Array.from(teamSection?.querySelectorAll("button") ?? []);
+    const teamButtons = Array.from(
+      teamSection?.querySelectorAll("button") ?? [],
+    );
 
     expect(ownerRail?.textContent).toContain("对话");
     expect(ownerRail?.textContent).toContain("协作团队");
     expect(teamButtons[0]?.textContent).toContain("Smoke Validation Run");
     expect(teamButtons[1]?.textContent).toContain("Smoke Validation Team");
-    expect(view.container.querySelector('select[aria-label="Memory scope"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('select[aria-label="Memory scope"]'),
+    ).toBeFalsy();
   });
 
   it("renders a left owner rail for direct chat and teams instead of a scope dropdown", async () => {
@@ -691,34 +833,36 @@ describe("MemoryPage", () => {
           ) => Promise<unknown>,
         ) => void;
       }
-    ).mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "list_memory_scopes") {
-        return [
-          {
-            id: "session:direct-shared",
-            title: "对话",
-            kind: "session",
-            workflowId: "direct-chat",
-            sessionId: "direct-shared",
-            agentId: null,
-          },
-          {
-            id: "workflow:team:smoke-validation",
-            title: "Smoke Validation Team",
-            kind: "workflow",
-            workflowId: "team:smoke-validation",
-            sessionId: null,
-            agentId: null,
-          },
-        ];
-      }
+    ).mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "list_memory_scopes") {
+          return [
+            {
+              id: "session:direct-shared",
+              title: "对话",
+              kind: "session",
+              workflowId: "direct-chat",
+              sessionId: "direct-shared",
+              agentId: null,
+            },
+            {
+              id: "workflow:team:smoke-validation",
+              title: "Smoke Validation Team",
+              kind: "workflow",
+              workflowId: "team:smoke-validation",
+              sessionId: null,
+              agentId: null,
+            },
+          ];
+        }
 
-      if (!currentImplementation) {
-        throw new Error("default memory invoke implementation missing");
-      }
+        if (!currentImplementation) {
+          throw new Error("default memory invoke implementation missing");
+        }
 
-      return currentImplementation(command, args);
-    });
+        return currentImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
@@ -728,13 +872,17 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
+    const ownerRail = view.container.querySelector(
+      '[data-testid="memory-owner-rail"]',
+    );
 
     expect(ownerRail).toBeTruthy();
     expect(ownerRail?.textContent).toContain("对话");
     expect(ownerRail?.textContent).toContain("协作团队");
     expect(ownerRail?.textContent).toContain("Smoke Validation Team");
-    expect(view.container.querySelector('select[aria-label="Memory scope"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('select[aria-label="Memory scope"]'),
+    ).toBeFalsy();
   });
 
   it("aliases world-scoped direct memory as 对话 in the owner rail", async () => {
@@ -746,7 +894,9 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const ownerRail = view.container.querySelector('[data-testid="memory-owner-rail"]');
+    const ownerRail = view.container.querySelector(
+      '[data-testid="memory-owner-rail"]',
+    );
     const directSection = Array.from(
       ownerRail?.querySelectorAll(".memory-owner-rail__section") ?? [],
     ).find((node) => node.textContent?.includes("对话"));
@@ -754,6 +904,78 @@ describe("MemoryPage", () => {
     expect(directSection?.textContent).toContain("对话");
     expect(ownerRail?.textContent).toContain("还没有协作团队记忆");
     expect(directSection?.textContent).not.toContain("World");
+  });
+
+  it("normalizes raw team workflow ids into compact Chinese owner labels", async () => {
+    graphState.nodes = [];
+    graphState.edges = [];
+
+    const currentImplementation = invokeMock.getMockImplementation();
+    cleanups.push(async () => {
+      if (currentImplementation) {
+        invokeMock.mockImplementation(currentImplementation);
+      }
+    });
+    (
+      invokeMock as unknown as {
+        mockImplementation: (
+          implementation: (
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>,
+        ) => void;
+      }
+    ).mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "list_memory_scopes") {
+          return [
+            {
+              id: "world",
+              title: "World",
+              kind: "world",
+              workflowId: null,
+              sessionId: null,
+              agentId: null,
+            },
+            {
+              id: "workflow:team:raw-team",
+              title: "Team D0b29dd1 3196 41f2 Bd1a 3439bfaad536",
+              kind: "session",
+              workflowId: "team:d0b29dd1-3196-41f2-bd1a-3439bfaad536",
+              sessionId: "session-team-d0b29dd1",
+              agentId: null,
+            },
+          ];
+        }
+
+        if (command === "load_memory_graph") {
+          return { nodes: [], edges: [] };
+        }
+
+        if (!currentImplementation) {
+          throw new Error("default memory invoke implementation missing");
+        }
+
+        return currentImplementation(command, args);
+      },
+    );
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const ownerRail = view.container.querySelector(
+      '[data-testid="memory-owner-rail"]',
+    );
+
+    expect(ownerRail?.textContent).toContain("协作团队 d0b29dd1");
+    expect(ownerRail?.textContent).not.toContain(
+      "Team D0b29dd1 3196 41f2 Bd1a 3439bfaad536",
+    );
   });
 
   it("uses a graph-native surface and keeps network stats floating inside the canvas", async () => {
@@ -765,13 +987,17 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    const canvas = view.container.querySelector(
+      '[data-testid="memory-graph-canvas"]',
+    );
     const selectedNode = findButton(view.container, "Review Memory");
 
     expect(canvas?.className).toContain("memory-graph");
     expect(canvas?.getAttribute("data-canvas-tone")).toBe("network");
     expect(selectedNode?.className).toContain("memory-graph__node");
-    expect(view.container.querySelector(".memory-controls__summary")).toBeFalsy();
+    expect(
+      view.container.querySelector(".memory-controls__summary"),
+    ).toBeFalsy();
     expect(canvas?.textContent).toContain("节点");
     expect(canvas?.textContent).toContain("连线");
     expect(canvas?.textContent).toContain("缩放");
@@ -786,14 +1012,22 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const workflowNode = findButton(view.container, "Release Workflow") as HTMLElement | undefined;
-    const factNode = findButton(view.container, "Review Memory") as HTMLElement | undefined;
+    const workflowNode = findButton(view.container, "Release Workflow") as
+      | HTMLElement
+      | undefined;
+    const factNode = findButton(view.container, "Review Memory") as
+      | HTMLElement
+      | undefined;
 
-    expect(workflowNode?.style.getPropertyValue("--memory-node-fill")).toBe("#2f8cff");
-    expect(factNode?.style.getPropertyValue("--memory-node-fill")).toBe("#ffd84c");
+    expect(workflowNode?.style.getPropertyValue("--memory-node-fill")).toBe(
+      "#2f8cff",
+    );
+    expect(factNode?.style.getPropertyValue("--memory-node-fill")).toBe(
+      "#ffd84c",
+    );
   });
 
-  it("renders graph nodes as dots with short labels and opens node details in a drawer surface", async () => {
+  it("renders graph nodes as dots with short labels and opens node details in a popover surface", async () => {
     const view = await renderIntoDocument(<MemoryPage />);
     cleanups.push(view.cleanup);
 
@@ -805,16 +1039,44 @@ describe("MemoryPage", () => {
     const nodeButton = findButton(view.container, "Review Memory");
 
     expect(nodeButton?.getAttribute("data-node-shape")).toBe("dot");
-    expect(nodeButton?.textContent).not.toContain("Tracks the latest review conclusions.");
+    expect(nodeButton?.textContent).not.toContain(
+      "Tracks the latest review conclusions.",
+    );
 
     await act(async () => {
       nodeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
 
-    const detail = view.container.querySelector('[data-testid="memory-node-detail"]');
+    const detail = view.container.querySelector(
+      '[data-testid="memory-node-detail"]',
+    );
 
-    expect(detail?.getAttribute("data-detail-presentation")).toBe("drawer");
+    expect(detail?.getAttribute("data-detail-presentation")).toBe("popover");
+  });
+
+  it("opens node detail as a floating popover instead of a drawer column", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      findButton(view.container, "Review Memory")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    const detail = view.container.querySelector(
+      '[data-testid="memory-node-detail"]',
+    );
+
+    expect(detail?.getAttribute("data-detail-presentation")).toBe("popover");
+    expect(detail?.className).toContain("memory-node-overlay--popover");
   });
 
   it("spreads same-kind graph nodes across the canvas instead of stacking them in one far-right column", async () => {
@@ -837,8 +1099,12 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const nodes = Array.from(view.container.querySelectorAll(".memory-graph__node")) as HTMLElement[];
-    const leftValues = nodes.map((node) => Number.parseInt(node.style.left, 10));
+    const nodes = Array.from(
+      view.container.querySelectorAll(".memory-graph__node"),
+    ) as HTMLElement[];
+    const leftValues = nodes.map((node) =>
+      Number.parseInt(node.style.left, 10),
+    );
     const uniqueLeftValues = new Set(leftValues);
 
     expect(uniqueLeftValues.size).toBeGreaterThan(2);
@@ -948,6 +1214,50 @@ describe("MemoryPage", () => {
     );
   });
 
+  it("keeps first-hop graph clusters compact enough that connected nodes read as one dense group", () => {
+    const nodes = [
+      {
+        id: "focus",
+        kind: "workflow",
+        scopeId: "workflow:workflow-review",
+        title: "Focus Workflow",
+        body: "Primary focus node.",
+        traceType: "semantic",
+        consolidationState: "approved",
+      },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        id: `neighbor-${index + 1}`,
+        kind: index % 2 === 0 ? "session" : "fact",
+        scopeId: "workflow:workflow-review",
+        title: `Neighbor ${index + 1}`,
+        body: `Connected node ${index + 1}.`,
+        traceType: "working",
+        consolidationState: "candidate",
+      })),
+    ];
+    const edges = Array.from({ length: 6 }, (_, index) => ({
+      id: `edge-${index + 1}`,
+      sourceId: "focus",
+      targetId: `neighbor-${index + 1}`,
+      relation: "connects",
+    }));
+
+    const layout = buildLayout(nodes as never, edges as never, "focus");
+    const focusPoint = layout.get("focus");
+    const neighborDistances = Array.from({ length: 6 }, (_, index) =>
+      distanceBetween(focusPoint!, layout.get(`neighbor-${index + 1}`)!),
+    );
+    const averageDistance =
+      neighborDistances.reduce((sum, distance) => sum + distance, 0) /
+      neighborDistances.length;
+
+    expect(focusPoint).toBeTruthy();
+    expect(nodeSize.width).toBeGreaterThanOrEqual(104);
+    expect(nodeSize.height).toBeGreaterThanOrEqual(104);
+    expect(averageDistance).toBeLessThan(154);
+    expect(Math.max(...neighborDistances)).toBeLessThan(176);
+  });
+
   it("hides most non-focus labels in dense graphs so the canvas does not turn into a wall of overlapping text", async () => {
     graphState.nodes = Array.from({ length: 18 }, (_, index) => ({
       id: `memory-${index + 1}`,
@@ -997,8 +1307,12 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
-    const canvasFrame = view.container.querySelector(".memory-stage__canvas-frame");
+    const canvas = view.container.querySelector(
+      '[data-testid="memory-graph-canvas"]',
+    );
+    const canvasFrame = view.container.querySelector(
+      ".memory-stage__canvas-frame",
+    );
     const nodeButton = findButton(view.container, "Review Memory");
 
     expect(canvas).toBeTruthy();
@@ -1007,17 +1321,27 @@ describe("MemoryPage", () => {
     expect(view.container.textContent).not.toContain(
       "Search, filter, and inspect the graph without keeping a permanent side inspector open.",
     );
-    expect(view.container.querySelector('[data-testid="memory-node-detail"]')).toBeFalsy();
-    expect(view.container.querySelector('input[aria-label="Search graph"]')).toBeTruthy();
-    expect(view.container.querySelector('select[aria-label="Filter kind"]')).toBeTruthy();
-    expect(view.container.querySelector('select[aria-label="View mode"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('[data-testid="memory-node-detail"]'),
+    ).toBeFalsy();
+    expect(
+      view.container.querySelector('input[aria-label="Search graph"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('select[aria-label="Filter kind"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('select[aria-label="View mode"]'),
+    ).toBeFalsy();
 
     await act(async () => {
       nodeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
 
-    const detail = view.container.querySelector('[data-testid="memory-node-detail"]');
+    const detail = view.container.querySelector(
+      '[data-testid="memory-node-detail"]',
+    );
 
     expect(detail?.className).toContain("memory-node-overlay");
     expect(canvasFrame?.contains(detail ?? null)).toBe(true);
@@ -1032,13 +1356,19 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const canvasRegion = view.container.querySelector(".memory-stage__canvas") as HTMLElement | null;
-    const canvasFrame = view.container.querySelector(".memory-stage__canvas-frame") as HTMLElement | null;
+    const canvasRegion = view.container.querySelector(
+      ".memory-stage__canvas",
+    ) as HTMLElement | null;
+    const canvasFrame = view.container.querySelector(
+      ".memory-stage__canvas-frame",
+    ) as HTMLElement | null;
 
     expect(canvasRegion).toBeTruthy();
     expect(canvasFrame).toBeTruthy();
     expect(canvasRegion?.className).toContain("memory-stage__canvas--fill");
-    expect(canvasFrame?.className).toContain("memory-stage__canvas-frame--fill");
+    expect(canvasFrame?.className).toContain(
+      "memory-stage__canvas-frame--fill",
+    );
   });
 
   it("opens editable node detail fields in the overlay when selecting a node", async () => {
@@ -1057,16 +1387,51 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const titleInput = view.container.querySelector('input[aria-label="Node title"]') as HTMLInputElement | null;
-    const bodyInput = view.container.querySelector('textarea[aria-label="Node body"]') as HTMLTextAreaElement | null;
+    const titleInput = view.container.querySelector(
+      'input[aria-label="Node title"]',
+    ) as HTMLInputElement | null;
+    const bodyInput = view.container.querySelector(
+      'textarea[aria-label="Node body"]',
+    ) as HTMLTextAreaElement | null;
 
     expect(titleInput?.value).toBe("Review Memory");
     expect(bodyInput?.value).toBe("Tracks the latest review conclusions.");
-    expect(view.container.querySelector('[data-testid="memory-node-detail"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('[data-testid="memory-node-detail"]'),
+    ).toBeTruthy();
     expect(view.container.textContent).not.toContain("Node Inspector");
     expect(view.container.textContent).not.toContain(
       "Update local memory, review consolidation state, and manage connected edges inline.",
     );
+  });
+
+  it("uses grounded Chinese labels for workflow and fact nodes in the detail overlay", async () => {
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      findButton(view.container, "Release Workflow")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "流程")).toBeTruthy();
+    expect(findText(view.container, "工作流")).toBeFalsy();
+
+    await act(async () => {
+      findButton(view.container, "Review Memory")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(findText(view.container, "要点")).toBeTruthy();
   });
 
   it("renders a dedicated close button in the node detail header and dismisses the overlay", async () => {
@@ -1096,7 +1461,48 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    expect(view.container.querySelector('[data-testid="memory-node-detail"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('[data-testid="memory-node-detail"]'),
+    ).toBeFalsy();
+  });
+
+  it("keeps long node titles on a single header row so the close button never drops below", async () => {
+    graphState.nodes = graphState.nodes.map((node) =>
+      node.id === "memory-review"
+        ? {
+            ...node,
+            title:
+              "这是一个很长的记忆标题，用来确认右侧详情面板的关闭按钮不会被标题挤到下一行",
+          }
+        : node,
+    );
+
+    const view = await renderIntoDocument(<MemoryPage />);
+    cleanups.push(view.cleanup);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      findButton(view.container, "这是一个很长的记忆标题")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    const header = view.container.querySelector(
+      ".memory-node-detail__header",
+    ) as HTMLElement | null;
+    const dismissButton = view.container.querySelector(
+      'button[aria-label="Close node detail"]',
+    ) as HTMLButtonElement | null;
+
+    expect(header).toBeTruthy();
+    expect(dismissButton).toBeTruthy();
+    expect(getComputedStyle(header!).flexWrap).toBe("nowrap");
+    expect(getComputedStyle(dismissButton!).flexShrink).toBe("0");
   });
 
   it("shows trace and consolidation metadata in the overlay", async () => {
@@ -1148,7 +1554,10 @@ describe("MemoryPage", () => {
     expect(findText(view.container, "会一起移除 2 条关联。")).toBeTruthy();
     expect(findText(view.container, "Release Workflow")).toBeTruthy();
     expect(findText(view.container, "Review Session")).toBeTruthy();
-    expect(invokeMock).not.toHaveBeenCalledWith("delete_memory_node", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "delete_memory_node",
+      expect.anything(),
+    );
 
     const confirmDelete = findButton(view.container, "确认删除");
 
@@ -1203,9 +1612,13 @@ describe("MemoryPage", () => {
     });
 
     expect(findText(view.container, "还没有记忆节点")).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="memory-graph-canvas"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('[data-testid="memory-graph-canvas"]'),
+    ).toBeFalsy();
     expect(findButton(view.container, "对话")).toBeTruthy();
-    expect(view.container.querySelector('input[aria-label="Node title"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('input[aria-label="Node title"]'),
+    ).toBeFalsy();
   });
 
   it("renders the root empty memory state as a single muted line without the boxed copy", async () => {
@@ -1242,12 +1655,17 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const emptyState = view.container.querySelector('[data-testid="memory-empty-copy"]');
+    const emptyState = view.container.querySelector(
+      '[data-testid="memory-empty-copy"]',
+    );
 
     expect(emptyState?.textContent?.trim()).toBe("还没有记忆节点");
     expect(findText(view.container, "Memory")).toBeFalsy();
     expect(
-      findText(view.container, "The graph will appear here once chat, workflows, or agents write local memory."),
+      findText(
+        view.container,
+        "The graph will appear here once chat, workflows, or agents write local memory.",
+      ),
     ).toBeFalsy();
     expect(view.container.querySelector(".memory-empty-state")).toBeFalsy();
   });
@@ -1274,10 +1692,14 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    const canvas = view.container.querySelector(
+      '[data-testid="memory-graph-canvas"]',
+    );
 
     expect(canvas?.getAttribute("data-focus-target-id")).toBe("session-sync");
-    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
+    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(
+      1.5,
+    );
   });
 
   it("keeps the selected workflow node centered when search narrows the chosen scope", async () => {
@@ -1296,10 +1718,16 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    let canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    let canvas = view.container.querySelector(
+      '[data-testid="memory-graph-canvas"]',
+    );
     expect(canvas?.getAttribute("data-focus-target-id")).toBe("memory-review");
-    expect(Math.abs(Number(canvas?.getAttribute("data-pan-x") ?? "0"))).toBeLessThan(24);
-    expect(Math.abs(Number(canvas?.getAttribute("data-pan-y") ?? "0"))).toBeLessThan(120);
+    expect(
+      Math.abs(Number(canvas?.getAttribute("data-pan-x") ?? "0")),
+    ).toBeLessThan(24);
+    expect(
+      Math.abs(Number(canvas?.getAttribute("data-pan-y") ?? "0")),
+    ).toBeLessThan(120);
 
     const searchInput = view.container.querySelector(
       'input[aria-label="Search graph"]',
@@ -1314,9 +1742,13 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    canvas = view.container.querySelector('[data-testid="memory-graph-canvas"]');
+    canvas = view.container.querySelector(
+      '[data-testid="memory-graph-canvas"]',
+    );
     expect(canvas?.getAttribute("data-focus-target-id")).toBe("memory-review");
-    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(1.5);
+    expect(Number(canvas?.getAttribute("data-zoom") ?? "0")).toBeGreaterThan(
+      1.5,
+    );
   });
 
   it("uses distinct fallback edge ids for different relations when random uuid is unavailable", async () => {
@@ -1338,7 +1770,9 @@ describe("MemoryPage", () => {
       await Promise.resolve();
     });
 
-    const relationInput = view.container.querySelector('input[aria-label="Edge relation"]') as HTMLInputElement | null;
+    const relationInput = view.container.querySelector(
+      'input[aria-label="Edge relation"]',
+    ) as HTMLInputElement | null;
     const createButton = findButton(view.container, "新建连接");
 
     await act(async () => {
@@ -1370,7 +1804,9 @@ describe("MemoryPage", () => {
     const createEdgeCalls = invokeMock.mock.calls.filter(
       ([command]) => command === "create_memory_edge",
     );
-    const edgeIds = createEdgeCalls.map(([, args]) => String(args?.edgeId ?? ""));
+    const edgeIds = createEdgeCalls.map(([, args]) =>
+      String(args?.edgeId ?? ""),
+    );
 
     expect(createEdgeCalls).toHaveLength(2);
     expect(edgeIds[0]).not.toBe(edgeIds[1]);

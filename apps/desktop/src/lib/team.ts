@@ -150,8 +150,9 @@ export async function deleteTeam(teamId: string): Promise<void> {
 export async function startTeamRun(
   teamId: string,
   routing?: ProviderRoutingRequest,
+  prompt?: string,
 ): Promise<TeamRunRecord> {
-  return invoke<TeamRunRecord>("start_team_run", { teamId, routing });
+  return invoke<TeamRunRecord>("start_team_run", { teamId, routing, prompt });
 }
 
 export async function loadTeamRun(runId: string): Promise<TeamRunRecord | null> {

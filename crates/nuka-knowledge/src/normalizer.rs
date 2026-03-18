@@ -11,7 +11,17 @@ impl DocumentNormalizer {
     pub fn supports_extension(extension: &str) -> bool {
         matches!(
             extension.trim().to_ascii_lowercase().as_str(),
-            "pdf" | "md" | "markdown" | "txt" | "json" | "yaml" | "yml" | "rs" | "ts" | "tsx" | "py"
+            "pdf"
+                | "md"
+                | "markdown"
+                | "txt"
+                | "json"
+                | "yaml"
+                | "yml"
+                | "rs"
+                | "ts"
+                | "tsx"
+                | "py"
         )
     }
 

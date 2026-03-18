@@ -28,12 +28,10 @@ impl RuntimeStateRepository {
     }
 
     pub async fn get(&self, key: &str) -> anyhow::Result<Option<String>> {
-        let row = sqlx::query(
-            "select state_value from runtime_state_entries where state_key = ?1",
-        )
-        .bind(key)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query("select state_value from runtime_state_entries where state_key = ?1")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row.map(|row| row.get("state_value")))
     }

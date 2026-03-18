@@ -18,7 +18,10 @@ impl MemoryGraphRepository {
         self.load_graph_for_scope(None).await
     }
 
-    pub async fn load_graph_for_scope(&self, scope_id: Option<&str>) -> anyhow::Result<MemoryGraph> {
+    pub async fn load_graph_for_scope(
+        &self,
+        scope_id: Option<&str>,
+    ) -> anyhow::Result<MemoryGraph> {
         self.ensure_graph_schema().await?;
 
         let node_rows = if let Some(scope_id) = scope_id {
@@ -507,7 +510,8 @@ impl MemoryScopeRepository {
 fn read_node(row: sqlx::sqlite::SqliteRow) -> anyhow::Result<MemoryGraphNode> {
     Ok(MemoryGraphNode {
         id: row.get("id"),
-        kind: MemoryNodeKind::from_str(&row.get::<String, _>("kind")).map_err(anyhow::Error::msg)?,
+        kind: MemoryNodeKind::from_str(&row.get::<String, _>("kind"))
+            .map_err(anyhow::Error::msg)?,
         title: row.get("title"),
         body: row.get("body"),
         trace_type: MemoryTraceType::from_str(&row.get::<String, _>("trace_type"))
@@ -644,8 +648,14 @@ mod tests {
         let graph = repository.load_graph().await.unwrap();
 
         assert_eq!(graph.edges.len(), 2);
-        assert!(graph.edges.iter().any(|edge| edge.id == "edge-review-captures"));
-        assert!(graph.edges.iter().any(|edge| edge.id == "edge-review-supports"));
+        assert!(graph
+            .edges
+            .iter()
+            .any(|edge| edge.id == "edge-review-captures"));
+        assert!(graph
+            .edges
+            .iter()
+            .any(|edge| edge.id == "edge-review-supports"));
     }
 
     #[tokio::test]

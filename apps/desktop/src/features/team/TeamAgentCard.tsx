@@ -1,4 +1,8 @@
 import type { TeamAgentRecord } from "@/lib/team";
+import {
+  humanizeGeneratedAgentDescription,
+  humanizeGeneratedAgentRole,
+} from "@/lib/agentPresentation";
 import { TeamToolBindingsPanel } from "./TeamToolBindingsPanel";
 
 type TeamAgentCardProps = {
@@ -12,14 +16,16 @@ export function TeamAgentCard({ agent, onToggleTool }: TeamAgentCardProps) {
       <div className="team-agent-card__header">
         <div className="team-agent-card__copy">
           <h3>{agent.name}</h3>
-          <span>{agent.role}</span>
+          <span>{humanizeGeneratedAgentRole(agent.role)}</span>
         </div>
         <div className="team-agent-card__policy">
-          Summary backfill: {agent.toolUsePolicy.summarizeOutput ? "On" : "Off"}
+          摘要回填：{agent.toolUsePolicy.summarizeOutput ? "开启" : "关闭"}
         </div>
       </div>
 
-      <p className="team-agent-card__responsibility">{agent.responsibility}</p>
+      <p className="team-agent-card__responsibility">
+        {humanizeGeneratedAgentDescription(agent.responsibility)}
+      </p>
 
       <TeamToolBindingsPanel
         bindings={agent.toolBindings}

@@ -222,6 +222,18 @@ create table if not exists team_agents (
   updated_at text not null
 );
 
+create table if not exists team_agent_assignments (
+  id text primary key,
+  team_id text not null,
+  agent_id text not null,
+  enabled integer not null default 1,
+  order_hint integer not null,
+  prompt_override text,
+  permission_override_json text not null default '{}',
+  created_at text not null,
+  updated_at text not null
+);
+
 create table if not exists team_runs (
   id text primary key,
   team_id text not null,

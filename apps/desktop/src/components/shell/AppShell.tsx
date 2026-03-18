@@ -111,7 +111,7 @@ export function AppShell({
       <div className="app-shell__body">
         <Sidebar activePage={activePage} navigation={navigation} onNavigate={onNavigate} />
 
-        <div className="app-shell__workspace">
+        <div className="app-shell__workspace app-shell__workspace--chrome-safe">
           <PageSurface activePage={activePage}>{children}</PageSurface>
           {inspector ? (
             <aside aria-label="Workspace inspector" className="app-shell__inspector">

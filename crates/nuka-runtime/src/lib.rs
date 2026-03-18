@@ -106,7 +106,10 @@ mod tests {
             provider_service.clone(),
         );
 
-        provider_service.save_provider(sample_provider()).await.unwrap();
+        provider_service
+            .save_provider(sample_provider())
+            .await
+            .unwrap();
         provider_service
             .set_default_provider("provider-local")
             .await
@@ -136,9 +139,9 @@ mod tests {
             messages.first().map(|message| &message.role),
             Some(nuka_domain::chat::ChatMessageRole::System)
         ));
-        assert!(messages
-            .iter()
-            .any(|message| message.content.contains("Finish with a final recommendation")));
+        assert!(messages.iter().any(|message| message
+            .content
+            .contains("Finish with a final recommendation")));
     }
 
     #[tokio::test]
@@ -288,7 +291,10 @@ mod tests {
                 provider_service.clone(),
             );
 
-        provider_service.save_provider(sample_provider()).await.unwrap();
+        provider_service
+            .save_provider(sample_provider())
+            .await
+            .unwrap();
         provider_service
             .set_default_provider("provider-local")
             .await

@@ -114,7 +114,10 @@ function findButton(container: HTMLElement, text: string) {
   );
 }
 
-function setFormValue(element: HTMLInputElement | HTMLSelectElement, value: string) {
+function setFormValue(
+  element: HTMLInputElement | HTMLSelectElement,
+  value: string,
+) {
   const prototype =
     element instanceof HTMLSelectElement
       ? HTMLSelectElement.prototype
@@ -126,7 +129,10 @@ function setFormValue(element: HTMLInputElement | HTMLSelectElement, value: stri
 }
 
 function setCheckboxValue(element: HTMLInputElement, checked: boolean) {
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked")?.set;
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "checked",
+  )?.set;
   setter?.call(element, checked);
   element.dispatchEvent(new Event("click", { bubbles: true }));
   element.dispatchEvent(new Event("input", { bubbles: true }));
@@ -136,7 +142,9 @@ function setCheckboxValue(element: HTMLInputElement, checked: boolean) {
 function captureToasts() {
   const toasts: Array<{ message?: string; tone?: string }> = [];
   const handleToast = (event: Event) => {
-    toasts.push((event as CustomEvent<{ message?: string; tone?: string }>).detail);
+    toasts.push(
+      (event as CustomEvent<{ message?: string; tone?: string }>).detail,
+    );
   };
 
   window.addEventListener("nuka:toast", handleToast as EventListener);
@@ -150,12 +158,58 @@ function captureToasts() {
 }
 
 describe("SettingsPage", () => {
+  it("uses localized empty-provider summaries instead of English fallback strings in zh-CN", async () => {
+    window.localStorage.setItem(DESKTOP_LOCALE_STORAGE_KEY, "zh-CN");
+    invokeMock.mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "load_settings") {
+          return {
+            defaultProviderId: "",
+            fallbackProviderId: "",
+            connectionChecks: true,
+            externalEditorPath: "",
+            interfaceFont: "Inter",
+            messageFont: "Inter Text",
+            textSize: "14 px",
+            language: "zh-CN",
+            responseLocale: "Follow session",
+            timeFormat: "24-hour",
+            density: "Comfortable",
+            motion: "Standard",
+            windowChrome: "Minimal glass",
+            sidebarDefault: "Expanded",
+            closeBehavior: "Minimize to tray",
+            launchAtLogin: false,
+            trayResident: true,
+            backgroundAdapters: true,
+            logging: "Standard",
+            notifications: true,
+          };
+        }
+
+        return defaultInvokeImplementation(command, args);
+      },
+    );
+
+    const view = await renderIntoDocument(<SettingsPage />);
+    cleanups.push(view.cleanup);
+
+    expect(findText(view.container, "未设置默认提供方")).toBeTruthy();
+    expect(findText(view.container, "未设置回退提供方")).toBeTruthy();
+    expect(findText(view.container, "No default")).toBeFalsy();
+    expect(findText(view.container, "No fallback")).toBeFalsy();
+  });
+
   it("renders provider, runtime, and appearance operations in the compact settings nav", async () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
-    expect(view.container.querySelector('[data-testid="settings-section-nav"]')).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="settings-control-surface"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('[data-testid="settings-section-nav"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('[data-testid="settings-control-surface"]'),
+    ).toBeTruthy();
     expect(findText(view.container, "Providers")).toBeTruthy();
     expect(findText(view.container, "Runtime")).toBeTruthy();
     expect(findText(view.container, "Appearance")).toBeTruthy();
@@ -171,21 +225,49 @@ describe("SettingsPage", () => {
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
 
-    expect(findText(view.container, "Language, locale, and reading density.")).toBeFalsy();
-    expect(findText(view.container, "Keep language, locale, and density in one compact place.")).toBeFalsy();
+    expect(
+      findText(view.container, "Language, locale, and reading density."),
+    ).toBeFalsy();
+    expect(
+      findText(
+        view.container,
+        "Keep language, locale, and density in one compact place.",
+      ),
+    ).toBeFalsy();
 
     const providersButton = findButton(view.container, "Providers");
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
-    expect(findText(view.container, "Default routing and saved model endpoints.")).toBeFalsy();
-    expect(findText(view.container, "Set default routing and keep saved runtimes compact.")).toBeFalsy();
-    expect(findText(view.container, "Run lightweight provider checks before new work starts.")).toBeFalsy();
-    expect(findText(view.container, "Provider checks run before new work starts.")).toBeFalsy();
-    expect(findText(view.container, "Disabled providers stay saved but are skipped for new work.")).toBeFalsy();
+    expect(
+      findText(view.container, "Default routing and saved model endpoints."),
+    ).toBeFalsy();
+    expect(
+      findText(
+        view.container,
+        "Set default routing and keep saved runtimes compact.",
+      ),
+    ).toBeFalsy();
+    expect(
+      findText(
+        view.container,
+        "Run lightweight provider checks before new work starts.",
+      ),
+    ).toBeFalsy();
+    expect(
+      findText(view.container, "Provider checks run before new work starts."),
+    ).toBeFalsy();
+    expect(
+      findText(
+        view.container,
+        "Disabled providers stay saved but are skipped for new work.",
+      ),
+    ).toBeFalsy();
 
     const runtimeButton = findButton(view.container, "Runtime");
     expect(runtimeButton).toBeTruthy();
@@ -194,7 +276,9 @@ describe("SettingsPage", () => {
       runtimeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(findText(view.container, "Window lifecycle and background behavior.")).toBeFalsy();
+    expect(
+      findText(view.container, "Window lifecycle and background behavior."),
+    ).toBeFalsy();
     expect(
       findText(
         view.container,
@@ -202,7 +286,10 @@ describe("SettingsPage", () => {
       ),
     ).toBeFalsy();
     expect(
-      findText(view.container, "Restore the desktop shell when the operating system starts."),
+      findText(
+        view.container,
+        "Restore the desktop shell when the operating system starts.",
+      ),
     ).toBeFalsy();
     expect(
       findText(
@@ -220,12 +307,16 @@ describe("SettingsPage", () => {
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     expect(findText(view.container, "Local runtime")).toBeTruthy();
     expect(findText(view.container, "Enabled")).toBeTruthy();
-    expect(view.container.querySelector('[data-testid="provider-status-badge"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('[data-testid="provider-status-badge"]'),
+    ).toBeTruthy();
   });
 
   it("shows secret presence without echoing saved api keys", async () => {
@@ -236,7 +327,9 @@ describe("SettingsPage", () => {
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     const apiKeyInput = view.container.querySelector(
@@ -256,7 +349,9 @@ describe("SettingsPage", () => {
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     const summary = view.container.querySelector(
@@ -277,14 +372,18 @@ describe("SettingsPage", () => {
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     const clearSecretButton = findButton(view.container, "Clear secret");
     expect(clearSecretButton).toBeTruthy();
 
     await act(async () => {
-      clearSecretButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      clearSecretButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
       await Promise.resolve();
     });
 
@@ -303,7 +402,9 @@ describe("SettingsPage", () => {
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     const defaultProviderSelect = view.container.querySelector(
@@ -311,7 +412,12 @@ describe("SettingsPage", () => {
     ) as HTMLSelectElement | null;
 
     expect(defaultProviderSelect?.value).toBe("provider-local");
-    expect(findText(view.container, "Set default routing and keep saved runtimes compact.")).toBeFalsy();
+    expect(
+      findText(
+        view.container,
+        "Set default routing and keep saved runtimes compact.",
+      ),
+    ).toBeFalsy();
   });
 
   it("uses the shared flat selector shell for provider routing and runtime dropdowns", async () => {
@@ -322,7 +428,9 @@ describe("SettingsPage", () => {
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     const defaultProviderSelect = view.container.querySelector(
@@ -332,8 +440,12 @@ describe("SettingsPage", () => {
       'select[aria-label="Fallback Provider"]',
     ) as HTMLSelectElement | null;
 
-    expect(defaultProviderSelect?.parentElement?.className).toContain("flat-select");
-    expect(fallbackProviderSelect?.parentElement?.className).toContain("flat-select");
+    expect(defaultProviderSelect?.parentElement?.className).toContain(
+      "flat-select",
+    );
+    expect(fallbackProviderSelect?.parentElement?.className).toContain(
+      "flat-select",
+    );
 
     const runtimeButton = findButton(view.container, "Runtime");
     expect(runtimeButton).toBeTruthy();
@@ -349,7 +461,9 @@ describe("SettingsPage", () => {
       'select[aria-label="Logging"]',
     ) as HTMLSelectElement | null;
 
-    expect(closeBehaviorSelect?.parentElement?.className).toContain("flat-select");
+    expect(closeBehaviorSelect?.parentElement?.className).toContain(
+      "flat-select",
+    );
     expect(loggingSelect?.parentElement?.className).toContain("flat-select");
   });
 
@@ -361,7 +475,9 @@ describe("SettingsPage", () => {
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     const connectionChecksToggle = view.container.querySelector(
@@ -370,7 +486,9 @@ describe("SettingsPage", () => {
     const saveProviders = findButton(view.container, "Save Provider Changes");
 
     expect(connectionChecksToggle?.checked).toBe(true);
-    expect(findText(view.container, "Provider checks run before new work starts.")).toBeFalsy();
+    expect(
+      findText(view.container, "Provider checks run before new work starts."),
+    ).toBeFalsy();
 
     await act(async () => {
       if (!connectionChecksToggle) {
@@ -380,7 +498,9 @@ describe("SettingsPage", () => {
       setCheckboxValue(connectionChecksToggle, false);
     });
 
-    expect(findText(view.container, "Provider checks run before new work starts.")).toBeFalsy();
+    expect(
+      findText(view.container, "Provider checks run before new work starts."),
+    ).toBeFalsy();
     expect(saveProviders?.hasAttribute("disabled")).toBe(false);
 
     await act(async () => {
@@ -413,7 +533,9 @@ describe("SettingsPage", () => {
     expect(appearanceButton).toBeTruthy();
 
     await act(async () => {
-      appearanceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      appearanceButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     expect(findText(view.container, "Appearance")).toBeTruthy();
@@ -432,7 +554,9 @@ describe("SettingsPage", () => {
     expect(appearanceButton).toBeTruthy();
 
     await act(async () => {
-      appearanceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      appearanceButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     const languageSelect = view.container.querySelector(
@@ -449,7 +573,9 @@ describe("SettingsPage", () => {
       setFormValue(languageSelect, "zh-CN");
     });
 
-    expect(window.localStorage.getItem(DESKTOP_LOCALE_STORAGE_KEY)).toBe("zh-CN");
+    expect(window.localStorage.getItem(DESKTOP_LOCALE_STORAGE_KEY)).toBe(
+      "zh-CN",
+    );
     expect(invokeMock).not.toHaveBeenCalledWith(
       "save_settings",
       expect.objectContaining({
@@ -468,14 +594,18 @@ describe("SettingsPage", () => {
       expect(providersButton).toBeTruthy();
 
       await act(async () => {
-        providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        providersButton?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
       });
 
       const addProviderButton = findButton(view.container, "+ Add Provider");
       expect(addProviderButton).toBeTruthy();
 
       await act(async () => {
-        addProviderButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        addProviderButton?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
       });
 
       const providerNameInputs = Array.from(
@@ -484,7 +614,8 @@ describe("SettingsPage", () => {
 
       expect(providerNameInputs).toHaveLength(2);
 
-      const newestProvider = providerNameInputs[providerNameInputs.length - 1] ?? null;
+      const newestProvider =
+        providerNameInputs[providerNameInputs.length - 1] ?? null;
 
       await act(async () => {
         if (!newestProvider) {
@@ -497,7 +628,9 @@ describe("SettingsPage", () => {
       expect(saveProviders?.hasAttribute("disabled")).toBe(false);
 
       await act(async () => {
-        saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        saveProviders?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
       });
 
       expect(invokeMock).toHaveBeenCalledWith(
@@ -525,7 +658,9 @@ describe("SettingsPage", () => {
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     const importButton = findButton(view.container, "Import From Env");
@@ -538,7 +673,9 @@ describe("SettingsPage", () => {
 
     expect(findText(view.container, "Env Local")).toBeTruthy();
     expect(
-      Array.from(view.container.querySelectorAll('input[aria-label="Provider name"]')),
+      Array.from(
+        view.container.querySelectorAll('input[aria-label="Provider name"]'),
+      ),
     ).toHaveLength(2);
   });
 
@@ -550,7 +687,9 @@ describe("SettingsPage", () => {
     expect(providersButton).toBeTruthy();
 
     await act(async () => {
-      providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      providersButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
     });
 
     const fallbackSelect = view.container.querySelector(
@@ -585,49 +724,51 @@ describe("SettingsPage", () => {
   it("preserves partially saved providers and retries only the remaining unsaved draft", async () => {
     let openRouterFailures = 0;
 
-    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
-      if (command === "save_provider") {
-        const provider = args?.provider as
-          | { name: string; id: string; enabled: boolean }
-          | undefined;
+    invokeMock.mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === "save_provider") {
+          const provider = args?.provider as
+            | { name: string; id: string; enabled: boolean }
+            | undefined;
 
-        if (provider?.name === "Local Revised") {
-          return {
-            id: provider.id,
-            name: provider.name,
-            baseUrl: "http://localhost:11434/v1",
-            model: "gpt-oss",
-            apiKey: "",
-            hasSecret: true,
-            secretUpdatedAt: "2026-03-12T00:00:00Z",
-            local: true,
-            enabled: provider.enabled,
-          };
-        }
-
-        if (provider?.name === "OpenRouter") {
-          openRouterFailures += 1;
-
-          if (openRouterFailures === 1) {
-            throw new Error("save provider failed");
+          if (provider?.name === "Local Revised") {
+            return {
+              id: provider.id,
+              name: provider.name,
+              baseUrl: "http://localhost:11434/v1",
+              model: "gpt-oss",
+              apiKey: "",
+              hasSecret: true,
+              secretUpdatedAt: "2026-03-12T00:00:00Z",
+              local: true,
+              enabled: provider.enabled,
+            };
           }
 
-          return {
-            id: provider.id,
-            name: provider.name,
-            baseUrl: "",
-            model: "",
-            apiKey: "",
-            hasSecret: false,
-            secretUpdatedAt: null,
-            local: false,
-            enabled: provider.enabled,
-          };
-        }
-      }
+          if (provider?.name === "OpenRouter") {
+            openRouterFailures += 1;
 
-      return defaultInvokeImplementation(command, args);
-    });
+            if (openRouterFailures === 1) {
+              throw new Error("save provider failed");
+            }
+
+            return {
+              id: provider.id,
+              name: provider.name,
+              baseUrl: "",
+              model: "",
+              apiKey: "",
+              hasSecret: false,
+              secretUpdatedAt: null,
+              local: false,
+              enabled: provider.enabled,
+            };
+          }
+        }
+
+        return defaultInvokeImplementation(command, args);
+      },
+    );
 
     const view = await renderIntoDocument(<SettingsPage />);
     cleanups.push(view.cleanup);
@@ -638,7 +779,9 @@ describe("SettingsPage", () => {
       expect(providersButton).toBeTruthy();
 
       await act(async () => {
-        providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        providersButton?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
       });
 
       const initialSaveProviderCalls = invokeMock.mock.calls.filter(
@@ -660,13 +803,16 @@ describe("SettingsPage", () => {
       expect(addProviderButton).toBeTruthy();
 
       await act(async () => {
-        addProviderButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        addProviderButton?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
       });
 
       const providerNameInputs = Array.from(
         view.container.querySelectorAll('input[aria-label="Provider name"]'),
       ) as HTMLInputElement[];
-      const newestProvider = providerNameInputs[providerNameInputs.length - 1] ?? null;
+      const newestProvider =
+        providerNameInputs[providerNameInputs.length - 1] ?? null;
 
       await act(async () => {
         if (!newestProvider) {
@@ -679,7 +825,9 @@ describe("SettingsPage", () => {
       expect(saveProviders).toBeTruthy();
 
       await act(async () => {
-        saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        saveProviders?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
         await Promise.resolve();
       });
 
@@ -690,7 +838,9 @@ describe("SettingsPage", () => {
         }),
       );
       expect(findText(view.container, "save provider failed")).toBeFalsy();
-      expect(view.container.querySelector(".settings-inline-error")).toBeFalsy();
+      expect(
+        view.container.querySelector(".settings-inline-error"),
+      ).toBeFalsy();
       expect(invokeMock).not.toHaveBeenCalledWith(
         "save_settings",
         expect.objectContaining({
@@ -699,7 +849,9 @@ describe("SettingsPage", () => {
       );
 
       await act(async () => {
-        saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        saveProviders?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
         await Promise.resolve();
       });
 
@@ -729,7 +881,9 @@ describe("SettingsPage", () => {
       expect(runtimeButton).toBeTruthy();
 
       await act(async () => {
-        runtimeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        runtimeButton?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
       });
 
       expect(findText(view.container, "Close behavior")).toBeTruthy();
@@ -827,7 +981,9 @@ describe("SettingsPage", () => {
       expect(providersButton).toBeTruthy();
 
       await act(async () => {
-        providersButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        providersButton?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
       });
 
       const fallbackSelect = view.container.querySelector(
@@ -843,7 +999,9 @@ describe("SettingsPage", () => {
       });
 
       await act(async () => {
-        saveProviders?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        saveProviders?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
       });
 
       expect(events).toHaveLength(1);

@@ -39,7 +39,9 @@ impl KnowledgeCollection {
         Self {
             id: "knowledge-base".to_string(),
             name: "User Knowledge Base".to_string(),
-            description: "Default knowledge library for local sources and future retrieval adapters.".to_string(),
+            description:
+                "Default knowledge library for local sources and future retrieval adapters."
+                    .to_string(),
             engine: PAGEINDEX_ENGINE_ID.to_string(),
             connectors: Vec::new(),
             supported_extensions: LOCAL_FOLDER_SUPPORTED_EXTENSIONS
@@ -112,10 +114,7 @@ pub fn engine_capabilities(engine_id: &str) -> Vec<String> {
             "indexing".to_string(),
             "retrieval".to_string(),
         ],
-        "rag-adapter" => vec![
-            "connectors".to_string(),
-            "retrieval".to_string(),
-        ],
+        "rag-adapter" => vec!["connectors".to_string(), "retrieval".to_string()],
         _ => vec!["retrieval".to_string()],
     }
 }

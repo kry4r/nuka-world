@@ -9,7 +9,7 @@ pub async fn handle_runtime_event(
                     nuka_domain::memory::MemorySurface::Chat,
                     &session_id,
                     &prompt,
-                    "Chat turn proposed for review",
+                    "这条对话已进入记忆审核。",
                     nuka_domain::memory::MemoryScope {
                         id: "world".to_string(),
                         name: "World".to_string(),
@@ -30,7 +30,7 @@ pub async fn handle_runtime_event(
                     nuka_domain::memory::MemorySurface::Workflow,
                     &run_id,
                     &prompt,
-                    &format!("Team run {run_id} from team {team_id} opened for review"),
+                    "这段协作团队流程已进入记忆审核。",
                     nuka_domain::memory::MemoryScope {
                         id: format!("team:{team_id}"),
                         name: format!("Team {}", workflow_scope_name(&team_id)),
@@ -51,7 +51,7 @@ pub async fn handle_runtime_event(
                     nuka_domain::memory::MemorySurface::Workflow,
                     &run_id,
                     &prompt,
-                    &format!("Team run round {run_id} from team {team_id} proposed for review"),
+                    "这轮协作团队流程已进入记忆审核。",
                     nuka_domain::memory::MemoryScope {
                         id: format!("team:{team_id}"),
                         name: format!("Team {}", workflow_scope_name(&team_id)),
@@ -72,9 +72,7 @@ pub async fn handle_runtime_event(
                     nuka_domain::memory::MemorySurface::Workflow,
                     &session_id,
                     &prompt,
-                    &format!(
-                        "Workflow session {session_id} in {workflow_id} opened for review"
-                    ),
+                    "这段流程已进入记忆审核。",
                     nuka_domain::memory::MemoryScope {
                         id: format!("workflow:{workflow_id}"),
                         name: workflow_scope_name(&workflow_id),
@@ -95,9 +93,7 @@ pub async fn handle_runtime_event(
                     nuka_domain::memory::MemorySurface::Workflow,
                     &session_id,
                     &prompt,
-                    &format!(
-                        "Workflow turn from session {session_id} in {workflow_id} proposed for review"
-                    ),
+                    "这条流程要点已进入记忆审核。",
                     nuka_domain::memory::MemoryScope {
                         id: format!("workflow:{workflow_id}"),
                         name: workflow_scope_name(&workflow_id),

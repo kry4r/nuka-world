@@ -93,7 +93,10 @@ impl AppState {
     }
 
     pub fn settings(&self) -> SettingsState {
-        self.settings.read().expect("settings lock poisoned").clone()
+        self.settings
+            .read()
+            .expect("settings lock poisoned")
+            .clone()
     }
 
     pub fn set_settings(&self, settings: SettingsState) {
@@ -108,9 +111,7 @@ impl AppState {
         &self.provider_service
     }
 
-    pub fn provider_secret_store(
-        &self,
-    ) -> Arc<dyn crate::provider_secrets::ProviderSecretStore> {
+    pub fn provider_secret_store(&self) -> Arc<dyn crate::provider_secrets::ProviderSecretStore> {
         self.provider_secret_store.clone()
     }
 

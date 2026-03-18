@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import type { TeamRunAgentRecord, TeamRunEventRecord, TeamRunRecord } from "@/lib/team";
+import type {
+  TeamRunAgentRecord,
+  TeamRunEventRecord,
+  TeamRunRecord,
+} from "@/lib/team";
 import { useI18n } from "@/lib/i18n";
 import { AgentTeamStrip } from "./AgentTeamStrip";
 import { RunCharterCard } from "./RunCharterCard";
-import { RunEventFeed } from "./RunEventFeed";
+import { MarkdownMessage, RunEventFeed } from "./RunEventFeed";
+import {
+  firstMarkdownHeading,
+  headingsOverlap,
+  humanizeTeamRunAgentRole,
+  humanizeTeamRunProtocolCopy,
+  humanizeTeamRunWork,
+  titleCase,
+} from "./teamRunPresentation";
 
 export type TeamRunPanelAgentDraft = {
   name: string;
@@ -20,15 +32,6 @@ type TeamRunPanelProps = {
 };
 
 type TeamRunPanelView = "conversation" | "status" | "agents" | "files";
-
-function titleCase(value: string) {
-  return value
-    .replace(/_/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(" ");
-}
 
 function formatRunStatus(value: string, t: ReturnType<typeof useI18n>["t"]) {
   if (value === "waiting_for_user") {
@@ -47,7 +50,7 @@ function formatRunStatus(value: string, t: ReturnType<typeof useI18n>["t"]) {
     return t("teamRun.state.stuck");
   }
 
-  if (value === "running") {
+  if (value === "running" || value === "active") {
     return t("teamRun.state.running");
   }
 
@@ -58,7 +61,10 @@ function formatRunStatus(value: string, t: ReturnType<typeof useI18n>["t"]) {
   return titleCase(value);
 }
 
-function formatEventKindLabel(kind: string, t: ReturnType<typeof useI18n>["t"]) {
+function formatEventKindLabel(
+  kind: string,
+  t: ReturnType<typeof useI18n>["t"],
+) {
   switch (kind) {
     case "run_started":
       return t("teamRun.event.runStarted");
@@ -78,10 +84,17 @@ function formatEventKindLabel(kind: string, t: ReturnType<typeof useI18n>["t"]) 
 }
 
 function latestCheckpointEvent(run: TeamRunRecord) {
-  return [...run.events].reverse().find((event) => event.kind === "checkpoint_summary") ?? null;
+  return (
+    [...run.events]
+      .reverse()
+      .find((event) => event.kind === "checkpoint_summary") ?? null
+  );
 }
 
-function currentRoundLabel(run: TeamRunRecord, t: ReturnType<typeof useI18n>["t"]) {
+function currentRoundLabel(
+  run: TeamRunRecord,
+  t: ReturnType<typeof useI18n>["t"],
+) {
   const sources = [
     latestCheckpointEvent(run)?.title ?? null,
     ...run.events
@@ -94,7 +107,10 @@ function currentRoundLabel(run: TeamRunRecord, t: ReturnType<typeof useI18n>["t"
     if (roundMatch) {
       return roundMatch[0]
         .split(" ")
-        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+        .map(
+          (segment) =>
+            segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase(),
+        )
         .join(" ");
     }
   }
@@ -140,11 +156,19 @@ function formatAgentStatus(value: string, t: ReturnType<typeof useI18n>["t"]) {
     return t("teamRun.state.stuck");
   }
 
+  if (value === "active") {
+    return t("teamRun.state.running");
+  }
+
   return titleCase(value);
 }
 
 function defaultActiveAgentId(run: TeamRunRecord) {
-  return run.agents.find((agent) => agent.id === run.leadAgentId)?.id ?? run.agents[0]?.id ?? null;
+  return (
+    run.agents.find((agent) => agent.id === run.leadAgentId)?.id ??
+    run.agents[0]?.id ??
+    null
+  );
 }
 
 function sortAgents(agents: TeamRunAgentRecord[], leadAgentId: string | null) {
@@ -157,7 +181,10 @@ function sortAgents(agents: TeamRunAgentRecord[], leadAgentId: string | null) {
       return 1;
     }
 
-    return left.joinedAt.localeCompare(right.joinedAt) || left.name.localeCompare(right.name);
+    return (
+      left.joinedAt.localeCompare(right.joinedAt) ||
+      left.name.localeCompare(right.name)
+    );
   });
 }
 
@@ -224,7 +251,12 @@ function nextStepCopy(value: string, t: ReturnType<typeof useI18n>["t"]) {
 function groupFileChanges(run: TeamRunRecord) {
   const batches = new Map<
     string,
-    { id: string; label: string; changes: TeamRunRecord["events"]; latestSequence: number }
+    {
+      id: string;
+      label: string;
+      changes: TeamRunRecord["events"];
+      latestSequence: number;
+    }
   >();
 
   for (const event of run.events) {
@@ -250,7 +282,9 @@ function groupFileChanges(run: TeamRunRecord) {
   return Array.from(batches.values())
     .map((batch) => ({
       ...batch,
-      changes: [...batch.changes].sort((left, right) => right.sequence - left.sequence),
+      changes: [...batch.changes].sort(
+        (left, right) => right.sequence - left.sequence,
+      ),
     }))
     .sort((left, right) => right.latestSequence - left.latestSequence);
 }
@@ -285,7 +319,10 @@ function fileChangeMarker(status: string | null) {
   }
 }
 
-function fileChangeStatusLabel(status: string | null, t: ReturnType<typeof useI18n>["t"]) {
+function fileChangeStatusLabel(
+  status: string | null,
+  t: ReturnType<typeof useI18n>["t"],
+) {
   switch (status) {
     case "created":
       return t("teamRun.files.status.created");
@@ -322,12 +359,17 @@ function eventAgentLabel(
   run: TeamRunRecord,
   t: ReturnType<typeof useI18n>["t"],
 ) {
-  return run.agents.find((agent) => agent.id === event.agentId)?.name ?? t("teamRun.speaker.system");
+  return (
+    run.agents.find((agent) => agent.id === event.agentId)?.name ??
+    t("teamRun.speaker.system")
+  );
 }
 
 function StatusLight({ status }: { status: string | null }) {
   const { t } = useI18n();
-  const label = status ? formatRunStatus(status, t) : t("teamRun.state.unknown");
+  const label = status
+    ? formatRunStatus(status, t)
+    : t("teamRun.state.unknown");
   const tone = statusTone(status ?? "unknown");
 
   return (
@@ -342,9 +384,25 @@ function StatusLight({ status }: { status: string | null }) {
 }
 
 function StatusView({ run }: { run: TeamRunRecord }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const statusTimeline = statusEvents(run);
   const latestCheckpoint = latestCheckpointEvent(run);
+  const latestCheckpointTitle = latestCheckpoint
+    ? locale === "zh-CN"
+      ? humanizeTeamRunProtocolCopy(latestCheckpoint.title, t)
+      : latestCheckpoint.title
+    : null;
+  const latestCheckpointContent = latestCheckpoint
+    ? locale === "zh-CN"
+      ? humanizeTeamRunProtocolCopy(latestCheckpoint.content, t)
+      : latestCheckpoint.content
+    : null;
+  const latestCheckpointHeading = latestCheckpoint
+    ? firstMarkdownHeading(latestCheckpointContent ?? latestCheckpoint.content)
+    : null;
+  const shouldShowLatestCheckpointTitle =
+    !latestCheckpoint ||
+    !headingsOverlap(latestCheckpointTitle, latestCheckpointHeading);
 
   return (
     <div className="team-run-panel__status-stack">
@@ -373,9 +431,13 @@ function StatusView({ run }: { run: TeamRunRecord }) {
         <article className="team-run-panel__status-card ui-card">
           <div className="team-run-panel__status-section-copy">
             <span>{t("teamRun.statusView.latestCheckpoint")}</span>
-            <strong>{latestCheckpoint.title}</strong>
+            {shouldShowLatestCheckpointTitle ? (
+              <strong>{latestCheckpointTitle}</strong>
+            ) : null}
           </div>
-          <p>{latestCheckpoint.content}</p>
+          <MarkdownMessage
+            content={latestCheckpointContent ?? latestCheckpoint.content}
+          />
         </article>
       ) : null}
 
@@ -384,18 +446,32 @@ function StatusView({ run }: { run: TeamRunRecord }) {
           aria-label={t("teamRun.statusView.timeline")}
           className="team-run-panel__status-timeline"
         >
-          {statusTimeline.map((event: TeamRunEventRecord) => (
-            <article className="team-run-panel__status-item ui-card" key={event.id}>
-              <div className="team-run-panel__status-item-header">
-                <div className="team-run-panel__status-section-copy">
-                  <span>{formatEventKindLabel(event.kind, t)}</span>
-                  <strong>{event.title}</strong>
+          {statusTimeline.map((event: TeamRunEventRecord) => {
+            const eventTitle =
+              locale === "zh-CN"
+                ? humanizeTeamRunProtocolCopy(event.title, t)
+                : event.title;
+            const eventContent =
+              locale === "zh-CN"
+                ? humanizeTeamRunProtocolCopy(event.content, t)
+                : event.content;
+
+            return (
+              <article
+                className="team-run-panel__status-item ui-card"
+                key={event.id}
+              >
+                <div className="team-run-panel__status-item-header">
+                  <div className="team-run-panel__status-section-copy">
+                    <span>{formatEventKindLabel(event.kind, t)}</span>
+                    <strong>{eventTitle}</strong>
+                  </div>
+                  <StatusLight status={event.status} />
                 </div>
-                <StatusLight status={event.status} />
-              </div>
-              <p>{event.content}</p>
-            </article>
-          ))}
+                <MarkdownMessage content={eventContent} />
+              </article>
+            );
+          })}
         </section>
       ) : null}
     </div>
@@ -406,10 +482,15 @@ function FilesView({ run }: { run: TeamRunRecord }) {
   const { t } = useI18n();
   const fileChangeBatches = useMemo(() => groupFileChanges(run), [run]);
   const batchIdsKey = useMemo(
-    () => fileChangeBatches.map((batch) => `${batch.id}:${batch.changes.length}`).join("|"),
+    () =>
+      fileChangeBatches
+        .map((batch) => `${batch.id}:${batch.changes.length}`)
+        .join("|"),
     [fileChangeBatches],
   );
-  const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
+  const [expandedBatches, setExpandedBatches] = useState<
+    Record<string, boolean>
+  >({});
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -427,13 +508,16 @@ function FilesView({ run }: { run: TeamRunRecord }) {
     setSelectedFileId((current) =>
       current && allChanges.some((change) => change.id === current)
         ? current
-        : allChanges[0]?.id ?? null,
+        : (allChanges[0]?.id ?? null),
     );
   }, [batchIdsKey, fileChangeBatches]);
 
   if (fileChangeBatches.length === 0) {
     return (
-      <section aria-label={t("teamRun.files.title")} className="team-run-panel__timeline">
+      <section
+        aria-label={t("teamRun.files.title")}
+        className="team-run-panel__timeline"
+      >
         <article className="team-run-panel__timeline-empty ui-card">
           <strong>{t("teamRun.files.title")}</strong>
           <p>{t("teamRun.files.empty")}</p>
@@ -443,15 +527,19 @@ function FilesView({ run }: { run: TeamRunRecord }) {
   }
 
   const selectedBatch =
-    fileChangeBatches.find((batch) => batch.changes.some((change) => change.id === selectedFileId)) ??
-    fileChangeBatches[0];
+    fileChangeBatches.find((batch) =>
+      batch.changes.some((change) => change.id === selectedFileId),
+    ) ?? fileChangeBatches[0];
   const selectedFile =
     selectedBatch?.changes.find((change) => change.id === selectedFileId) ??
     selectedBatch?.changes[0] ??
     null;
 
   return (
-    <section aria-label={t("teamRun.files.title")} className="team-run-panel__timeline">
+    <section
+      aria-label={t("teamRun.files.title")}
+      className="team-run-panel__timeline"
+    >
       <div className="team-run-panel__files-layout">
         <aside className="team-run-panel__files-tree">
           <div className="team-run-panel__files-pane-header">
@@ -472,7 +560,9 @@ function FilesView({ run }: { run: TeamRunRecord }) {
                   type="button"
                 >
                   <strong>{batch.label}</strong>
-                  <span>{t("teamRun.files.count", { count: batch.changes.length })}</span>
+                  <span>
+                    {t("teamRun.files.count", { count: batch.changes.length })}
+                  </span>
                 </button>
                 {expandedBatches[batch.id] ? (
                   <div className="team-run-panel__file-group-list">
@@ -514,7 +604,7 @@ function FilesView({ run }: { run: TeamRunRecord }) {
                   <span>{filePath(selectedFile)}</span>
                 </div>
                 <span
-                  className={`team-run-panel__file-status team-run-panel__file-status--${fileChangeTone(selectedFile.status)}`}
+                  className={`team-run-panel__file-status team-run-panel__file-status--inline team-run-panel__file-status--${fileChangeTone(selectedFile.status)}`}
                 >
                   {fileChangeStatusLabel(selectedFile.status, t)}
                 </span>
@@ -556,15 +646,24 @@ export function TeamRunPanel({
   onContinue,
 }: TeamRunPanelProps) {
   const { t } = useI18n();
-  const [activeView, setActiveView] = useState<TeamRunPanelView>("conversation");
-  const [activeAgentId, setActiveAgentId] = useState<string | null>(() => defaultActiveAgentId(run));
+  const [activeView, setActiveView] =
+    useState<TeamRunPanelView>("conversation");
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(() =>
+    defaultActiveAgentId(run),
+  );
   const [followUp, setFollowUp] = useState("");
   const sortedAgents = useMemo(
     () => sortAgents(run.agents, run.leadAgentId),
     [run.agents, run.leadAgentId],
   );
-  const agentIdsKey = useMemo(() => sortedAgents.map((agent) => agent.id).join("|"), [sortedAgents]);
-  const activeAgent = sortedAgents.find((agent) => agent.id === activeAgentId) ?? sortedAgents[0] ?? null;
+  const agentIdsKey = useMemo(
+    () => sortedAgents.map((agent) => agent.id).join("|"),
+    [sortedAgents],
+  );
+  const activeAgent =
+    sortedAgents.find((agent) => agent.id === activeAgentId) ??
+    sortedAgents[0] ??
+    null;
 
   useEffect(() => {
     setActiveAgentId((current) => {
@@ -572,7 +671,11 @@ export function TeamRunPanel({
         return current;
       }
 
-      return sortedAgents.find((agent) => agent.id === run.leadAgentId)?.id ?? sortedAgents[0]?.id ?? null;
+      return (
+        sortedAgents.find((agent) => agent.id === run.leadAgentId)?.id ??
+        sortedAgents[0]?.id ??
+        null
+      );
     });
   }, [agentIdsKey, run.leadAgentId, sortedAgents]);
 
@@ -596,11 +699,21 @@ export function TeamRunPanel({
                   <header className="team-run-panel__agent-timeline-header">
                     <div className="team-run-panel__agent-timeline-copy">
                       <div className="team-run-panel__agent-timeline-identity">
-                        <span aria-hidden="true" className="team-run-panel__agent-avatar" />
+                        <span
+                          aria-hidden="true"
+                          className="team-run-panel__agent-avatar"
+                        />
                         <strong>{activeAgent.name}</strong>
-                        <span>{activeAgent.role}</span>
+                        <span>
+                          {humanizeTeamRunAgentRole(activeAgent.role, t) ??
+                            activeAgent.role}
+                        </span>
                       </div>
-                      <p>{activeAgent.currentWork || activeAgent.responsibility || t("teamRun.agent.standingBy")}</p>
+                      <p>
+                        {humanizeTeamRunWork(activeAgent.currentWork, t) ||
+                          activeAgent.responsibility ||
+                          t("teamRun.agent.standingBy")}
+                      </p>
                     </div>
                     <span className="team-run-panel__agent-status">
                       <span
@@ -636,7 +749,11 @@ export function TeamRunPanel({
         return (
           <div className="team-run-panel__conversation-view">
             <RunCharterCard run={run} />
-            <RunEventFeed agents={run.agents} events={run.events} onBranch={onBranchEvent} />
+            <RunEventFeed
+              agents={run.agents}
+              events={run.events}
+              onBranch={onBranchEvent}
+            />
           </div>
         );
     }
@@ -647,7 +764,14 @@ export function TeamRunPanel({
       <div className="team-run-panel__views ui-card">
         <div className="team-run-panel__views-header">
           <div className="team-run-panel__view-tabs" role="tablist">
-            {(["conversation", "status", "agents", "files"] as TeamRunPanelView[]).map((view) => (
+            {(
+              [
+                "conversation",
+                "status",
+                "agents",
+                "files",
+              ] as TeamRunPanelView[]
+            ).map((view) => (
               <button
                 aria-selected={activeView === view}
                 className={`team-run-panel__view-tab${activeView === view ? " is-active" : ""}`}

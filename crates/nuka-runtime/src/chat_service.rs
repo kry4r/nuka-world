@@ -1,7 +1,4 @@
-use nuka_integrations::providers::{
-    openai::OpenAiCompatibleProvider,
-    types::OpenAiChatMessage,
-};
+use nuka_integrations::providers::{openai::OpenAiCompatibleProvider, types::OpenAiChatMessage};
 
 const CHAT_COMPACTION_MESSAGE_THRESHOLD: usize = 4;
 const CHAT_COMPACTION_RECENT_WINDOW: usize = 4;
@@ -11,6 +8,14 @@ pub struct ChatTurnRecord {
     pub session: nuka_domain::chat::ChatSessionSummary,
     pub messages: Vec<nuka_domain::chat::ChatMessage>,
     pub provider: nuka_domain::provider::ProviderConfig,
+}
+
+#[derive(Debug, Clone)]
+struct PreparedChatTurn {
+    session: nuka_domain::chat::ChatSessionSummary,
+    user_message: nuka_domain::chat::ChatMessage,
+    provider: nuka_domain::provider::ProviderConfig,
+    completion_messages: Vec<OpenAiChatMessage>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +56,11 @@ mod tests {
         );
         let provider_id = provider.id.clone();
 
-        service.provider_service.save_provider(provider).await.unwrap();
+        service
+            .provider_service
+            .save_provider(provider)
+            .await
+            .unwrap();
         service
             .provider_service
             .set_default_provider(&provider_id)
@@ -66,6 +75,29 @@ mod tests {
         assert!(error
             .to_string()
             .contains("provider route resolution failed: unreachable_host"));
+    }
+
+    #[tokio::test]
+    async fn chat_service_streams_assistant_completion_and_persists_final_message() {
+        let service = super::ChatService::new_for_test_with_default_provider();
+        let mut deltas = Vec::new();
+        let turn = service
+            .send_message_with_route_streaming(
+                "Summarize the release notes",
+                None,
+                None,
+                |_, _| Ok(()),
+                |delta| {
+                    deltas.push(delta.to_string());
+                    Ok(())
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(deltas, vec!["Seeded assistant response".to_string()]);
+        assert_eq!(turn.messages.len(), 2);
+        assert_eq!(turn.messages[1].content, "Seeded assistant response");
     }
 }
 
@@ -135,6 +167,68 @@ impl ChatService {
         session_id: Option<&str>,
         route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
     ) -> anyhow::Result<ChatTurnRecord> {
+        let prepared = self
+            .prepare_chat_turn(prompt, session_id, route_request)
+            .await?;
+        let assistant_content = match &self.seed_completion {
+            Some(content) => content.clone(),
+            None => self
+                .provider_client
+                .complete_chat(&prepared.provider, prepared.completion_messages.clone())
+                .await?
+                .choices
+                .first()
+                .map(|choice| choice.message.content.clone())
+                .unwrap_or_default(),
+        };
+
+        self.finalize_chat_turn(prepared, assistant_content).await
+    }
+
+    pub async fn send_message_with_route_streaming(
+        &self,
+        prompt: &str,
+        session_id: Option<&str>,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+        mut on_started: impl FnMut(
+            &nuka_domain::chat::ChatSessionSummary,
+            &nuka_domain::provider::ProviderConfig,
+        ) -> anyhow::Result<()>,
+        mut on_delta: impl FnMut(&str) -> anyhow::Result<()>,
+    ) -> anyhow::Result<ChatTurnRecord> {
+        let prepared = self
+            .prepare_chat_turn(prompt, session_id, route_request)
+            .await?;
+        on_started(&prepared.session, &prepared.provider)?;
+
+        let assistant_content = match &self.seed_completion {
+            Some(content) => {
+                on_delta(content)?;
+                content.clone()
+            }
+            None => self
+                .provider_client
+                .complete_chat_stream(
+                    &prepared.provider,
+                    prepared.completion_messages.clone(),
+                    |delta| on_delta(delta),
+                )
+                .await?
+                .choices
+                .first()
+                .map(|choice| choice.message.content.clone())
+                .unwrap_or_default(),
+        };
+
+        self.finalize_chat_turn(prepared, assistant_content).await
+    }
+
+    async fn prepare_chat_turn(
+        &self,
+        prompt: &str,
+        session_id: Option<&str>,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+    ) -> anyhow::Result<PreparedChatTurn> {
         nuka_storage::migrations::run(&self.pool).await?;
         self.ensure_seed_provider().await?;
 
@@ -167,13 +261,12 @@ impl ChatService {
             resolved_route
         } else {
             let requested_route = route_request.or_else(|| {
-                session
-                    .routing
-                    .as_ref()
-                    .map(|routing| nuka_domain::provider::ProviderRouteRequest {
+                session.routing.as_ref().map(|routing| {
+                    nuka_domain::provider::ProviderRouteRequest {
                         requested_provider_id: routing.requested_provider_id.clone(),
                         requested_model: routing.requested_model.clone(),
-                    })
+                    }
+                })
             });
             self.prepare_provider_for_prompt(prompt, requested_route.as_ref())
                 .await?
@@ -198,42 +291,37 @@ impl ChatService {
             .into_iter()
             .map(chat_message_to_provider_message)
             .collect::<Vec<_>>();
-        let completion = match &self.seed_completion {
-            Some(content) => nuka_integrations::providers::types::OpenAiChatCompletionResponse {
-                id: uuid::Uuid::new_v4().to_string(),
-                choices: vec![nuka_integrations::providers::types::OpenAiChatCompletionChoice {
-                    message: OpenAiChatMessage {
-                        role: "assistant".to_string(),
-                        content: content.clone(),
-                    },
-                }],
-            },
-            None => self
-                .provider_client
-                .complete_chat(&provider, completion_messages)
-                .await?,
-        };
+        Ok(PreparedChatTurn {
+            session,
+            user_message,
+            provider,
+            completion_messages,
+        })
+    }
 
+    async fn finalize_chat_turn(
+        &self,
+        mut prepared: PreparedChatTurn,
+        assistant_content: String,
+    ) -> anyhow::Result<ChatTurnRecord> {
+        let repo = nuka_storage::chat::ChatRepository::new(self.pool.clone());
         let assistant_message = nuka_domain::chat::ChatMessage {
             id: uuid::Uuid::new_v4().to_string(),
-            session_id: session.id.clone(),
+            session_id: prepared.session.id.clone(),
             role: nuka_domain::chat::ChatMessageRole::Assistant,
-            content: completion
-                .choices
-                .first()
-                .map(|choice| choice.message.content.clone())
-                .unwrap_or_default(),
+            content: assistant_content,
         };
         repo.append_message(assistant_message.clone()).await?;
-        self.maybe_compact_session(&repo, &session.id).await?;
+        self.maybe_compact_session(&repo, &prepared.session.id)
+            .await?;
 
-        session.message_count = repo.list_messages(&session.id).await?.len();
-        repo.create_session(session.clone()).await?;
+        prepared.session.message_count = repo.list_messages(&prepared.session.id).await?.len();
+        repo.create_session(prepared.session.clone()).await?;
 
         Ok(ChatTurnRecord {
-            session,
-            messages: vec![user_message, assistant_message],
-            provider,
+            session: prepared.session,
+            messages: vec![prepared.user_message, assistant_message],
+            provider: prepared.provider,
         })
     }
 
@@ -251,7 +339,9 @@ impl ChatService {
         };
 
         if self.provider_service.list_providers().await?.is_empty() {
-            self.provider_service.save_provider(provider.clone()).await?;
+            self.provider_service
+                .save_provider(provider.clone())
+                .await?;
             self.provider_service
                 .set_default_provider(&provider.id)
                 .await?;

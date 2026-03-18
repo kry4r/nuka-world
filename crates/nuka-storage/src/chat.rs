@@ -451,7 +451,10 @@ fn parse_role(role: &str) -> anyhow::Result<ChatMessageRole> {
 }
 
 fn encode_optional_json<T: serde::Serialize>(value: Option<&T>) -> anyhow::Result<Option<String>> {
-    value.map(serde_json::to_string).transpose().map_err(Into::into)
+    value
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(Into::into)
 }
 
 fn decode_optional_json<T: serde::de::DeserializeOwned>(

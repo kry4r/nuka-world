@@ -14,7 +14,10 @@ export function SessionTabs({
   onSelect,
   sessions,
 }: SessionTabsProps) {
-  const [revealedSessionKey, setRevealedSessionKey] = useState<string | null>(null);
+  const windowSafePadding = "16px";
+  const [revealedSessionKey, setRevealedSessionKey] = useState<string | null>(
+    null,
+  );
 
   if (sessions.length === 0) {
     return null;
@@ -25,7 +28,13 @@ export function SessionTabs({
       aria-label="Workspace sessions"
       className="session-tabs session-tabs--scrollable session-tabs--browser session-tabs--dense"
       role="tablist"
-      style={{ maxWidth: "100%", overflowY: "hidden", width: "100%" }}
+      style={{
+        maxWidth: "100%",
+        overflowY: "hidden",
+        paddingRight: windowSafePadding,
+        scrollPaddingRight: windowSafePadding,
+        width: "100%",
+      }}
     >
       {sessions.map((session) => {
         const sessionKey = `${session.kind}:${session.id}`;
@@ -41,16 +50,23 @@ export function SessionTabs({
             key={sessionKey}
             onBlur={(event) => {
               const nextTarget = event.relatedTarget;
-              if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+              if (
+                nextTarget instanceof Node &&
+                event.currentTarget.contains(nextTarget)
+              ) {
                 return;
               }
 
-              setRevealedSessionKey((current) => (current === sessionKey ? null : current));
+              setRevealedSessionKey((current) =>
+                current === sessionKey ? null : current,
+              );
             }}
             onFocus={() => setRevealedSessionKey(sessionKey)}
             onMouseEnter={() => setRevealedSessionKey(sessionKey)}
             onMouseLeave={() =>
-              setRevealedSessionKey((current) => (current === sessionKey ? null : current))
+              setRevealedSessionKey((current) =>
+                current === sessionKey ? null : current,
+              )
             }
           >
             <button

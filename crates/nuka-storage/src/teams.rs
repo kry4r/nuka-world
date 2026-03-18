@@ -1,6 +1,4 @@
-use nuka_domain::{
-    team::{Team, TeamAgent, TeamAgentAssignment, TeamStatus},
-};
+use nuka_domain::team::{Team, TeamAgent, TeamAgentAssignment, TeamStatus};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::Row;
 
@@ -57,6 +55,10 @@ impl TeamRepository {
             .bind(team.id.clone())
             .execute(&mut *tx)
             .await?;
+        sqlx::query("delete from team_agent_assignments where team_id = ?1")
+            .bind(team.id.clone())
+            .execute(&mut *tx)
+            .await?;
 
         for agent in team.agents {
             sqlx::query(
@@ -95,15 +97,14 @@ impl TeamRepository {
         for assignment in team.agent_assignments {
             sqlx::query(
                 r#"
-                insert into team_agents (
-                  id, team_id, agent_id, enabled, name, role, responsibility, system_prompt,
-                  tool_bindings_json, tool_use_policy_json, order_hint, prompt_override,
+                insert into team_agent_assignments (
+                  id, team_id, agent_id, enabled, order_hint, prompt_override,
                   permission_override_json, created_at, updated_at
                 )
                 values (
-                  ?1, ?2, ?3, ?4, '', '', '', '', '[]', ?5, ?6, ?7, ?8,
-                  coalesce(nullif(?9, ''), datetime('now')),
-                  coalesce(nullif(?10, ''), datetime('now'))
+                  ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                  coalesce(nullif(?8, ''), datetime('now')),
+                  coalesce(nullif(?9, ''), datetime('now'))
                 )
                 "#,
             )
@@ -111,7 +112,6 @@ impl TeamRepository {
             .bind(team.id.clone())
             .bind(assignment.agent_id)
             .bind(assignment.enabled as i64)
-            .bind(encode_json(&nuka_domain::tool::ToolUsePolicy::default())?)
             .bind(assignment.order_hint)
             .bind(assignment.prompt_override)
             .bind(assignment.permission_override_json)
@@ -247,8 +247,8 @@ impl TeamRepository {
             select
               id, team_id, agent_id, enabled, order_hint, prompt_override,
               permission_override_json, created_at, updated_at
-            from team_agents
-            where team_id = ?1 and ifnull(agent_id, '') != ''
+            from team_agent_assignments
+            where team_id = ?1
             order by order_hint asc, created_at asc
             "#,
         )

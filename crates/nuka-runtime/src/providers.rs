@@ -104,9 +104,8 @@ impl ProvidersService {
             .await?;
         let preferences = self.load_provider_preferences().await?;
         let providers = self.list_providers().await?;
-        let requested_provider_id = normalize_optional(
-            request.and_then(|value| value.requested_provider_id.as_deref()),
-        );
+        let requested_provider_id =
+            normalize_optional(request.and_then(|value| value.requested_provider_id.as_deref()));
         let requested_model =
             normalize_optional(request.and_then(|value| value.requested_model.as_deref()));
         let primary_provider_id = requested_provider_id
@@ -118,9 +117,12 @@ impl ProvidersService {
                 .filter(|provider_id| provider_id != &primary_provider_id);
         let mut last_failure: Option<(String, anyhow::Error)> = None;
 
-        for provider_id in [Some(primary_provider_id.clone()), fallback_provider_id.clone()]
-            .into_iter()
-            .flatten()
+        for provider_id in [
+            Some(primary_provider_id.clone()),
+            fallback_provider_id.clone(),
+        ]
+        .into_iter()
+        .flatten()
         {
             let candidate = match providers
                 .iter()
@@ -176,9 +178,9 @@ impl ProvidersService {
         }
 
         match last_failure {
-            Some((reason, error)) => Err(error.context(format!(
-                "provider route resolution failed: {reason}"
-            ))),
+            Some((reason, error)) => {
+                Err(error.context(format!("provider route resolution failed: {reason}")))
+            }
             None => anyhow::bail!("default provider is not configured"),
         }
     }
@@ -249,7 +251,10 @@ impl ProvidersService {
         Ok(())
     }
 
-    async fn hydrate_provider(&self, mut provider: ProviderConfig) -> anyhow::Result<ProviderConfig> {
+    async fn hydrate_provider(
+        &self,
+        mut provider: ProviderConfig,
+    ) -> anyhow::Result<ProviderConfig> {
         if provider.token.trim().is_empty() && provider.secret_present {
             if let Some(secret) = (self.secret_loader)(&provider.id).await? {
                 provider.token = secret;

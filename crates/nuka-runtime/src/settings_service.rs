@@ -26,7 +26,10 @@ impl SettingsService {
             .await
     }
 
-    pub async fn save(&self, settings: &nuka_storage::settings::DesktopSettings) -> anyhow::Result<()> {
+    pub async fn save(
+        &self,
+        settings: &nuka_storage::settings::DesktopSettings,
+    ) -> anyhow::Result<()> {
         nuka_storage::migrations::run(&self.pool).await?;
         nuka_storage::settings::SettingsRepository::new(self.pool.clone())
             .save(settings)

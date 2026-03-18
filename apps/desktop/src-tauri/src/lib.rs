@@ -26,6 +26,7 @@ pub fn run() {
             commands::app::close_policy_minimizes_to_tray,
             commands::chat::execute_prompt_json,
             commands::chat::route_world_prompt,
+            commands::chat::route_world_prompt_stream,
             commands::knowledge::add_folder_connector,
             commands::knowledge::default_knowledge_library,
             commands::knowledge::list_index_jobs,

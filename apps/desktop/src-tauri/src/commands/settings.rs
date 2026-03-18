@@ -65,9 +65,7 @@ struct RuntimeSettingsState {
 }
 
 #[tauri::command]
-pub async fn load_settings(
-    state: tauri::State<'_, AppState>,
-) -> Result<SettingsPayload, String> {
+pub async fn load_settings(state: tauri::State<'_, AppState>) -> Result<SettingsPayload, String> {
     load_settings_inner(&state)
         .await
         .map_err(|error| error.to_string())
@@ -351,7 +349,9 @@ mod tests {
 
         assert_eq!(loaded, saved);
         assert_eq!(
-            saved_value.get("externalEditorPath").and_then(serde_json::Value::as_str),
+            saved_value
+                .get("externalEditorPath")
+                .and_then(serde_json::Value::as_str),
             Some("C:\\Tools\\notepad++.exe")
         );
         assert_eq!(

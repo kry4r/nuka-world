@@ -58,12 +58,45 @@ impl WorldRuntime {
         Ok(WorldTurn { session, chat_turn })
     }
 
+    pub async fn start_session_with_route_streaming(
+        &self,
+        prompt: &str,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+        mut on_started: impl FnMut(
+            &nuka_domain::chat::ChatSessionSummary,
+            &nuka_domain::provider::ProviderConfig,
+        ) -> anyhow::Result<()>,
+        mut on_delta: impl FnMut(&str) -> anyhow::Result<()>,
+    ) -> anyhow::Result<WorldTurn> {
+        let chat_turn = self
+            .chat_service
+            .send_message_with_route_streaming(
+                prompt,
+                None,
+                route_request,
+                |session, provider| on_started(session, provider),
+                |delta| on_delta(delta),
+            )
+            .await?;
+        let session = crate::session::WorldSession {
+            id: chat_turn.session.id.clone(),
+        };
+
+        self.sessions
+            .lock()
+            .expect("world sessions lock poisoned")
+            .insert(session.id.clone(), session.clone());
+
+        Ok(WorldTurn { session, chat_turn })
+    }
+
     pub async fn continue_session(
         &self,
         session_id: &str,
         prompt: &str,
     ) -> anyhow::Result<WorldTurn> {
-        self.continue_session_with_route(session_id, prompt, None).await
+        self.continue_session_with_route(session_id, prompt, None)
+            .await
     }
 
     pub async fn continue_session_with_route(
@@ -75,6 +108,42 @@ impl WorldRuntime {
         let chat_turn = self
             .chat_service
             .send_message_with_route(prompt, Some(session_id), route_request)
+            .await?;
+        let session =
+            {
+                let mut sessions = self.sessions.lock().expect("world sessions lock poisoned");
+                let session = sessions.get(session_id).cloned().unwrap_or_else(|| {
+                    crate::session::WorldSession {
+                        id: chat_turn.session.id.clone(),
+                    }
+                });
+                sessions.insert(session.id.clone(), session.clone());
+                session
+            };
+
+        Ok(WorldTurn { session, chat_turn })
+    }
+
+    pub async fn continue_session_with_route_streaming(
+        &self,
+        session_id: &str,
+        prompt: &str,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+        mut on_started: impl FnMut(
+            &nuka_domain::chat::ChatSessionSummary,
+            &nuka_domain::provider::ProviderConfig,
+        ) -> anyhow::Result<()>,
+        mut on_delta: impl FnMut(&str) -> anyhow::Result<()>,
+    ) -> anyhow::Result<WorldTurn> {
+        let chat_turn = self
+            .chat_service
+            .send_message_with_route_streaming(
+                prompt,
+                Some(session_id),
+                route_request,
+                |session, provider| on_started(session, provider),
+                |delta| on_delta(delta),
+            )
             .await?;
         let session =
             {

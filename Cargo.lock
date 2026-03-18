@@ -2257,6 +2257,7 @@ dependencies = [
  "nuka-domain",
  "reqwest 0.12.28",
  "serde",
+ "serde_json",
  "tokio",
  "url",
 ]

@@ -168,7 +168,10 @@ async fn clear_provider_secret_inner(
     provider.secret_ref = None;
     provider.secret_present = false;
     provider.secret_updated_at = None;
-    state.provider_service().save_provider(provider.clone()).await?;
+    state
+        .provider_service()
+        .save_provider(provider.clone())
+        .await?;
 
     Ok(ProviderRecord::from(provider))
 }
@@ -198,13 +201,13 @@ async fn import_provider_from_env_inner(state: &AppState) -> anyhow::Result<Prov
     save_provider_inner(
         state,
         ProviderInput {
-        id: String::new(),
-        name: required_env("NUKA_PROVIDER_NAME")?,
-        base_url: required_env("NUKA_PROVIDER_BASE_URL")?,
-        api_key: std::env::var("NUKA_PROVIDER_API_KEY").unwrap_or_default(),
-        model: required_env("NUKA_PROVIDER_MODEL")?,
-        enabled: true,
-    },
+            id: String::new(),
+            name: required_env("NUKA_PROVIDER_NAME")?,
+            base_url: required_env("NUKA_PROVIDER_BASE_URL")?,
+            api_key: std::env::var("NUKA_PROVIDER_API_KEY").unwrap_or_default(),
+            model: required_env("NUKA_PROVIDER_MODEL")?,
+            enabled: true,
+        },
     )
     .await
 }
@@ -220,7 +223,9 @@ impl ProviderInput {
             model: self.model,
             enabled: self.enabled,
             secret_ref: existing.and_then(|provider| provider.secret_ref.clone()),
-            secret_present: existing.map(|provider| provider.secret_present).unwrap_or(false),
+            secret_present: existing
+                .map(|provider| provider.secret_present)
+                .unwrap_or(false),
             secret_updated_at: existing.and_then(|provider| provider.secret_updated_at.clone()),
         }
     }
@@ -254,7 +259,13 @@ fn normalize_provider_id(id: &str, name: &str) -> String {
         .trim()
         .to_ascii_lowercase()
         .chars()
-        .map(|character| if character.is_ascii_alphanumeric() { character } else { '-' })
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string();
@@ -313,7 +324,11 @@ mod tests {
             .set_default_provider("provider-live")
             .await
             .unwrap();
-        let resolved = state.provider_service().resolve_default_provider().await.unwrap();
+        let resolved = state
+            .provider_service()
+            .resolve_default_provider()
+            .await
+            .unwrap();
         assert_eq!(resolved.token, "sk-live");
     }
 

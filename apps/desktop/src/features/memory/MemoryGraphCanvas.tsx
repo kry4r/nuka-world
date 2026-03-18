@@ -31,7 +31,9 @@ type MemoryGraphCanvasProps = {
   onPanChange: (pan: Point) => void;
   onFocusSelected: () => void;
   onSelectNode: (nodeId: string) => void;
-  onWorkbenchViewChange: (view: "activation" | "consolidation" | "schema") => void;
+  onWorkbenchViewChange: (
+    view: "activation" | "consolidation" | "schema",
+  ) => void;
   onZoomChange: (zoom: number) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -53,10 +55,10 @@ type Rect = {
 };
 
 export const canvasSize = { width: 1120, height: 760 };
-export const nodeSize = { width: 92, height: 92 };
+export const nodeSize = { width: 108, height: 108 };
 
 const labelBounds = {
-  gap: 18,
+  gap: 16,
   height: 30,
   maxWidth: 152,
   minWidth: 78,
@@ -91,7 +93,14 @@ export function MemoryGraphCanvas({
     [focusTargetId, graph.edges, graph.nodes],
   );
   const labels = useMemo(
-    () => buildLabelStates(graph.nodes, graph.edges, layout, depthByNodeId, selectedNodeId),
+    () =>
+      buildLabelStates(
+        graph.nodes,
+        graph.edges,
+        layout,
+        depthByNodeId,
+        selectedNodeId,
+      ),
     [depthByNodeId, graph.edges, graph.nodes, layout, selectedNodeId],
   );
 
@@ -186,13 +195,25 @@ export function MemoryGraphCanvas({
 
       <div className="memory-graph__dock memory-graph__dock--viewport">
         <div className="memory-graph__dock-actions">
-          <button className="memory-graph__chip" onClick={onZoomOut} type="button">
+          <button
+            className="memory-graph__chip"
+            onClick={onZoomOut}
+            type="button"
+          >
             缩小
           </button>
-          <button className="memory-graph__chip" onClick={onZoomIn} type="button">
+          <button
+            className="memory-graph__chip"
+            onClick={onZoomIn}
+            type="button"
+          >
             放大
           </button>
-          <button className="memory-graph__chip" onClick={onFitView} type="button">
+          <button
+            className="memory-graph__chip"
+            onClick={onFitView}
+            type="button"
+          >
             适配
           </button>
           <button
@@ -221,7 +242,12 @@ export function MemoryGraphCanvas({
         <svg
           aria-hidden="true"
           height={canvasSize.height}
-          style={{ inset: 0, overflow: "visible", pointerEvents: "none", position: "absolute" }}
+          style={{
+            inset: 0,
+            overflow: "visible",
+            pointerEvents: "none",
+            position: "absolute",
+          }}
           width={canvasSize.width}
         >
           {graph.edges.map((edge) => (
@@ -250,8 +276,19 @@ export function MemoryGraphCanvas({
           const selected = node.id === selectedNodeId;
           const depth = depthByNodeId[node.id] ?? 3;
           const emphasis =
-            depth === 0 ? "focus" : depth === 1 ? "neighbor" : depth === 2 ? "soft" : "muted";
-          const presentation = nodePresentation(node, workbenchView, selected, depth);
+            depth === 0
+              ? "focus"
+              : depth === 1
+                ? "neighbor"
+                : depth === 2
+                  ? "soft"
+                  : "muted";
+          const presentation = nodePresentation(
+            node,
+            workbenchView,
+            selected,
+            depth,
+          );
           const label = labels.get(node.id) ?? {
             placement: "right",
             text: shortTitle(node.title, 18),
@@ -277,13 +314,20 @@ export function MemoryGraphCanvas({
                   "--memory-node-aura": presentation.aura,
                   "--memory-node-fill": presentation.fill,
                   "--memory-node-glow": presentation.glow,
-                  "--memory-node-label-background": presentation.labelBackground,
+                  "--memory-node-label-background":
+                    presentation.labelBackground,
                   "--memory-node-label-border": presentation.labelBorder,
                   "--memory-node-label-color": presentation.labelColor,
                   "--memory-node-ring": presentation.ring,
                   height: `${nodeSize.height}px`,
                   left: `${point.x}px`,
-                  opacity: selected ? 1 : depth === 2 ? 0.84 : depth >= 3 ? 0.62 : 0.94,
+                  opacity: selected
+                    ? 1
+                    : depth === 2
+                      ? 0.84
+                      : depth >= 3
+                        ? 0.62
+                        : 0.94,
                   top: `${point.y}px`,
                   width: `${nodeSize.width}px`,
                 } as CSSProperties
@@ -336,9 +380,9 @@ function GraphEdge({
       d={path}
       data-relation={edge.relation}
       fill="none"
-      opacity={depth >= 3 ? 0.16 : depth === 2 ? 0.24 : 0.42}
+      opacity={depth >= 3 ? 0.2 : depth === 2 ? 0.34 : 0.54}
       stroke={edgeStrokeColor(workbenchView, sourceNode, targetNode, depth)}
-      strokeWidth={depth >= 2 ? "1.2" : "1.55"}
+      strokeWidth={depth >= 2 ? "1.35" : "1.8"}
     />
   );
 }
@@ -356,19 +400,22 @@ export function buildLayout(
 
   const center = { x: canvasSize.width / 2, y: canvasSize.height / 2 };
   const focusId =
-    (focusTargetId && nodes.some((node) => node.id === focusTargetId) ? focusTargetId : null) ??
-    nodes[0]!.id;
+    (focusTargetId && nodes.some((node) => node.id === focusTargetId)
+      ? focusTargetId
+      : null) ?? nodes[0]!.id;
   const adjacency = buildAdjacency(nodes, edges);
   const depthByNodeId = buildDepthMap(nodes, adjacency, focusId);
   const centers = new Map<string, Point>();
   const anchors = new Map<string, Point>();
-  const padding = 84;
+  const padding = 76;
 
   centers.set(focusId, center);
   anchors.set(focusId, center);
 
   const connected = nodes
-    .filter((node) => node.id !== focusId && (depthByNodeId.get(node.id) ?? 99) < 99)
+    .filter(
+      (node) => node.id !== focusId && (depthByNodeId.get(node.id) ?? 99) < 99,
+    )
     .sort((left, right) => {
       const leftDepth = depthByNodeId.get(left.id) ?? 99;
       const rightDepth = depthByNodeId.get(right.id) ?? 99;
@@ -378,17 +425,31 @@ export function buildLayout(
       return hashNumber(left.id) - hashNumber(right.id);
     });
   const disconnected = nodes
-    .filter((node) => node.id !== focusId && !connected.some((entry) => entry.id === node.id))
+    .filter(
+      (node) =>
+        node.id !== focusId && !connected.some((entry) => entry.id === node.id),
+    )
     .sort((left, right) => hashNumber(left.id) - hashNumber(right.id));
-  const firstDegree = connected.filter((node) => depthByNodeId.get(node.id) === 1);
+  const firstDegree = connected.filter(
+    (node) => depthByNodeId.get(node.id) === 1,
+  );
   const parentAngles = new Map<string, number>();
+  const isSmallFirstHopGraph =
+    connected.length === firstDegree.length && firstDegree.length <= 3;
+  const firstHopAngles = firstDegreeAngles(
+    firstDegree.length,
+    isSmallFirstHopGraph,
+  );
 
   firstDegree.forEach((node, index) => {
     const angle =
-      -Math.PI / 2 +
-      ((Math.PI * 2) / Math.max(firstDegree.length, 1)) * index +
-      jitterAngle(node.id, 0.18);
-    const radius = 152 + jitterNumber(node.id, 24);
+      (firstHopAngles[index] ??
+        (-Math.PI / 2 +
+          ((Math.PI * 2) / Math.max(firstDegree.length, 1)) * index)) +
+      jitterAngle(node.id, isSmallFirstHopGraph ? 0.08 : 0.18);
+    const radius =
+      (isSmallFirstHopGraph ? 132 : 122) +
+      jitterNumber(node.id, isSmallFirstHopGraph ? 10 : 14);
     const point = clampPoint(polar(center, angle, radius, 0.82), padding);
 
     centers.set(node.id, point);
@@ -402,7 +463,12 @@ export function buildLayout(
     .filter((node) => (depthByNodeId.get(node.id) ?? 99) > 1)
     .forEach((node) => {
       const depth = depthByNodeId.get(node.id) ?? 3;
-      const parentId = pickPrimaryParent(node.id, adjacency, depthByNodeId, focusId);
+      const parentId = pickPrimaryParent(
+        node.id,
+        adjacency,
+        depthByNodeId,
+        focusId,
+      );
       const parentCenter = anchors.get(parentId) ?? center;
       const parentAngle =
         parentAngles.get(parentId) ??
@@ -414,8 +480,14 @@ export function buildLayout(
         parentAngle +
         (siblingIndex - 1) * spread +
         jitterAngle(`${node.id}:${parentId}`, 0.14);
-      const radius = depth === 2 ? 138 + jitterNumber(node.id, 22) : 166 + jitterNumber(node.id, 28);
-      const point = clampPoint(polar(parentCenter, angle, radius, 0.74), padding);
+      const radius =
+        depth === 2
+          ? 114 + jitterNumber(node.id, 14)
+          : 136 + jitterNumber(node.id, 18);
+      const point = clampPoint(
+        polar(parentCenter, angle, radius, 0.74),
+        padding,
+      );
 
       centers.set(node.id, point);
       anchors.set(node.id, point);
@@ -424,17 +496,17 @@ export function buildLayout(
 
   disconnected.forEach((node, index) => {
     const angle =
-      -Math.PI / 3 +
-      index * 2.399963229728653 +
-      jitterAngle(node.id, 0.2);
-    const radius = 274 + (index % 3) * 28 + jitterNumber(node.id, 26);
+      -Math.PI / 3 + index * 2.399963229728653 + jitterAngle(node.id, 0.2);
+    const radius = 214 + (index % 3) * 18 + jitterNumber(node.id, 16);
     const point = clampPoint(polar(center, angle, radius, 0.86), padding);
 
     centers.set(node.id, point);
     anchors.set(node.id, point);
   });
 
-  const movableIds = nodes.map((node) => node.id).filter((nodeId) => nodeId !== focusId);
+  const movableIds = nodes
+    .map((node) => node.id)
+    .filter((nodeId) => nodeId !== focusId);
 
   for (let iteration = 0; iteration < 40; iteration += 1) {
     for (const nodeId of movableIds) {
@@ -461,7 +533,7 @@ export function buildLayout(
         const dx = current.x - peerPoint.x;
         const dy = current.y - peerPoint.y;
         const distance = Math.max(Math.hypot(dx, dy), 1);
-        const repulsion = distance < 148 ? 900 / distance : 420 / distance;
+        const repulsion = distance < 128 ? 640 / distance : 300 / distance;
 
         forceX += (dx / distance) * repulsion;
         forceY += (dy / distance) * repulsion;
@@ -476,22 +548,28 @@ export function buildLayout(
         const dx = current.x - neighborPoint.x;
         const dy = current.y - neighborPoint.y;
         const distance = Math.max(Math.hypot(dx, dy), 1);
-        const idealDistance = depthByNodeId.get(nodeId) === 1 ? 156 : 134;
-        const pull = (distance - idealDistance) * 0.075;
+        const idealDistance = depthByNodeId.get(nodeId) === 1 ? 126 : 108;
+        const pull = (distance - idealDistance) * 0.082;
 
         forceX -= (dx / distance) * pull;
         forceY -= (dy / distance) * pull;
       }
 
-      forceX += (anchor.x - current.x) * 0.08;
-      forceY += (anchor.y - current.y) * 0.08;
-      forceX += (center.x - current.x) * 0.012;
-      forceY += (center.y - current.y) * 0.012;
+      forceX += (anchor.x - current.x) * 0.108;
+      forceY += (anchor.y - current.y) * 0.108;
+      forceX += (center.x - current.x) * 0.022;
+      forceY += (center.y - current.y) * 0.022;
 
-      centers.set(nodeId, clampPoint({
-        x: current.x + forceX,
-        y: current.y + forceY,
-      }, padding));
+      centers.set(
+        nodeId,
+        clampPoint(
+          {
+            x: current.x + forceX,
+            y: current.y + forceY,
+          },
+          padding,
+        ),
+      );
     }
   }
 
@@ -506,6 +584,26 @@ export function buildLayout(
   return layout;
 }
 
+function firstDegreeAngles(count: number, compactCluster: boolean) {
+  if (!compactCluster) {
+    return [];
+  }
+
+  if (count === 1) {
+    return [0];
+  }
+
+  if (count === 2) {
+    return [-Math.PI * 0.18, Math.PI * 0.82];
+  }
+
+  if (count === 3) {
+    return [-Math.PI * 0.22, Math.PI * 0.62, Math.PI * 1.08];
+  }
+
+  return [];
+}
+
 function buildLabelStates(
   nodes: MemoryGraphNode[],
   edges: MemoryGraphEdge[],
@@ -518,7 +616,13 @@ function buildLabelStates(
   const labels = new Map<string, LayoutLabelState>();
   const showAllLabels = nodes.length <= 7;
   const denseLimit =
-    nodes.length >= 16 ? 5 : nodes.length >= 12 ? 6 : nodes.length >= 8 ? 7 : nodes.length;
+    nodes.length >= 16
+      ? 5
+      : nodes.length >= 12
+        ? 6
+        : nodes.length >= 8
+          ? 7
+          : nodes.length;
 
   let visibleCount = 0;
 
@@ -530,8 +634,18 @@ function buildLabelStates(
       point: layout.get(node.id),
     }))
     .sort((left, right) => {
-      const leftPriority = labelPriority(left.node.id, selectedNodeId, left.depth, left.degree);
-      const rightPriority = labelPriority(right.node.id, selectedNodeId, right.depth, right.degree);
+      const leftPriority = labelPriority(
+        left.node.id,
+        selectedNodeId,
+        left.depth,
+        left.degree,
+      );
+      const rightPriority = labelPriority(
+        right.node.id,
+        selectedNodeId,
+        right.depth,
+        right.degree,
+      );
 
       if (leftPriority !== rightPriority) {
         return rightPriority - leftPriority;
@@ -562,7 +676,10 @@ function buildLabelStates(
       continue;
     }
 
-    const text = shortTitle(candidate.node.title, showAllLabels ? 24 : alwaysShow ? 22 : 16);
+    const text = shortTitle(
+      candidate.node.title,
+      showAllLabels ? 24 : alwaysShow ? 22 : 16,
+    );
     const placements = preferredPlacements(candidate.point);
     let chosenPlacement = placements[0];
     let fits = false;
@@ -658,7 +775,9 @@ function buildDepthMap(
     depthByNodeId.set(node.id, 99);
   }
 
-  const queue: Array<{ depth: number; id: string }> = [{ depth: 0, id: focusId }];
+  const queue: Array<{ depth: number; id: string }> = [
+    { depth: 0, id: focusId },
+  ];
   const visited = new Set<string>();
 
   while (queue.length > 0) {
@@ -687,10 +806,12 @@ function pickPrimaryParent(
   fallbackId: string,
 ) {
   const currentDepth = depthByNodeId.get(nodeId) ?? 99;
-  const candidates = Array.from(adjacency.get(nodeId) ?? []).filter((neighborId) => {
-    const neighborDepth = depthByNodeId.get(neighborId) ?? 99;
-    return neighborDepth < currentDepth;
-  });
+  const candidates = Array.from(adjacency.get(nodeId) ?? []).filter(
+    (neighborId) => {
+      const neighborDepth = depthByNodeId.get(neighborId) ?? 99;
+      return neighborDepth < currentDepth;
+    },
+  );
 
   if (candidates.length === 0) {
     return fallbackId;
@@ -723,7 +844,11 @@ function preferredPlacements(point: Point): LayoutLabelPlacement[] {
   return ["right", "left", "bottom", "top"];
 }
 
-function labelRect(point: Point, text: string, placement: LayoutLabelPlacement): Rect {
+function labelRect(
+  point: Point,
+  text: string,
+  placement: LayoutLabelPlacement,
+): Rect {
   const centerX = point.x + nodeSize.width / 2;
   const centerY = point.y + nodeSize.height / 2;
   const width = Math.min(
@@ -773,7 +898,12 @@ function overlaps(left: Rect, right: Rect) {
   );
 }
 
-function polar(center: Point, angle: number, radius: number, verticalScale = 1) {
+function polar(
+  center: Point,
+  angle: number,
+  radius: number,
+  verticalScale = 1,
+) {
   return {
     x: center.x + Math.cos(angle) * radius,
     y: center.y + Math.sin(angle) * radius * verticalScale,
@@ -811,7 +941,7 @@ function hashNumber(value: string) {
 }
 
 function jitterNumber(value: string, magnitude: number) {
-  return (hashNumber(value) % 10_000) / 10_000 * magnitude - magnitude / 2;
+  return ((hashNumber(value) % 10_000) / 10_000) * magnitude - magnitude / 2;
 }
 
 function jitterAngle(value: string, magnitude: number) {
@@ -837,9 +967,21 @@ function nodePresentation(
   const muted = depth >= 3;
 
   return {
-    aura: selected ? palette.auraStrong : muted ? palette.auraSoft : palette.aura,
-    fill: selected ? palette.fillStrong : muted ? palette.fillSoft : palette.fill,
-    glow: selected ? palette.glowStrong : muted ? palette.glowSoft : palette.glow,
+    aura: selected
+      ? palette.auraStrong
+      : muted
+        ? palette.auraSoft
+        : palette.aura,
+    fill: selected
+      ? palette.fillStrong
+      : muted
+        ? palette.fillSoft
+        : palette.fill,
+    glow: selected
+      ? palette.glowStrong
+      : muted
+        ? palette.glowSoft
+        : palette.glow,
     labelBackground: selected
       ? palette.labelBackgroundStrong
       : muted
@@ -847,7 +989,11 @@ function nodePresentation(
         : palette.labelBackground,
     labelBorder: selected ? palette.labelBorderStrong : palette.labelBorder,
     labelColor: palette.labelColor,
-    ring: selected ? palette.ringStrong : muted ? palette.ringSoft : palette.ring,
+    ring: selected
+      ? palette.ringStrong
+      : muted
+        ? palette.ringSoft
+        : palette.ring,
   };
 }
 
@@ -997,12 +1143,15 @@ function edgeStrokeColor(
   depth = 3,
 ) {
   if (workbenchView === "schema") {
-    return depth >= 2 ? "rgba(118, 134, 153, 0.38)" : "rgba(99, 117, 138, 0.52)";
+    return depth >= 2
+      ? "rgba(118, 134, 153, 0.38)"
+      : "rgba(99, 117, 138, 0.52)";
   }
 
   if (workbenchView === "consolidation") {
     const approved =
-      sourceNode?.consolidationState === "approved" || targetNode?.consolidationState === "approved";
+      sourceNode?.consolidationState === "approved" ||
+      targetNode?.consolidationState === "approved";
 
     return approved
       ? depth >= 2

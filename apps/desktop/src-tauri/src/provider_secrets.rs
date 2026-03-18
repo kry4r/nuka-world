@@ -88,7 +88,10 @@ impl DesktopCredentialSecretStore {
 
         let vault: ProviderSecretVault = serde_json::from_slice(&body)?;
         if vault.version != PROVIDER_SECRET_VAULT_VERSION {
-            anyhow::bail!("unsupported provider secret vault version: {}", vault.version);
+            anyhow::bail!(
+                "unsupported provider secret vault version: {}",
+                vault.version
+            );
         }
 
         Ok(vault)
@@ -101,8 +104,9 @@ impl DesktopCredentialSecretStore {
 
     fn cipher(&self) -> anyhow::Result<Aes256GcmSiv> {
         let key = self.load_or_create_master_key()?;
-        Aes256GcmSiv::new_from_slice(&key)
-            .map_err(|error| anyhow::anyhow!("failed to initialize provider secret cipher: {error}"))
+        Aes256GcmSiv::new_from_slice(&key).map_err(|error| {
+            anyhow::anyhow!("failed to initialize provider secret cipher: {error}")
+        })
     }
 
     fn load_or_create_master_key(&self) -> anyhow::Result<[u8; 32]> {
@@ -156,10 +160,9 @@ impl ProviderSecretStore for DesktopCredentialSecretStore {
     async fn write(&self, provider_id: &str, secret: &str) -> anyhow::Result<()> {
         let _guard = self.lock.lock().await;
         let mut vault = self.load_vault()?;
-        vault.entries.insert(
-            provider_id.to_string(),
-            self.encrypt_secret(secret)?,
-        );
+        vault
+            .entries
+            .insert(provider_id.to_string(), self.encrypt_secret(secret)?);
         self.save_vault(&vault)
     }
 
@@ -273,12 +276,18 @@ mod tests {
         std::env::set_var(SECRET_ROOT_ENV, &root);
 
         let store = super::DesktopCredentialSecretStore::new().unwrap();
-        store.write("provider-live", "sk-live-secret").await.unwrap();
+        store
+            .write("provider-live", "sk-live-secret")
+            .await
+            .unwrap();
 
         let vault_path = root.join("provider-secrets.vault.json");
         let key_path = root.join("provider-secrets.key");
 
-        assert!(vault_path.exists(), "expected encrypted vault file to exist");
+        assert!(
+            vault_path.exists(),
+            "expected encrypted vault file to exist"
+        );
         assert!(key_path.exists(), "expected vault key file to exist");
         let vault_body = std::fs::read_to_string(&vault_path).unwrap();
         assert!(
@@ -304,7 +313,10 @@ mod tests {
         std::env::set_var(SECRET_ROOT_ENV, &root);
 
         let store = super::DesktopCredentialSecretStore::new().unwrap();
-        store.write("provider-live", "sk-live-secret").await.unwrap();
+        store
+            .write("provider-live", "sk-live-secret")
+            .await
+            .unwrap();
         store.delete("provider-live").await.unwrap();
 
         let reopened = super::DesktopCredentialSecretStore::new().unwrap();

@@ -7,12 +7,21 @@ const sampleTeam = {
   id: "team-release",
   name: "Release Team",
   goal: "Ship the release and publish notes",
-  summary: "Coordinates release validation, notes, and final publish readiness.",
+  summary:
+    "Coordinates release validation, notes, and final publish readiness.",
   promptConstraints: JSON.stringify(
-    [
-      "Keep the team concise and evidence-first.",
-      "Cite release artifacts before conclusions.",
-    ],
+    {
+      language: "zh-CN",
+      mustHaveRoles: {
+        executorAgentsMin: 2,
+        schedulerAgents: 1,
+      },
+      operationalRules: [
+        "Keep the team concise and evidence-first.",
+        "Cite release artifacts before conclusions.",
+      ],
+      scope: ["release", "notes"],
+    },
     null,
     2,
   ),
@@ -186,6 +195,42 @@ const { invokeMock } = vi.hoisted(() => ({
           agents: [],
           events: [],
         };
+      case "list_workspace_sessions":
+        return [
+          {
+            id: "run-release",
+            kind: "team_run",
+            title: "Release Team Run",
+            status: "running",
+            updatedAt: "2026-03-11T12:31:00Z",
+          },
+        ];
+      case "load_team_run":
+        return {
+          id: "run-release",
+          teamId: sampleTeam.id,
+          title: "Release Team Run",
+          goal: sampleTeam.goal,
+          status: "running",
+          currentPhase: "review",
+          leadAgentId: "agent-moderator",
+          charter: {
+            goal: sampleTeam.goal,
+            successCriteria: sampleTeam.successCriteria,
+            outputFormat: "Release summary",
+            currentPhase: "review",
+            maxRounds: 6,
+            maxActiveAgentsPerRound: 2,
+            maxMessagesPerAgentPerRound: 2,
+            budgetPolicy: "Summaries only",
+            stopConditions: ["Checklist complete"],
+          },
+          createdAt: "2026-03-11T12:30:00Z",
+          updatedAt: "2026-03-11T12:31:00Z",
+          routing: null,
+          agents: [],
+          events: [],
+        };
       default:
         throw new Error(`unexpected command: ${command}`);
     }
@@ -193,7 +238,8 @@ const { invokeMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (command: string, args?: Record<string, unknown>) => invokeMock(command, args),
+  invoke: (command: string, args?: Record<string, unknown>) =>
+    invokeMock(command, args),
 }));
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -217,13 +263,19 @@ function findButton(container: HTMLElement, text: string) {
 
 async function clickButton(container: HTMLElement, text: string) {
   await act(async () => {
-    findButton(container, text)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    findButton(container, text)?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
     await Promise.resolve();
     await Promise.resolve();
   });
 }
 
-async function setInputValue(container: HTMLElement, label: string, value: string) {
+async function setInputValue(
+  container: HTMLElement,
+  label: string,
+  value: string,
+) {
   const input = Array.from(container.querySelectorAll("input, textarea")).find(
     (node) => node.getAttribute("aria-label") === label,
   ) as HTMLInputElement | HTMLTextAreaElement | undefined;
@@ -248,7 +300,9 @@ async function setInputValue(container: HTMLElement, label: string, value: strin
 function captureToasts() {
   const toasts: Array<{ message?: string; tone?: string }> = [];
   const handleToast = (event: Event) => {
-    toasts.push((event as CustomEvent<{ message?: string; tone?: string }>).detail);
+    toasts.push(
+      (event as CustomEvent<{ message?: string; tone?: string }>).detail,
+    );
   };
 
   window.addEventListener("nuka:toast", handleToast as EventListener);
@@ -262,25 +316,174 @@ function captureToasts() {
 }
 
 describe("TeamPage", () => {
+  it("humanizes scheduler and executor copy inside the team editor", async () => {
+    const originalRoles = sampleTeam.agents.map((agent) => agent.role);
+    const originalResponsibilities = sampleTeam.agents.map(
+      (agent) => agent.responsibility,
+    );
+
+    sampleTeam.agents[0]!.role = "Scheduler Agent";
+    sampleTeam.agents[0]!.responsibility =
+      "Contribute as Scheduler Agent for the team goal.";
+    sampleTeam.agents[1]!.role = "Executor Agent";
+    sampleTeam.agents[1]!.responsibility =
+      "Contribute as Executor Agent for the team goal.";
+
+    const view = await renderIntoDocument(<TeamPage />);
+    cleanups.push(view.cleanup);
+
+    try {
+      expect(findText(view.container, "调度智能体")).toBeTruthy();
+      expect(findText(view.container, "执行智能体")).toBeTruthy();
+      expect(
+        findText(view.container, "以调度智能体身份推进当前协作团队目标。"),
+      ).toBeTruthy();
+      expect(
+        findText(view.container, "以执行智能体身份推进当前协作团队目标。"),
+      ).toBeTruthy();
+      expect(
+        findText(view.container, "Contribute as Scheduler Agent"),
+      ).toBeFalsy();
+      expect(
+        findText(view.container, "Contribute as Executor Agent"),
+      ).toBeFalsy();
+    } finally {
+      sampleTeam.agents[0]!.role = originalRoles[0]!;
+      sampleTeam.agents[0]!.responsibility = originalResponsibilities[0]!;
+      sampleTeam.agents[1]!.role = originalRoles[1]!;
+      sampleTeam.agents[1]!.responsibility = originalResponsibilities[1]!;
+    }
+  });
+
+  it("humanizes generic coordinator fallback copy inside the team editor", async () => {
+    const originalRole = sampleTeam.agents[0]!.role;
+    const originalResponsibility = sampleTeam.agents[0]!.responsibility;
+
+    sampleTeam.agents[0]!.role = "Coordinator";
+    sampleTeam.agents[0]!.responsibility =
+      "Contribute as Coordinator for the team goal.";
+
+    const view = await renderIntoDocument(<TeamPage />);
+    cleanups.push(view.cleanup);
+
+    try {
+      expect(findText(view.container, "协调者")).toBeTruthy();
+      expect(
+        findText(view.container, "以协调者身份推进当前协作团队目标。"),
+      ).toBeTruthy();
+      expect(
+        findText(
+          view.container,
+          "Contribute as Coordinator for the team goal.",
+        ),
+      ).toBeFalsy();
+    } finally {
+      sampleTeam.agents[0]!.role = originalRole;
+      sampleTeam.agents[0]!.responsibility = originalResponsibility;
+    }
+  });
+
+  it("renders prompt constraints as structured fields and exposes recent launches as chat entries", async () => {
+    const dispatchEventSpy = vi.spyOn(window, "dispatchEvent");
+    const view = await renderIntoDocument(<TeamPage />);
+    cleanups.push(view.cleanup);
+
+    try {
+      expect(
+        view.container.querySelector('input[aria-label="工作语言"]'),
+      ).toBeTruthy();
+      expect(
+        view.container.querySelector('input[aria-label="调度智能体数量"]'),
+      ).toBeTruthy();
+      expect(
+        view.container.querySelector('input[aria-label="执行智能体最少数量"]'),
+      ).toBeTruthy();
+      expect(
+        view.container.querySelector('input[aria-label="工作规则 1"]'),
+      ).toBeTruthy();
+      expect(
+        view.container.querySelector('input[aria-label="覆盖范围 1"]'),
+      ).toBeTruthy();
+      expect(findText(view.container, '"language"')).toBeFalsy();
+      expect(findText(view.container, "最近启动")).toBeTruthy();
+      expect(findText(view.container, "Release Team Run")).toBeTruthy();
+
+      await clickButton(view.container, "在对话中打开");
+
+      expect(dispatchEventSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "nuka:navigate",
+          detail: expect.objectContaining({
+            kind: "team_run",
+            page: "chat",
+            sessionId: "run-release",
+          }),
+        }),
+      );
+    } finally {
+      dispatchEventSpy.mockRestore();
+    }
+  });
+
   it("renders policy and coordination editors as direct fields instead of raw json textareas", async () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
 
-    expect(view.container.querySelector('textarea[aria-label="Prompt constraints"]')).toBeFalsy();
-    expect(view.container.querySelector('textarea[aria-label="Permission policy"]')).toBeFalsy();
-    expect(view.container.querySelector('input[aria-label="Prompt constraint 1"]')).toBeTruthy();
-    expect(view.container.querySelector('input[aria-label="Allowed resource 1"]')).toBeTruthy();
-    expect(view.container.querySelector('input[aria-label="Denied action 1"]')).toBeTruthy();
-    expect(view.container.querySelector('input[aria-label="Success criteria key 1"]')).toBeTruthy();
-    expect(view.container.querySelector('input[aria-label="Success criteria value 1"]')).toBeTruthy();
-    expect(view.container.querySelector('input[aria-label="Coordination flow"]')).toBeTruthy();
-    expect(view.container.querySelector('textarea[aria-label="Coordination feedback loop"]')).toBeTruthy();
-    expect(view.container.querySelector('textarea[aria-label="Coordination error handling"]')).toBeTruthy();
-    expect(view.container.querySelector('input[aria-label="Role hierarchy role 1"]')).toBeTruthy();
-    expect(view.container.querySelector('input[aria-label="Role hierarchy value 1"]')).toBeTruthy();
-    expect(findText(view.container, "\"allowedResources\"")).toBeFalsy();
-    expect(findText(view.container, "\"checklistComplete\"")).toBeFalsy();
-    expect(findText(view.container, "\"flow\"")).toBeFalsy();
+    expect(
+      view.container.querySelector('textarea[aria-label="Prompt constraints"]'),
+    ).toBeFalsy();
+    expect(
+      view.container.querySelector('textarea[aria-label="Permission policy"]'),
+    ).toBeFalsy();
+    expect(
+      view.container.querySelector('input[aria-label="工作语言"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('input[aria-label="工作规则 1"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('input[aria-label="覆盖范围 1"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('input[aria-label="允许访问的资源 1"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('input[aria-label="禁止动作 1"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        'input[aria-label="成功标准名称 1"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        'input[aria-label="成功标准内容 1"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('input[aria-label="流程"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        'textarea[aria-label="反馈回路"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        'textarea[aria-label="异常处理"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('input[aria-label="角色层级名称 1"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        'input[aria-label="角色层级内容 1"]',
+      ),
+    ).toBeTruthy();
+    expect(findText(view.container, '"allowedResources"')).toBeFalsy();
+    expect(findText(view.container, '"checklistComplete"')).toBeFalsy();
+    expect(findText(view.container, '"flow"')).toBeFalsy();
   });
 
   it("keeps the page edit-only and saves structured team policy fields back into the persisted json shape", async () => {
@@ -289,28 +492,65 @@ describe("TeamPage", () => {
     const toastCapture = captureToasts();
 
     try {
-      expect(findText(view.container, "Generate a Team from a goal")).toBeFalsy();
-      expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
+      expect(
+        findText(view.container, "Generate a Team from a goal"),
+      ).toBeFalsy();
+      expect(
+        findText(view.container, "Generate a team from a goal to begin."),
+      ).toBeFalsy();
 
-      await setInputValue(view.container, "Team description", "Tighten the release checklist before launch.");
-      await setInputValue(view.container, "Prompt constraint 1", "Only cite evidence found in the workspace.");
-      await setInputValue(view.container, "Allowed resource 1", "/verified-evidence");
-      await setInputValue(view.container, "Denied action 1", "force_push_main");
-      await setInputValue(view.container, "Success criteria value 1", "required");
-      await setInputValue(view.container, "Coordination flow", "sequential");
-      await clickButton(view.container, "Remove Publisher");
-      await clickButton(view.container, "Add Reviewer");
-      await clickButton(view.container, "Save Changes");
+      await setInputValue(
+        view.container,
+        "协作团队说明",
+        "Tighten the release checklist before launch.",
+      );
+      await setInputValue(
+        view.container,
+        "工作规则 1",
+        "Only cite evidence found in the workspace.",
+      );
+      await setInputValue(view.container, "工作语言", "zh-CN");
+      await setInputValue(view.container, "调度智能体数量", "1");
+      await setInputValue(view.container, "执行智能体最少数量", "2");
+      await setInputValue(
+        view.container,
+        "允许访问的资源 1",
+        "/verified-evidence",
+      );
+      await setInputValue(view.container, "禁止动作 1", "force_push_main");
+      await setInputValue(
+        view.container,
+        "成功标准内容 1",
+        "required",
+      );
+      await setInputValue(view.container, "流程", "sequential");
+      await clickButton(view.container, "移除 Publisher");
+      await clickButton(view.container, "加入 Reviewer");
+      await clickButton(view.container, "保存模板");
 
-      const updateCall = invokeMock.mock.calls.find(([command]) => command === "update_team");
+      const updateCall = invokeMock.mock.calls.find(
+        ([command]) => command === "update_team",
+      );
       expect(updateCall).toBeTruthy();
 
       const updatedTeam = updateCall?.[1]?.team as typeof sampleTeam;
-      expect(updatedTeam.summary).toBe("Tighten the release checklist before launch.");
-      expect(JSON.parse(updatedTeam.promptConstraints)).toEqual([
-        "Only cite evidence found in the workspace.",
-        "Cite release artifacts before conclusions.",
-      ]);
+      expect(updatedTeam.summary).toBe(
+        "Tighten the release checklist before launch.",
+      );
+      expect(JSON.parse(updatedTeam.promptConstraints)).toEqual(
+        expect.objectContaining({
+          language: "zh-CN",
+          mustHaveRoles: {
+            executorAgentsMin: 2,
+            schedulerAgents: 1,
+          },
+          operationalRules: [
+            "Only cite evidence found in the workspace.",
+            "Cite release artifacts before conclusions.",
+          ],
+          scope: ["release", "notes"],
+        }),
+      );
       expect(JSON.parse(updatedTeam.permissionPolicy)).toEqual(
         expect.objectContaining({
           allowedResources: ["/verified-evidence", "/notes"],
@@ -329,21 +569,20 @@ describe("TeamPage", () => {
           flow: "sequential",
         }),
       );
-      expect(updatedTeam.agentAssignments.map((assignment) => assignment.agentId)).toEqual([
-        "agent-moderator",
-        "agent-reviewer",
-      ]);
+      expect(
+        updatedTeam.agentAssignments.map((assignment) => assignment.agentId),
+      ).toEqual(["agent-moderator", "agent-reviewer"]);
       expect(updatedTeam.agents.map((agent) => agent.name)).toEqual([
         "Moderator",
         "Reviewer",
       ]);
       expect(toastCapture.toasts).toContainEqual(
         expect.objectContaining({
-          message: "Team saved.",
+          message: "协作团队模板已保存。",
           tone: "success",
         }),
       );
-      expect(findText(view.container, "Team saved.")).toBeFalsy();
+      expect(findText(view.container, "协作团队模板已保存。")).toBeFalsy();
     } finally {
       toastCapture.release();
     }
@@ -357,26 +596,37 @@ describe("TeamPage", () => {
 
     try {
       expect(findText(view.container, "Release Team")).toBeTruthy();
-      expect(findText(view.container, "Allowed tools")).toBeTruthy();
-      expect(findText(view.container, "Start Run")).toBeTruthy();
-      expect(findText(view.container, "Provider-backed teams stay persisted and can be resumed into new runs.")).toBeFalsy();
-      expect(findText(view.container, "Generate a Team from a goal")).toBeFalsy();
-      expect(findText(view.container, "Generate a team from a goal to begin.")).toBeFalsy();
+      expect(findText(view.container, "可用工具")).toBeTruthy();
+      expect(findText(view.container, "在对话中启动")).toBeTruthy();
+      expect(
+        findText(
+          view.container,
+          "Provider-backed teams stay persisted and can be resumed into new runs.",
+        ),
+      ).toBeFalsy();
+      expect(
+        findText(view.container, "Generate a Team from a goal"),
+      ).toBeFalsy();
+      expect(
+        findText(view.container, "Generate a team from a goal to begin."),
+      ).toBeFalsy();
       expect(
         Array.from(view.container.querySelectorAll("input")).find(
           (node) => node.getAttribute("aria-label") === "Team goal",
         ),
       ).toBeUndefined();
 
-      await clickButton(view.container, "Start Run");
+      await clickButton(view.container, "在对话中启动");
 
       expect(toastCapture.toasts).toContainEqual(
         expect.objectContaining({
-          message: "Run started: Release Team Run",
+          message: "已启动协作流程：Release Team Run",
           tone: "success",
         }),
       );
-      expect(findText(view.container, "Run started: Release Team Run")).toBeFalsy();
+      expect(
+        findText(view.container, "已启动协作流程：Release Team Run"),
+      ).toBeFalsy();
       expect(dispatchEventSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "nuka:navigate",
@@ -401,12 +651,116 @@ describe("TeamPage", () => {
     const view = await renderIntoDocument(<TeamPage />);
     cleanups.push(view.cleanup);
 
-    const listEmpty = view.container.querySelector('[data-testid="team-list-empty"]');
-    const editorEmpty = view.container.querySelector('[data-testid="team-editor-empty"]');
+    const listEmpty = view.container.querySelector(
+      '[data-testid="team-list-empty"]',
+    );
+    const editorEmpty = view.container.querySelector(
+      '[data-testid="team-editor-empty"]',
+    );
 
-    expect(listEmpty?.textContent?.trim()).toBe("No teams yet.");
-    expect(editorEmpty?.textContent?.trim()).toBe("No teams yet.");
+    expect(listEmpty?.textContent?.trim()).toBe("还没有协作团队。");
     expect(listEmpty?.className).toContain("team-list__empty--centered");
     expect(editorEmpty?.className).toContain("team-editor__empty--centered");
+    expect(findText(view.container, "先用一句话生成协作团队")).toBeTruthy();
+    expect(findButton(view.container, "一句话生成协作团队")).toBeTruthy();
+  });
+
+  it("creates a team from a one-line goal when the workspace starts empty", async () => {
+    const generatedTeam = {
+      ...sampleTeam,
+      id: "team-desktop-p0",
+      name: "桌面 P0 验收协作团队",
+      goal: "请创建一个桌面 P0 验收协作团队，至少包含 5 个子智能体，分别负责 UI 审核、team run、memory、文件时间线和恢复验证。",
+      agents: [
+        sampleTeam.agents[0],
+        sampleTeam.agents[1],
+        {
+          ...sampleTeam.agents[1],
+          id: "agent-memory",
+          name: "Memory Reviewer",
+          role: "Memory Reviewer",
+          responsibility: "核对记忆图、记忆审核和 owner rail 语义。",
+        },
+        {
+          ...sampleTeam.agents[1],
+          id: "agent-files",
+          name: "Files Reviewer",
+          role: "Files Reviewer",
+          responsibility: "核对文件时间线与 round/batch 展示。",
+        },
+        {
+          ...sampleTeam.agents[1],
+          id: "agent-recovery",
+          name: "Recovery Reviewer",
+          role: "Recovery Reviewer",
+          responsibility: "核对重启恢复和 blocked/resume 语义。",
+        },
+      ],
+      agentAssignments: [
+        sampleTeam.agentAssignments[0],
+        sampleTeam.agentAssignments[1],
+        {
+          ...sampleTeam.agentAssignments[1],
+          id: "assignment-memory",
+          agentId: "agent-memory",
+          orderHint: 2,
+        },
+        {
+          ...sampleTeam.agentAssignments[1],
+          id: "assignment-files",
+          agentId: "agent-files",
+          orderHint: 3,
+        },
+        {
+          ...sampleTeam.agentAssignments[1],
+          id: "assignment-recovery",
+          agentId: "agent-recovery",
+          orderHint: 4,
+        },
+      ],
+    };
+
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      switch (command) {
+        case "list_teams":
+          return [];
+        case "list_agents":
+          return availableAgents;
+        case "list_workspace_sessions":
+          return [];
+        case "create_team_from_goal":
+          return generatedTeam;
+        default:
+          throw new Error(`unexpected command: ${command}`);
+      }
+    });
+
+    const toastCapture = captureToasts();
+
+    try {
+      const view = await renderIntoDocument(<TeamPage />);
+      cleanups.push(view.cleanup);
+
+      await setInputValue(
+        view.container,
+        "协作团队目标",
+        generatedTeam.goal,
+      );
+      await clickButton(view.container, "一句话生成协作团队");
+
+      expect(invokeMock).toHaveBeenCalledWith("create_team_from_goal", {
+        goal: generatedTeam.goal,
+      });
+      expect(findText(view.container, "桌面 P0 验收协作团队")).toBeTruthy();
+      expect(findText(view.container, "Memory Reviewer")).toBeTruthy();
+      expect(toastCapture.toasts).toContainEqual(
+        expect.objectContaining({
+          message: "协作团队模板已生成，可继续微调字段。",
+          tone: "success",
+        }),
+      );
+    } finally {
+      toastCapture.release();
+    }
   });
 });

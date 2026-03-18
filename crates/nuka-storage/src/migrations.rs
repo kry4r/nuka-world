@@ -197,6 +197,51 @@ pub async fn run(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
         .await?;
     }
 
+    sqlx::query(
+        r#"
+        create table if not exists team_agent_assignments (
+          id text primary key,
+          team_id text not null,
+          agent_id text not null,
+          enabled integer not null default 1,
+          order_hint integer not null,
+          prompt_override text,
+          permission_override_json text not null default '{}',
+          created_at text not null,
+          updated_at text not null
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        insert or ignore into team_agent_assignments (
+          id, team_id, agent_id, enabled, order_hint, prompt_override,
+          permission_override_json, created_at, updated_at
+        )
+        select
+          id,
+          team_id,
+          agent_id,
+          enabled,
+          order_hint,
+          prompt_override,
+          permission_override_json,
+          created_at,
+          updated_at
+        from team_agents
+        where ifnull(agent_id, '') != ''
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("delete from team_agents where ifnull(agent_id, '') != ''")
+        .execute(pool)
+        .await?;
+
     let has_team_run_source_agent_id: i64 = sqlx::query_scalar(
         "select count(*) from pragma_table_info('team_run_agents') where name = 'source_agent_id'",
     )

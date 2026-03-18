@@ -145,17 +145,14 @@ impl MemoryService {
         match decision {
             nuka_domain::memory::ReviewDecision::PromoteSemantic => {
                 node.trace_type = nuka_domain::memory::MemoryTraceType::Semantic;
-                node.consolidation_state =
-                    nuka_domain::memory::MemoryConsolidationState::Approved;
+                node.consolidation_state = nuka_domain::memory::MemoryConsolidationState::Approved;
             }
             nuka_domain::memory::ReviewDecision::KeepEpisodic => {
                 node.trace_type = nuka_domain::memory::MemoryTraceType::Episodic;
-                node.consolidation_state =
-                    nuka_domain::memory::MemoryConsolidationState::Approved;
+                node.consolidation_state = nuka_domain::memory::MemoryConsolidationState::Approved;
             }
             nuka_domain::memory::ReviewDecision::Reject => {
-                node.consolidation_state =
-                    nuka_domain::memory::MemoryConsolidationState::Rejected;
+                node.consolidation_state = nuka_domain::memory::MemoryConsolidationState::Rejected;
             }
         }
 
@@ -177,7 +174,9 @@ impl MemoryService {
                 decision: decision.clone(),
             })
             .await?;
-        candidate_repository.mark_reviewed(candidate_id, decision).await?;
+        candidate_repository
+            .mark_reviewed(candidate_id, decision)
+            .await?;
 
         Ok(())
     }
@@ -256,18 +255,25 @@ impl MemoryService {
 
         let node_id = uuid::Uuid::new_v4().to_string();
         let candidate_id = uuid::Uuid::new_v4().to_string();
-        let title = prompt.chars().take(48).collect::<String>();
+        let title = summarize_runtime_candidate_title(prompt);
+        let body = build_runtime_candidate_body(prompt, reason);
         let graph_repository = nuka_storage::memory::MemoryGraphRepository::new(self.pool.clone());
         let scope_repository = nuka_storage::memory::MemoryScopeRepository::new(self.pool.clone());
 
         scope_repository.upsert(scope.clone()).await?;
+        let previous_node_id = graph_repository
+            .load_graph_for_scope(Some(&scope.id))
+            .await?
+            .nodes
+            .last()
+            .map(|node| node.id.clone());
 
         graph_repository
             .upsert_node(nuka_domain::memory::MemoryGraphNode {
                 id: node_id.clone(),
                 kind: nuka_domain::memory::MemoryNodeKind::Fact,
                 title: title.clone(),
-                body: Some(prompt.to_string()),
+                body: Some(body),
                 trace_type: nuka_domain::memory::MemoryTraceType::Working,
                 consolidation_state: nuka_domain::memory::MemoryConsolidationState::Candidate,
             })
@@ -275,6 +281,16 @@ impl MemoryService {
         graph_repository
             .bind_node_to_scope(&node_id, &scope.id)
             .await?;
+        if let Some(source_id) = previous_node_id {
+            graph_repository
+                .create_edge(nuka_domain::memory::MemoryGraphEdge {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    source_id,
+                    target_id: node_id.clone(),
+                    relation: "follows".to_string(),
+                })
+                .await?;
+        }
 
         let repository = nuka_storage::memory::MemoryCandidateRepository::new(self.pool.clone());
         repository
@@ -326,11 +342,154 @@ fn format_workflow_scope_name(workflow_id: &str) -> String {
         .join(" ")
 }
 
+fn summarize_runtime_candidate_title(prompt: &str) -> String {
+    let detail = build_runtime_candidate_detail(prompt);
+    let summary = detail
+        .split(['\n', '。', '！', '？', '!', '?', ';', '；', '，', ','])
+        .find(|segment| !segment.trim().is_empty())
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .unwrap_or(detail.as_str());
+
+    let concise = if let Some((subject, predicate)) = summary.split_once("需要") {
+        format!("{}{}", subject.trim(), predicate.trim())
+    } else {
+        summary
+            .trim_start_matches("要在")
+            .trim_start_matches("在")
+            .trim_start_matches("将")
+            .trim()
+            .to_string()
+    };
+
+    truncate_memory_text(&concise, 24)
+}
+
+fn build_runtime_candidate_body(prompt: &str, reason: &str) -> String {
+    let detail = build_runtime_candidate_detail(prompt);
+    let locations = extract_memory_locations(prompt);
+    let reason = normalize_memory_text(reason);
+    let mut sections = vec![format!("详细记录：{detail}")];
+
+    if !locations.is_empty() {
+        sections.push(format!("相关位置：{}", locations.join("、")));
+    }
+
+    if !reason.is_empty() {
+        sections.push(format!("记录缘由：{reason}"));
+    }
+
+    sections.join("\n")
+}
+
+fn build_runtime_candidate_detail(prompt: &str) -> String {
+    let normalized = normalize_memory_text(prompt);
+    let without_locations = extract_memory_locations(prompt)
+        .into_iter()
+        .fold(normalized, |current, location| {
+            current.replace(&location, "")
+        });
+    let trimmed = without_locations
+        .trim_start_matches("记住 ")
+        .trim_start_matches("记下 ")
+        .trim_start_matches("Remember ")
+        .trim_start_matches("Capture ")
+        .trim_start_matches("在 ")
+        .trim_start_matches("于 ")
+        .trim();
+    let cleaned = trimmed
+        .trim_start_matches("里的")
+        .trim_start_matches("里")
+        .trim_start_matches("中的")
+        .trim_start_matches("中")
+        .trim_start_matches("需要")
+        .trim_start_matches("要把")
+        .trim_start_matches("要将")
+        .trim_matches(|character: char| {
+            matches!(
+                character,
+                ' ' | '\n' | '\t' | '，' | ',' | '。' | '；' | ';' | '：' | ':'
+            )
+        })
+        .trim();
+
+    if cleaned.is_empty() {
+        normalize_memory_text(prompt)
+    } else {
+        cleaned.to_string()
+    }
+}
+
+fn extract_memory_locations(prompt: &str) -> Vec<String> {
+    let normalized = normalize_memory_text(prompt);
+    let mut locations = Vec::new();
+
+    for token in normalized.split(' ') {
+        let candidate = token.trim_matches(|character: char| {
+            matches!(
+                character,
+                ' ' | '\n'
+                    | '\t'
+                    | '，'
+                    | ','
+                    | '。'
+                    | '；'
+                    | ';'
+                    | '：'
+                    | ':'
+                    | '('
+                    | ')'
+                    | '（'
+                    | '）'
+                    | '"'
+                    | '\''
+            )
+        });
+
+        if looks_like_location(candidate) && !locations.iter().any(|value| value == candidate) {
+            locations.push(candidate.to_string());
+        }
+    }
+
+    locations
+}
+
+fn looks_like_location(value: &str) -> bool {
+    value.contains('/')
+        && value
+            .rsplit('/')
+            .next()
+            .map(|segment| segment.contains('.'))
+            .unwrap_or(false)
+}
+
+fn normalize_memory_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_memory_text(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    let characters: Vec<char> = trimmed.chars().collect();
+
+    if characters.len() <= max_chars {
+        return trimmed.to_string();
+    }
+
+    let keep = max_chars.saturating_sub(1);
+    let shortened = characters[..keep]
+        .iter()
+        .collect::<String>()
+        .trim_end()
+        .to_string();
+    format!("{shortened}…")
+}
+
 #[cfg(test)]
 mod tests {
     use super::MemoryService;
     use nuka_domain::memory::{
-        MemoryGraphEdge, MemoryGraphNode, MemoryNodeKind, MemoryTraceType, ReviewDecision,
+        MemoryGraphEdge, MemoryGraphNode, MemoryNodeKind, MemorySurface, MemoryTraceType,
+        ReviewDecision,
     };
 
     #[tokio::test]
@@ -490,5 +649,79 @@ mod tests {
             scope.id == "workflow:workflow-release-notes"
                 && scope.workflow_id.as_deref() == Some("workflow-release-notes")
         }));
+    }
+
+    #[tokio::test]
+    async fn runtime_candidates_use_brief_titles_and_keep_reason_in_detailed_body() {
+        let service = MemoryService::new_for_test();
+        let candidate = service
+            .record_runtime_candidate(
+                MemorySurface::Workflow,
+                "workflow-release-audit",
+                "记住 apps/desktop/src-tauri/src/commands/team.rs 里要在创建 team run 后发出 TeamRunStarted 事件，这样协作团队记忆图才能连起来并保持正确 owner。",
+                "Team memory graph stayed empty during desktop acceptance.",
+                super::workflow_scope("workflow-release-audit"),
+            )
+            .await
+            .unwrap();
+
+        let graph = service
+            .load_graph_for_scope(Some("workflow:workflow-release-audit"))
+            .await
+            .unwrap();
+        let node = graph
+            .nodes
+            .into_iter()
+            .find(|entry| entry.id == candidate.node_id)
+            .expect("candidate node should exist");
+        let body = node.body.expect("candidate body should exist");
+
+        assert!(candidate.title.chars().count() <= 36);
+        assert_ne!(node.title, body);
+        assert!(!candidate
+            .title
+            .contains("apps/desktop/src-tauri/src/commands/team.rs"));
+        assert!(body.contains("apps/desktop/src-tauri/src/commands/team.rs"));
+        assert!(body.contains("相关位置：apps/desktop/src-tauri/src/commands/team.rs"));
+        assert!(body.contains("详细记录："));
+        assert!(body.contains("记录缘由"));
+        assert!(body.contains("Team memory graph stayed empty during desktop acceptance."));
+    }
+
+    #[tokio::test]
+    async fn chat_runtime_event_localizes_memory_reason_and_keeps_title_brief() {
+        let service = MemoryService::new_for_test();
+
+        service
+            .handle_runtime_event(crate::runtime_events::RuntimeEvent::ChatTurnCompleted {
+                session_id: "chat-session-1".to_string(),
+                prompt: "记住 apps/desktop/src/features/chat/ChatPage.tsx 里的路由徽标需要显示有效 provider 与 model，并保留失败原因。".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let candidate = service
+            .list_pending_candidates()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.owner_id == "chat-session-1")
+            .expect("chat candidate should exist");
+        let graph = service.load_graph_for_scope(Some("world")).await.unwrap();
+        let node = graph
+            .nodes
+            .into_iter()
+            .find(|entry| entry.id == candidate.node_id)
+            .expect("candidate node should exist");
+        let body = node.body.expect("candidate body should exist");
+
+        assert!(candidate.title.chars().count() <= 24);
+        assert_ne!(node.title, body);
+        assert!(!candidate.title.contains("ChatPage.tsx"));
+        assert!(body.contains("ChatPage.tsx"));
+        assert!(body.contains("相关位置：apps/desktop/src/features/chat/ChatPage.tsx"));
+        assert!(body.contains("详细记录："));
+        assert!(body.contains("记录缘由：这条对话已进入记忆审核。"));
+        assert!(!body.contains("Chat turn proposed for review"));
     }
 }

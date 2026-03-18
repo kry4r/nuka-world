@@ -4,7 +4,7 @@ use nuka_integrations::providers::{openai::OpenAiCompatibleProvider, types::Open
 
 const TEAM_RUN_COMPACTION_EVENT_THRESHOLD: usize = 12;
 const TEAM_RUN_COMPACTION_RECENT_WINDOW: usize = 5;
-const TEAM_RUN_KICKOFF_PROMPT: &str = "Kick off the team run";
+const TEAM_RUN_KICKOFF_PROMPT: &str = "启动这一轮协作团队运行。";
 
 #[derive(Debug, Clone)]
 pub struct RuntimeAgentSpec {
@@ -101,9 +101,29 @@ impl TeamRunService {
         self.start_team_run_with_route(team_id, None).await
     }
 
+    pub async fn start_team_run_with_initial_prompt(
+        &self,
+        team_id: &str,
+        prompt: &str,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+    ) -> anyhow::Result<nuka_domain::team::TeamRun> {
+        self.start_team_run_internal(team_id, Some(prompt), route_request)
+            .await
+    }
+
     pub async fn start_team_run_with_route(
         &self,
         team_id: &str,
+        route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
+    ) -> anyhow::Result<nuka_domain::team::TeamRun> {
+        self.start_team_run_internal(team_id, None, route_request)
+            .await
+    }
+
+    async fn start_team_run_internal(
+        &self,
+        team_id: &str,
+        initial_prompt: Option<&str>,
         route_request: Option<nuka_domain::provider::ProviderRouteRequest>,
     ) -> anyhow::Result<nuka_domain::team::TeamRun> {
         nuka_storage::migrations::run(&self.pool).await?;
@@ -121,21 +141,16 @@ impl TeamRunService {
 
         let mut run = snapshot_team_into_run(&team, charter);
         let repo = nuka_storage::team_runs::TeamRunRepository::new(self.pool.clone());
-        queue_instruction(
-            &mut run,
-            TEAM_RUN_KICKOFF_PROMPT,
-            "run_queued",
-            "Run queued",
-        );
+        let kickoff_prompt = initial_prompt.unwrap_or(TEAM_RUN_KICKOFF_PROMPT);
+        let (event_kind, event_title) = if initial_prompt.is_some() {
+            ("user_instruction", "User follow-up")
+        } else {
+            ("run_queued", "Run queued")
+        };
+        queue_instruction(&mut run, kickoff_prompt, event_kind, event_title);
         repo.create_run(run.clone()).await?;
-        self.drive_team_run(
-            &repo,
-            &mut run,
-            TEAM_RUN_KICKOFF_PROMPT,
-            route_request,
-            None,
-        )
-        .await
+        self.drive_team_run(&repo, &mut run, kickoff_prompt, route_request, None)
+            .await
     }
 
     pub async fn continue_team_run(
@@ -170,6 +185,7 @@ impl TeamRunService {
                 })
         });
         queue_instruction(&mut run, prompt, "user_instruction", "User follow-up");
+        touch_run(&mut run);
         repo.save_run(run.clone()).await?;
         self.drive_team_run(&repo, &mut run, prompt, requested_route, None)
             .await
@@ -220,6 +236,7 @@ impl TeamRunService {
             created_at: String::new(),
         });
 
+        touch_run(&mut run);
         repo.save_run(run.clone()).await?;
         repo.load_run(&run.id)
             .await?
@@ -354,6 +371,7 @@ impl TeamRunService {
             queue_instruction(&mut run, &prompt, "run_queued", "Run queued");
         }
 
+        touch_run(&mut run);
         repo.save_run(run.clone()).await?;
         self.drive_team_run(&repo, &mut run, &prompt, None, Some(mode))
             .await
@@ -390,6 +408,7 @@ impl TeamRunService {
         run.status = nuka_domain::team::TeamRunStatus::Active;
         update_latest_instruction_status(run, &["queued", "blocked", "active"], "active");
         push_runtime_progress_event(run, prompt, recovery_mode);
+        touch_run(run);
         repo.save_run(run.clone()).await?;
 
         if let Err(error) = self
@@ -398,6 +417,7 @@ impl TeamRunService {
         {
             return self.persist_blocked_run(repo, run, prompt, &error).await;
         }
+        touch_run(run);
         repo.save_run(run.clone()).await?;
 
         if let Err(error) = execute_round(
@@ -415,6 +435,7 @@ impl TeamRunService {
 
         update_latest_instruction_status(run, &["active", "queued"], "completed");
         self.maybe_compact_run_events(repo, run).await?;
+        touch_run(run);
         repo.save_run(run.clone()).await?;
         repo.load_run(&run.id)
             .await?
@@ -459,6 +480,7 @@ impl TeamRunService {
             created_at: String::new(),
         });
 
+        touch_run(run);
         repo.save_run(run.clone()).await?;
         repo.load_run(&run.id)
             .await?
@@ -720,7 +742,7 @@ async fn completion_or_seed(
     match seed_completion {
         Some(seed) => Ok(format!("{seed}: {fallback}")),
         None => Ok(provider_client
-            .complete_chat(provider, messages)
+            .complete_chat_stream(provider, messages, |_delta| Ok(()))
             .await?
             .choices
             .first()
@@ -815,32 +837,142 @@ fn next_sequence(events: &[nuka_domain::team::TeamRunEvent]) -> i64 {
     events.iter().map(|event| event.sequence).max().unwrap_or(0) + 1
 }
 
+fn touch_run(run: &mut nuka_domain::team::TeamRun) {
+    run.updated_at.clear();
+}
+
 fn summarize_team_run_events(events: &[nuka_domain::team::TeamRunEvent]) -> String {
     let lines = events
         .iter()
-        .map(|event| {
-            format!(
-                "- {} / {}: {}",
-                event.kind,
-                event.title,
-                excerpt(&event.content, 96)
-            )
-        })
+        .map(summarize_team_run_event_line)
         .collect::<Vec<_>>();
     format!(
-        "Compacted earlier team run context ({} events):\n{}",
+        "较早的协作团队上下文已压缩（{} 条事件）：\n{}",
         events.len(),
         lines.join("\n")
     )
 }
 
+fn summarize_team_run_event_line(event: &nuka_domain::team::TeamRunEvent) -> String {
+    let kind_label = summarize_team_run_event_kind(&event.kind);
+    let title = summarize_team_run_event_title(event);
+    let content = summarize_team_run_event_excerpt(event);
+
+    if title.is_empty() || title == kind_label {
+        return format!("- {}：{}", kind_label, content);
+    }
+
+    format!("- {}｜{}：{}", kind_label, title, content)
+}
+
+fn summarize_team_run_event_kind(kind: &str) -> &'static str {
+    match kind {
+        "run_started" => "运行开始",
+        "user_instruction" => "跟进",
+        "run_heartbeat" => "运行心跳",
+        "provider_check_passed" => "提供方预检通过",
+        "round_agenda" => "轮次议程",
+        "position_card" => "立场卡",
+        "checkpoint_summary" => "检查点总结",
+        "run_queued" => "排队中",
+        "run_blocked" => "已阻塞",
+        "run_resumed" => "已恢复",
+        "run_retry" => "重试",
+        "run_stuck" => "卡住",
+        _ => "事件",
+    }
+}
+
+fn summarize_team_run_event_title(event: &nuka_domain::team::TeamRunEvent) -> String {
+    let cleaned = strip_markdown_tokens(&event.title);
+
+    if event.kind == "position_card" && cleaned.ends_with(" position card") {
+        return cleaned
+            .trim_end_matches(" position card")
+            .trim()
+            .to_string();
+    }
+
+    match cleaned.to_ascii_lowercase().as_str() {
+        "team run started" => "运行开始".to_string(),
+        "provider preflight" => "提供方预检".to_string(),
+        "checkpoint summary" => "检查点总结".to_string(),
+        _ => cleaned,
+    }
+}
+
+fn summarize_team_run_event_excerpt(event: &nuka_domain::team::TeamRunEvent) -> String {
+    let without_heading = strip_duplicate_leading_heading(&event.content, &event.title);
+    excerpt(&without_heading, 96)
+}
+
 fn excerpt(content: &str, limit: usize) -> String {
-    let mut excerpt = content.trim().replace('\n', " ");
+    let mut excerpt = strip_markdown_tokens(content);
     if excerpt.chars().count() > limit {
         excerpt = excerpt.chars().take(limit).collect::<String>();
         excerpt.push_str("...");
     }
     excerpt
+}
+
+fn strip_duplicate_leading_heading(content: &str, title: &str) -> String {
+    let heading = content
+        .lines()
+        .find_map(|line| {
+            let trimmed = line.trim();
+            trimmed
+                .strip_prefix('#')
+                .or_else(|| trimmed.strip_prefix("##"))
+                .or_else(|| trimmed.strip_prefix("###"))
+                .map(|_| trimmed.trim_start_matches('#').trim().to_string())
+        })
+        .unwrap_or_default();
+
+    if heading.is_empty() {
+        return content.to_string();
+    }
+
+    let normalized_heading = heading.to_ascii_lowercase();
+    let normalized_title = strip_markdown_tokens(title).to_ascii_lowercase();
+    if normalized_heading.starts_with("checkpoint summary")
+        || normalized_heading == normalized_title
+    {
+        return content
+            .lines()
+            .skip_while(|line| line.trim().is_empty() || line.trim().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+
+    content.to_string()
+}
+
+fn strip_markdown_tokens(value: &str) -> String {
+    value
+        .replace("**", "")
+        .replace('`', "")
+        .lines()
+        .map(|line| {
+            line.trim()
+                .trim_start_matches('#')
+                .trim()
+                .trim_start_matches("- ")
+                .trim_start_matches("* ")
+                .trim_start_matches("> ")
+                .replace('|', " ")
+        })
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty()
+                && !trimmed.chars().all(|character| {
+                    character == '-' || character == ':' || character.is_whitespace()
+                })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn record_round_file_change_events(
@@ -851,11 +983,7 @@ fn record_round_file_change_events(
     prompt: &str,
     checkpoint_summary: &str,
 ) -> anyhow::Result<()> {
-    let round_index = run
-        .events
-        .iter()
-        .filter(|event| event.kind == "checkpoint_summary")
-        .count();
+    let round_index = next_round_artifact_index(artifact_root, &run.id);
     let round_label = format!("Round {round_index}");
     let round_call_id = format!("round-{round_index:02}");
     let round_dir = artifact_root
@@ -909,6 +1037,25 @@ fn record_round_file_change_events(
     Ok(())
 }
 
+fn next_round_artifact_index(artifact_root: &Path, run_id: &str) -> usize {
+    let run_dir = artifact_root.join(run_id);
+    let max_index = std::fs::read_dir(run_dir)
+        .ok()
+        .into_iter()
+        .flat_map(|entries| entries.filter_map(Result::ok))
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.strip_prefix("round-"))
+                .and_then(|suffix| suffix.parse::<usize>().ok())
+        })
+        .max()
+        .unwrap_or(0);
+
+    max_index + 1
+}
+
 fn slug(value: &str) -> String {
     let mut slug = String::new();
     let mut last_was_dash = false;
@@ -923,7 +1070,24 @@ fn slug(value: &str) -> String {
         }
     }
 
-    slug.trim_matches('-').to_string()
+    let trimmed = slug.trim_matches('-').to_string();
+    if !trimmed.is_empty() {
+        return trimmed;
+    }
+
+    let unicode_fallback = value
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .take(3)
+        .map(|character| format!("{:x}", character as u32))
+        .collect::<Vec<_>>()
+        .join("-");
+
+    if unicode_fallback.is_empty() {
+        "agent".to_string()
+    } else {
+        unicode_fallback
+    }
 }
 
 fn default_artifact_root() -> PathBuf {
@@ -1058,6 +1222,93 @@ fn push_provider_preflight_event(
 
 #[cfg(test)]
 mod tests {
+    async fn start_stream_only_completion_server() -> (String, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("stream-only completion server should bind");
+        let address = listener
+            .local_addr()
+            .expect("stream-only completion server should expose local addr");
+        let base_url = format!("http://{address}/v1");
+        let handle = tokio::spawn(async move {
+            let (mut socket, _) = listener
+                .accept()
+                .await
+                .expect("stream-only completion server should accept one connection");
+
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            let mut header_end = None;
+
+            while header_end.is_none() {
+                let read = socket
+                    .read(&mut buffer)
+                    .await
+                    .expect("stream-only completion server should read request headers");
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..read]);
+                header_end = request.windows(4).position(|window| window == b"\r\n\r\n");
+            }
+
+            let header_end = header_end.expect("request should contain a header boundary");
+            let headers = String::from_utf8_lossy(&request[..header_end + 4]).to_string();
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    if name.eq_ignore_ascii_case("content-length") {
+                        value.trim().parse::<usize>().ok()
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            while request.len() < header_end + 4 + content_length {
+                let read = socket
+                    .read(&mut buffer)
+                    .await
+                    .expect("stream-only completion server should read request body");
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..read]);
+            }
+
+            let body = String::from_utf8_lossy(&request[header_end + 4..]).to_string();
+            if !body.contains(r#""stream":true"#) {
+                socket
+                    .write_all(
+                        b"HTTP/1.1 504 Gateway Timeout\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: close\r\n\r\n{\"error\":\"stream-only\"}",
+                    )
+                    .await
+                    .expect("stream-only completion server should write 504 response");
+                return;
+            }
+
+            let payload = [
+                "data: {\"id\":\"round-stream-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n",
+                "data: {\"id\":\"round-stream-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Streamed round output\"},\"finish_reason\":null}]}\n\n",
+                "data: [DONE]\n\n",
+            ]
+            .join("");
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                payload.len(),
+                payload
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("stream-only completion server should write streaming response");
+        });
+
+        (base_url, handle)
+    }
+
     fn sample_runtime_agent() -> super::RuntimeAgentSpec {
         super::RuntimeAgentSpec {
             name: "Verifier".to_string(),
@@ -1153,6 +1404,81 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn team_run_can_use_the_initial_prompt_for_the_first_round() {
+        let pool = crate::settings_service::test_pool();
+        nuka_storage::migrations::run(&pool).await.unwrap();
+        let runtime = super::TeamRunService::new_for_test_with_seeded_completion(pool.clone());
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Local",
+            "http://localhost:11434/v1",
+            "",
+            "gpt-oss",
+        );
+        let provider_id = provider.id.clone();
+
+        runtime
+            .provider_service
+            .save_provider(provider)
+            .await
+            .unwrap();
+        runtime
+            .provider_service
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+        nuka_storage::teams::TeamRepository::new(pool)
+            .save_team(super::sample_seed_team())
+            .await
+            .unwrap();
+
+        let run = runtime
+            .start_team_run_with_initial_prompt(
+                "team-release",
+                "Investigate the validation blocker",
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert!(run.events.iter().any(|event| {
+            event.kind == "round_agenda"
+                && event.content.contains("Investigate the validation blocker")
+        }));
+        assert!(!run.events.iter().any(|event| {
+            event.kind == "run_queued" && event.content == super::TEAM_RUN_KICKOFF_PROMPT
+        }));
+    }
+
+    #[tokio::test]
+    async fn completion_or_seed_accepts_stream_only_provider_responses() {
+        let (base_url, server) = start_stream_only_completion_server().await;
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Stream Provider",
+            &base_url,
+            "",
+            "gpt-stream",
+        );
+
+        let output = super::completion_or_seed(
+            &nuka_integrations::providers::openai::OpenAiCompatibleProvider::default(),
+            &provider,
+            None,
+            vec![
+                nuka_integrations::providers::types::OpenAiChatMessage::user(
+                    "Summarize the checkpoint".to_string(),
+                ),
+            ],
+            "fallback output",
+        )
+        .await
+        .unwrap();
+
+        server.await.unwrap();
+
+        assert_eq!(output, "Streamed round output");
+    }
+
+    #[tokio::test]
     async fn team_run_returns_blocked_state_when_provider_route_fails() {
         let pool = crate::settings_service::test_pool();
         nuka_storage::migrations::run(&pool).await.unwrap();
@@ -1243,6 +1569,9 @@ mod tests {
             nuka_domain::team::TeamRunStatus::WaitingForUser
         );
         assert!(resumed.events.iter().any(|event| {
+            event.kind == "checkpoint_summary" && event.content.contains("启动这一轮协作团队运行。")
+        }));
+        assert!(!resumed.events.iter().any(|event| {
             event.kind == "checkpoint_summary" && event.content.contains("Kick off the team run")
         }));
     }
@@ -1286,6 +1615,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resuming_stale_team_run_refreshes_updated_at_after_new_events() {
+        let runtime = super::TeamRunService::new_for_test_with_provider();
+        let repo = nuka_storage::team_runs::TeamRunRepository::new(runtime.pool.clone());
+        let mut run = runtime.start_team_run("team-release").await.unwrap();
+
+        run.status = nuka_domain::team::TeamRunStatus::Blocked;
+        run.current_phase = "blocked".to_string();
+        run.updated_at = "2000-01-01 00:00:00".to_string();
+        run.events.push(nuka_domain::team::TeamRunEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            run_id: run.id.clone(),
+            kind: "run_blocked".to_string(),
+            agent_id: None,
+            title: "Run blocked".to_string(),
+            content: "Provider temporarily unavailable".to_string(),
+            status: Some("blocked".to_string()),
+            tool_name: None,
+            tool_call_id: None,
+            tool_target: None,
+            sequence: super::next_sequence(&run.events),
+            created_at: String::new(),
+        });
+        repo.save_run(run.clone()).await.unwrap();
+
+        let resumed = runtime.resume_team_run(&run.id).await.unwrap();
+
+        assert_ne!(resumed.updated_at, "2000-01-01 00:00:00");
+    }
+
+    #[tokio::test]
     async fn team_run_records_real_file_change_events_for_each_round() {
         let runtime = super::TeamRunService::new_for_test_with_provider();
         let run = runtime.start_team_run("team-release").await.unwrap();
@@ -1307,5 +1666,156 @@ mod tests {
                 .as_ref()
                 .is_some_and(|path| std::path::Path::new(path).exists())
         }));
+    }
+
+    #[tokio::test]
+    async fn continuing_team_run_writes_round_two_file_events() {
+        let runtime = super::TeamRunService::new_for_test_with_provider();
+        let run = runtime.start_team_run("team-release").await.unwrap();
+
+        let continued = runtime
+            .continue_team_run(&run.id, "Inspect the next acceptance checkpoint.")
+            .await
+            .unwrap();
+
+        let round_two_changes = continued
+            .events
+            .iter()
+            .filter(|event| event.kind == "file_change" && event.title == "Round 2")
+            .collect::<Vec<_>>();
+
+        let all_file_changes = continued
+            .events
+            .iter()
+            .filter(|event| event.kind == "file_change")
+            .map(|event| (event.title.clone(), event.tool_target.clone()))
+            .collect::<Vec<_>>();
+
+        assert!(
+            !round_two_changes.is_empty(),
+            "expected Round 2 file changes, got {:?}",
+            all_file_changes
+        );
+        assert!(round_two_changes.iter().all(|event| {
+            event
+                .tool_target
+                .as_ref()
+                .is_some_and(|path| path.contains("round-02"))
+        }));
+    }
+
+    #[tokio::test]
+    async fn compacted_team_run_continuations_still_advance_file_rounds() {
+        let runtime = super::TeamRunService::new_for_test_with_provider();
+        let pool = runtime.pool.clone();
+        let run = runtime.start_team_run("team-release").await.unwrap();
+        let repo = nuka_storage::team_runs::TeamRunRepository::new(pool.clone());
+        let compacted_ids = run
+            .events
+            .iter()
+            .map(|event| event.id.clone())
+            .collect::<Vec<_>>();
+        let compacted_sequence = run
+            .events
+            .iter()
+            .map(|event| event.sequence)
+            .max()
+            .unwrap_or(0);
+        repo.compact_events(
+            &run.id,
+            &compacted_ids,
+            compacted_sequence,
+            "round one compacted",
+        )
+        .await
+        .unwrap();
+
+        let continued = runtime
+            .continue_team_run(&run.id, "Inspect the next compacted acceptance checkpoint.")
+            .await
+            .unwrap();
+
+        let round_two_changes = continued
+            .events
+            .iter()
+            .filter(|event| event.kind == "file_change" && event.title == "Round 2")
+            .collect::<Vec<_>>();
+
+        let all_file_changes = continued
+            .events
+            .iter()
+            .filter(|event| event.kind == "file_change")
+            .map(|event| (event.title.clone(), event.tool_target.clone()))
+            .collect::<Vec<_>>();
+
+        assert!(
+            !round_two_changes.is_empty(),
+            "expected Round 2 file changes, got {:?}",
+            all_file_changes
+        );
+        assert!(round_two_changes.iter().all(|event| {
+            event
+                .tool_target
+                .as_ref()
+                .is_some_and(|path| path.contains("round-02"))
+        }));
+    }
+
+    #[test]
+    fn summarize_team_run_events_strips_markdown_tokens_and_uses_readable_labels() {
+        let summary = super::summarize_team_run_events(&[
+            nuka_domain::team::TeamRunEvent {
+                id: "event-position".to_string(),
+                run_id: "run-release".to_string(),
+                kind: "position_card".to_string(),
+                agent_id: Some("agent-scheduler".to_string()),
+                title: "验收调度官 position card".to_string(),
+                content:
+                    "### Checkpoint Summary（首轮）\n\n**当前状态**\n\n- 已形成 1 调度 + 6 执行"
+                        .to_string(),
+                status: Some("completed".to_string()),
+                tool_name: None,
+                tool_call_id: None,
+                tool_target: None,
+                sequence: 1,
+                created_at: "2026-03-13T00:01:00Z".to_string(),
+            },
+            nuka_domain::team::TeamRunEvent {
+                id: "event-checkpoint".to_string(),
+                run_id: "run-release".to_string(),
+                kind: "checkpoint_summary".to_string(),
+                agent_id: Some("agent-scheduler".to_string()),
+                title: "Checkpoint summary".to_string(),
+                content: "## Checkpoint Summary（首轮）\n\n- 对话验收\n- 文件时间线".to_string(),
+                status: Some("completed".to_string()),
+                tool_name: None,
+                tool_call_id: None,
+                tool_target: None,
+                sequence: 2,
+                created_at: "2026-03-13T00:02:00Z".to_string(),
+            },
+        ]);
+
+        assert!(summary.contains("较早的协作团队上下文已压缩"));
+        assert!(summary.contains("立场卡"));
+        assert!(summary.contains("检查点总结"));
+        assert!(!summary.contains("### Checkpoint Summary"));
+        assert!(!summary.contains("## Checkpoint Summary"));
+        assert!(!summary.contains("position_card /"));
+        assert!(!summary.contains("checkpoint_summary /"));
+    }
+
+    #[test]
+    fn unicode_agent_names_produce_non_empty_distinct_file_slugs() {
+        let scheduler_slug = super::slug("验收调度官");
+        let memory_slug = super::slug("Memory 验证员");
+        let files_slug = super::slug("文件时间线审计员");
+
+        assert!(!scheduler_slug.is_empty());
+        assert!(!memory_slug.is_empty());
+        assert!(!files_slug.is_empty());
+        assert_ne!(scheduler_slug, memory_slug);
+        assert_ne!(scheduler_slug, files_slug);
+        assert_ne!(memory_slug, files_slug);
     }
 }

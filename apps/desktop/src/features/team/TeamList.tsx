@@ -10,7 +10,7 @@ export function TeamList({ teams, selectedTeamId, onSelect }: TeamListProps) {
   return (
     <aside className="team-list" data-testid="team-list">
       <div className="team-list__header">
-        <h1>Teams</h1>
+        <h1>协作团队</h1>
       </div>
 
       <div className="team-list__stack">
@@ -19,7 +19,7 @@ export function TeamList({ teams, selectedTeamId, onSelect }: TeamListProps) {
             className="team-list__empty team-list__empty--centered"
             data-testid="team-list-empty"
           >
-            No teams yet.
+            还没有协作团队。
           </div>
         ) : (
           teams.map((team) => {

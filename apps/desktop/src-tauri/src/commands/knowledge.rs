@@ -48,7 +48,6 @@ pub struct KnowledgeSearchResultResponse {
     pub snippet: String,
 }
 
-
 #[tauri::command]
 pub fn default_knowledge_library() -> KnowledgeLibraryResponse {
     let library = nuka_knowledge::library::KnowledgeLibrary::user_default();
@@ -253,7 +252,9 @@ impl From<nuka_storage::knowledge::KnowledgeIndexJobRecord> for KnowledgeIndexJo
     }
 }
 
-impl From<nuka_runtime::knowledge_service::KnowledgeSearchResult> for KnowledgeSearchResultResponse {
+impl From<nuka_runtime::knowledge_service::KnowledgeSearchResult>
+    for KnowledgeSearchResultResponse
+{
     fn from(value: nuka_runtime::knowledge_service::KnowledgeSearchResult) -> Self {
         Self {
             collection_id: value.collection_id,
@@ -369,7 +370,10 @@ mod tests {
 
         assert_eq!(library.engine.id, "pageindex");
         assert_eq!(library.engine.label, "PageIndex");
-        assert!(matches!(library.engine.health.as_str(), "healthy" | "unavailable"));
+        assert!(matches!(
+            library.engine.health.as_str(),
+            "healthy" | "unavailable"
+        ));
         assert!(library
             .engine
             .capabilities
@@ -400,7 +404,9 @@ mod tests {
         super::rebuild_knowledge_library_inner(library.id.clone(), &state)
             .await
             .unwrap();
-        let jobs = super::list_index_jobs_inner(library.id, &state).await.unwrap();
+        let jobs = super::list_index_jobs_inner(library.id, &state)
+            .await
+            .unwrap();
 
         assert_eq!(jobs.len(), 1);
         assert!(!jobs[0].status.is_empty());
@@ -410,12 +416,9 @@ mod tests {
     async fn knowledge_rebuild_rejects_unknown_library_and_records_no_job() {
         let state = crate::bootstrap::build_app_state_for_test().await.unwrap();
 
-        let error = super::rebuild_knowledge_library_inner(
-            "missing-library".to_string(),
-            &state,
-        )
-        .await
-        .unwrap_err();
+        let error = super::rebuild_knowledge_library_inner("missing-library".to_string(), &state)
+            .await
+            .unwrap_err();
 
         assert!(error
             .to_string()
@@ -452,4 +455,3 @@ mod tests {
         assert_ne!(library.engine.label, library.connectors[0].path);
     }
 }
-

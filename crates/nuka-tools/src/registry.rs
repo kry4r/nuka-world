@@ -75,7 +75,8 @@ pub fn default_team_tool_catalog() -> Vec<ToolCatalogEntry> {
 mod tests {
     #[test]
     fn agent_can_bind_multiple_tools() {
-        let bindings = crate::registry::ToolBindingSet::from_names(["codex", "git", "search_knowledge"]);
+        let bindings =
+            crate::registry::ToolBindingSet::from_names(["codex", "git", "search_knowledge"]);
         assert_eq!(bindings.len(), 3);
     }
 
@@ -92,6 +93,8 @@ mod tests {
         let catalog = crate::registry::default_team_tool_catalog();
         assert!(catalog.iter().any(|entry| entry.tool_name == "codex"));
         assert!(catalog.iter().any(|entry| entry.tool_name == "opencode"));
-        assert!(catalog.iter().any(|entry| entry.tool_name == "mcp:filesystem"));
+        assert!(catalog
+            .iter()
+            .any(|entry| entry.tool_name == "mcp:filesystem"));
     }
 }

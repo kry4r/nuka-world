@@ -145,9 +145,10 @@ impl TeamService {
             None => {
                 let response = self
                     .provider_client
-                    .complete_chat(
+                    .complete_chat_stream(
                         &provider,
                         vec![OpenAiChatMessage::user(team_generation_prompt(goal))],
+                        |_delta| Ok(()),
                     )
                     .await?;
                 response
@@ -474,6 +475,93 @@ fn provider_connection_status_label(
 
 #[cfg(test)]
 mod tests {
+    async fn start_stream_only_team_server() -> (String, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("stream-only team server should bind");
+        let address = listener
+            .local_addr()
+            .expect("stream-only team server should expose local addr");
+        let base_url = format!("http://{address}/v1");
+        let handle = tokio::spawn(async move {
+            let (mut socket, _) = listener
+                .accept()
+                .await
+                .expect("stream-only team server should accept one connection");
+
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            let mut header_end = None;
+
+            while header_end.is_none() {
+                let read = socket
+                    .read(&mut buffer)
+                    .await
+                    .expect("stream-only team server should read request headers");
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..read]);
+                header_end = request.windows(4).position(|window| window == b"\r\n\r\n");
+            }
+
+            let header_end = header_end.expect("request should contain a header boundary");
+            let headers = String::from_utf8_lossy(&request[..header_end + 4]).to_string();
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    if name.eq_ignore_ascii_case("content-length") {
+                        value.trim().parse::<usize>().ok()
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            while request.len() < header_end + 4 + content_length {
+                let read = socket
+                    .read(&mut buffer)
+                    .await
+                    .expect("stream-only team server should read request body");
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..read]);
+            }
+
+            let body = String::from_utf8_lossy(&request[header_end + 4..]).to_string();
+            if !body.contains(r#""stream":true"#) {
+                socket
+                    .write_all(
+                        b"HTTP/1.1 504 Gateway Timeout\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: close\r\n\r\n{\"error\":\"stream-only\"}",
+                    )
+                    .await
+                    .expect("stream-only team server should write 504 response");
+                return;
+            }
+
+            let payload = [
+                "data: {\"id\":\"team-stream-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n",
+                "data: {\"id\":\"team-stream-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-test\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"```json\\n{\\n  \\\"name\\\": \\\"Release Stream Team\\\",\\n  \\\"summary\\\": \\\"Coordinates acceptance.\\\",\\n  \\\"successCriteria\\\": \\\"Run completes with evidence.\\\",\\n  \\\"coordinationPolicy\\\": \\\"Coordinator manages bounded review rounds.\\\",\\n  \\\"agents\\\": [\\n    {\\n      \\\"name\\\": \\\"Coordinator\\\",\\n      \\\"role\\\": \\\"Coordinator\\\",\\n      \\\"responsibility\\\": \\\"Guide the team.\\\",\\n      \\\"systemPrompt\\\": \\\"Coordinate the team.\\\",\\n      \\\"toolBindings\\\": [{\\\"tool\\\": \\\"filesystem\\\", \\\"description\\\": \\\"Inspect files\\\"}]\\n    },\\n    {\\n      \\\"name\\\": \\\"Verifier\\\",\\n      \\\"role\\\": \\\"Verifier\\\",\\n      \\\"responsibility\\\": \\\"Check evidence.\\\",\\n      \\\"systemPrompt\\\": \\\"Verify the work.\\\",\\n      \\\"toolBindings\\\": [{\\\"tool\\\": \\\"filesystem\\\", \\\"description\\\": \\\"Read artifacts\\\"}]\\n    }\\n  ]\\n}\\n```\"},\"finish_reason\":null}]}\n\n",
+                "data: [DONE]\n\n",
+            ]
+            .join("");
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                payload.len(),
+                payload
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("stream-only team server should write streaming response");
+        });
+
+        (base_url, handle)
+    }
+
     #[tokio::test]
     async fn create_team_from_goal_persists_generated_agents() {
         let service = super::TeamService::new_for_test_with_provider();
@@ -532,6 +620,41 @@ mod tests {
         assert!(error
             .to_string()
             .contains("provider route resolution failed: unreachable_host"));
+    }
+
+    #[tokio::test]
+    async fn create_team_from_goal_accepts_streamed_provider_payloads() {
+        let (base_url, server) = start_stream_only_team_server().await;
+        let service = super::TeamService::new(crate::settings_service::test_pool());
+        let provider = nuka_domain::provider::ProviderConfig::openai_compatible(
+            "Stream Provider",
+            &base_url,
+            "",
+            "gpt-stream",
+        );
+        let provider_id = provider.id.clone();
+
+        service
+            .provider_service
+            .save_provider(provider)
+            .await
+            .unwrap();
+        service
+            .provider_service
+            .set_default_provider(&provider_id)
+            .await
+            .unwrap();
+
+        let team = service
+            .create_team_from_goal("Ship the release and publish notes")
+            .await
+            .unwrap();
+
+        server.await.unwrap();
+
+        assert_eq!(team.name, "Release Stream Team");
+        assert_eq!(team.agents.len(), 2);
+        assert_eq!(team.agent_assignments.len(), 2);
     }
 
     #[test]

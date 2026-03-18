@@ -1,6 +1,4 @@
-use nuka_domain::knowledge::{
-    KnowledgeCollection, KnowledgeConnector, KnowledgeConnectorKind,
-};
+use nuka_domain::knowledge::{KnowledgeCollection, KnowledgeConnector, KnowledgeConnectorKind};
 use sqlx::Row;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,7 +138,10 @@ impl KnowledgeRepository {
         Ok(())
     }
 
-    pub async fn list_index_jobs(&self, collection_id: &str) -> anyhow::Result<Vec<KnowledgeIndexJobRecord>> {
+    pub async fn list_index_jobs(
+        &self,
+        collection_id: &str,
+    ) -> anyhow::Result<Vec<KnowledgeIndexJobRecord>> {
         let rows = sqlx::query(
             "select id, collection_id, status, detail from knowledge_index_jobs where collection_id = ?1 order by created_at asc",
         )

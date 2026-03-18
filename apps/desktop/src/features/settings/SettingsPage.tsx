@@ -13,10 +13,7 @@ import {
 } from "@/lib/providers";
 import { emitToast } from "@/lib/toast";
 
-type SettingsSectionId =
-  | "providers"
-  | "runtime"
-  | "appearance";
+type SettingsSectionId = "providers" | "runtime" | "appearance";
 
 type SettingsPayload = {
   defaultProviderId: string;
@@ -100,7 +97,9 @@ function pickSettingsFields(
   settings: SettingsPayload,
   keys: Array<keyof SettingsPayload>,
 ): Partial<SettingsPayload> {
-  return Object.fromEntries(keys.map((key) => [key, settings[key]])) as Partial<SettingsPayload>;
+  return Object.fromEntries(
+    keys.map((key) => [key, settings[key]]),
+  ) as Partial<SettingsPayload>;
 }
 
 function createProviderDraft(index: number): ProviderRecord {
@@ -139,7 +138,9 @@ function sameProviderRecord(
 }
 
 function toErrorMessage(caughtError: unknown) {
-  return caughtError instanceof Error ? caughtError.message : String(caughtError);
+  return caughtError instanceof Error
+    ? caughtError.message
+    : String(caughtError);
 }
 
 function requestRuntimeStatusRefresh() {
@@ -154,7 +155,9 @@ export function SettingsPage() {
   const [initialSettings, setInitialSettings] =
     useState<SettingsPayload>(EMPTY_SETTINGS);
   const [providers, setProviders] = useState<ProviderRecord[]>([]);
-  const [initialProviders, setInitialProviders] = useState<ProviderRecord[]>([]);
+  const [initialProviders, setInitialProviders] = useState<ProviderRecord[]>(
+    [],
+  );
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSavingProviders, setIsSavingProviders] = useState(false);
   const [isSavingRuntime, setIsSavingRuntime] = useState(false);
@@ -194,7 +197,8 @@ export function SettingsPage() {
     };
   }, []);
 
-  const activeDefinition = SECTION_DEFINITIONS.find((section) => section.id === activeSection) ??
+  const activeDefinition =
+    SECTION_DEFINITIONS.find((section) => section.id === activeSection) ??
     SECTION_DEFINITIONS[0];
   const activeSectionLabel = activeDefinition
     ? t(`settings.nav.${activeDefinition.id}` as const)
@@ -215,19 +219,29 @@ export function SettingsPage() {
   const providerScopeDirty = useMemo(
     () =>
       JSON.stringify(pickSettingsFields(settings, PROVIDER_SCOPE_FIELDS)) !==
-      JSON.stringify(pickSettingsFields(initialSettings, PROVIDER_SCOPE_FIELDS)),
+      JSON.stringify(
+        pickSettingsFields(initialSettings, PROVIDER_SCOPE_FIELDS),
+      ),
     [initialSettings, settings],
   );
   const providerNameById = useMemo(
-    () => new Map(providers.map((provider) => [provider.id, provider.name || provider.id])),
+    () =>
+      new Map(
+        providers.map((provider) => [
+          provider.id,
+          provider.name || provider.id,
+        ]),
+      ),
     [providers],
   );
   const defaultProviderLabel = settings.defaultProviderId
-    ? providerNameById.get(settings.defaultProviderId) ?? settings.defaultProviderId
-    : "No default";
+    ? (providerNameById.get(settings.defaultProviderId) ??
+      settings.defaultProviderId)
+    : t("settings.providers.default.none");
   const fallbackProviderLabel = settings.fallbackProviderId
-    ? providerNameById.get(settings.fallbackProviderId) ?? settings.fallbackProviderId
-    : "No fallback";
+    ? (providerNameById.get(settings.fallbackProviderId) ??
+      settings.fallbackProviderId)
+    : t("settings.providers.fallback.none");
 
   const updateSetting = <K extends keyof SettingsPayload>(
     key: K,
@@ -264,13 +278,14 @@ export function SettingsPage() {
   };
 
   const handleAddProvider = () => {
-    setProviders((current) => [...current, createProviderDraft(current.length)]);
+    setProviders((current) => [
+      ...current,
+      createProviderDraft(current.length),
+    ]);
     setActiveSection("providers");
   };
 
-  const handleSaveSettings = async (
-    setSaving: (value: boolean) => void,
-  ) => {
+  const handleSaveSettings = async (setSaving: (value: boolean) => void) => {
     setSaving(true);
 
     try {
@@ -342,7 +357,9 @@ export function SettingsPage() {
     try {
       const imported = await importProviderFromEnv();
       setProviders((current) => {
-        const existingIndex = current.findIndex((provider) => provider.id === imported.id);
+        const existingIndex = current.findIndex(
+          (provider) => provider.id === imported.id,
+        );
         if (existingIndex === -1) {
           return [...current, imported];
         }
@@ -352,7 +369,9 @@ export function SettingsPage() {
         );
       });
       setInitialProviders((current) => {
-        const existingIndex = current.findIndex((provider) => provider.id === imported.id);
+        const existingIndex = current.findIndex(
+          (provider) => provider.id === imported.id,
+        );
         if (existingIndex === -1) {
           return [...current, imported];
         }
@@ -387,13 +406,19 @@ export function SettingsPage() {
     try {
       const clearedProvider = await clearProviderSecret(provider.id);
       setProviders((current) =>
-        current.map((item, itemIndex) => (itemIndex === index ? clearedProvider : item)),
+        current.map((item, itemIndex) =>
+          itemIndex === index ? clearedProvider : item,
+        ),
       );
       setInitialProviders((current) =>
-        current.map((item, itemIndex) => (itemIndex === index ? clearedProvider : item)),
+        current.map((item, itemIndex) =>
+          itemIndex === index ? clearedProvider : item,
+        ),
       );
       emitToast({
-        message: t("settings.toast.secretCleared", { value: clearedProvider.name }),
+        message: t("settings.toast.secretCleared", {
+          value: clearedProvider.name,
+        }),
         tone: "success",
       });
     } catch (caughtError) {
@@ -406,16 +431,17 @@ export function SettingsPage() {
     }
   };
 
-  const renderSectionHeader = (
-    title: string,
-    actions?: ReactNode,
-  ) => (
+  const renderSectionHeader = (title: string, actions?: ReactNode) => (
     <header className="settings-directory__header">
       <div className="settings-directory__header-copy">
-        <span className="settings-directory__eyebrow">{activeSectionLabel}</span>
+        <span className="settings-directory__eyebrow">
+          {activeSectionLabel}
+        </span>
         <h1>{title}</h1>
       </div>
-      {actions ? <div className="settings-directory__header-actions">{actions}</div> : null}
+      {actions ? (
+        <div className="settings-directory__header-actions">{actions}</div>
+      ) : null}
     </header>
   );
 
@@ -448,10 +474,14 @@ export function SettingsPage() {
           data-testid="settings-provider-routing-summary"
         >
           <StatusBadge tone="soft">
-            {t("settings.providers.summary.default", { value: defaultProviderLabel })}
+            {t("settings.providers.summary.default", {
+              value: defaultProviderLabel,
+            })}
           </StatusBadge>
           <StatusBadge tone="soft">
-            {t("settings.providers.summary.fallback", { value: fallbackProviderLabel })}
+            {t("settings.providers.summary.fallback", {
+              value: fallbackProviderLabel,
+            })}
           </StatusBadge>
           <StatusBadge tone={settings.connectionChecks ? "accent" : "warning"}>
             {settings.connectionChecks
@@ -462,11 +492,15 @@ export function SettingsPage() {
 
         <div className="settings-form-grid">
           <label className="settings-form-field">
-            <span className="settings-form-field__label">{t("settings.providers.default.label")}</span>
+            <span className="settings-form-field__label">
+              {t("settings.providers.default.label")}
+            </span>
             <FlatSelect
               aria-label={t("settings.providers.default.label")}
               className="settings-select"
-              onChange={(event) => updateSetting("defaultProviderId", event.target.value)}
+              onChange={(event) =>
+                updateSetting("defaultProviderId", event.target.value)
+              }
               shellClassName="settings-select-shell"
               value={settings.defaultProviderId}
             >
@@ -480,11 +514,15 @@ export function SettingsPage() {
           </label>
 
           <label className="settings-form-field">
-            <span className="settings-form-field__label">{t("settings.providers.fallback.label")}</span>
+            <span className="settings-form-field__label">
+              {t("settings.providers.fallback.label")}
+            </span>
             <FlatSelect
               aria-label={t("settings.providers.fallback.label")}
               className="settings-select"
-              onChange={(event) => updateSetting("fallbackProviderId", event.target.value)}
+              onChange={(event) =>
+                updateSetting("fallbackProviderId", event.target.value)
+              }
               shellClassName="settings-select-shell"
               value={settings.fallbackProviderId}
             >
@@ -506,7 +544,9 @@ export function SettingsPage() {
             aria-label={t("settings.providers.connectionChecks")}
             checked={settings.connectionChecks}
             className="settings-checkbox"
-            onChange={(event) => updateSetting("connectionChecks", event.target.checked)}
+            onChange={(event) =>
+              updateSetting("connectionChecks", event.target.checked)
+            }
             type="checkbox"
           />
         </label>
@@ -518,7 +558,9 @@ export function SettingsPage() {
             <section className="settings-provider-card" key={provider.id}>
               <div className="settings-provider-card__header">
                 <div className="settings-provider-card__title">
-                  <strong>{provider.name || t("settings.providers.card.untitled")}</strong>
+                  <strong>
+                    {provider.name || t("settings.providers.card.untitled")}
+                  </strong>
                 </div>
                 <div className="settings-panel__summary">
                   <StatusBadge tone="soft">
@@ -539,44 +581,62 @@ export function SettingsPage() {
 
               <div className="settings-form-grid">
                 <label className="settings-form-field">
-                  <span className="settings-form-field__label">{t("settings.providers.field.name")}</span>
+                  <span className="settings-form-field__label">
+                    {t("settings.providers.field.name")}
+                  </span>
                   <input
                     aria-label={t("settings.providers.field.name")}
                     className="settings-input"
-                    onChange={(event) => updateProvider(index, "name", event.target.value)}
+                    onChange={(event) =>
+                      updateProvider(index, "name", event.target.value)
+                    }
                     value={provider.name}
                   />
                 </label>
 
                 <label className="settings-form-field">
-                  <span className="settings-form-field__label">{t("settings.providers.field.model")}</span>
+                  <span className="settings-form-field__label">
+                    {t("settings.providers.field.model")}
+                  </span>
                   <input
                     aria-label={t("settings.providers.field.model")}
                     className="settings-input"
-                    onChange={(event) => updateProvider(index, "model", event.target.value)}
+                    onChange={(event) =>
+                      updateProvider(index, "model", event.target.value)
+                    }
                     value={provider.model}
                   />
                 </label>
 
                 <label className="settings-form-field settings-form-field--full">
-                  <span className="settings-form-field__label">{t("settings.providers.field.baseUrl")}</span>
+                  <span className="settings-form-field__label">
+                    {t("settings.providers.field.baseUrl")}
+                  </span>
                   <input
                     aria-label={t("settings.providers.field.baseUrl")}
                     className="settings-input"
-                    onChange={(event) => updateProvider(index, "baseUrl", event.target.value)}
+                    onChange={(event) =>
+                      updateProvider(index, "baseUrl", event.target.value)
+                    }
                     value={provider.baseUrl}
                   />
                 </label>
 
                 <label className="settings-form-field settings-form-field--full">
-                  <span className="settings-form-field__label">{t("settings.providers.field.apiKey")}</span>
+                  <span className="settings-form-field__label">
+                    {t("settings.providers.field.apiKey")}
+                  </span>
                   <input
                     aria-label={t("settings.providers.field.apiKey")}
                     className="settings-input"
-                    onChange={(event) => updateProvider(index, "apiKey", event.target.value)}
-                    placeholder={provider.hasSecret
-                      ? t("settings.providers.field.secret.replace")
-                      : t("settings.providers.field.secret.paste")}
+                    onChange={(event) =>
+                      updateProvider(index, "apiKey", event.target.value)
+                    }
+                    placeholder={
+                      provider.hasSecret
+                        ? t("settings.providers.field.secret.replace")
+                        : t("settings.providers.field.secret.paste")
+                    }
                     type="password"
                     value={provider.apiKey}
                   />
@@ -587,7 +647,9 @@ export function SettingsPage() {
                         : t("settings.providers.field.secret.empty")}
                     </span>
                     {provider.hasSecret ? (
-                      <span>{t("settings.providers.field.secret.replace")}</span>
+                      <span>
+                        {t("settings.providers.field.secret.replace")}
+                      </span>
                     ) : null}
                     {provider.hasSecret ? (
                       <button
@@ -611,7 +673,9 @@ export function SettingsPage() {
                   aria-label={`${t("settings.providers.card.enabled")} ${provider.name}`}
                   checked={provider.enabled}
                   className="settings-checkbox"
-                  onChange={(event) => updateProvider(index, "enabled", event.target.checked)}
+                  onChange={(event) =>
+                    updateProvider(index, "enabled", event.target.checked)
+                  }
                   type="checkbox"
                 />
               </label>
@@ -622,7 +686,9 @@ export function SettingsPage() {
         <div className="settings-panel__footer">
           <button
             className="settings-button settings-button--accent"
-            disabled={(!providersDirty && !providerScopeDirty) || isSavingProviders}
+            disabled={
+              (!providersDirty && !providerScopeDirty) || isSavingProviders
+            }
             onClick={() => void handleSaveProviders()}
             type="button"
           >
@@ -640,32 +706,48 @@ export function SettingsPage() {
       <section className="settings-directory__panel">
         <div className="settings-form-grid">
           <label className="settings-form-field settings-form-field--full">
-            <span className="settings-form-field__label">{t("settings.runtime.field.externalEditorPath")}</span>
+            <span className="settings-form-field__label">
+              {t("settings.runtime.field.externalEditorPath")}
+            </span>
             <input
               aria-label={t("settings.runtime.field.externalEditorPath")}
               className="settings-input"
-              onChange={(event) => updateSetting("externalEditorPath", event.target.value)}
-              placeholder={t("settings.runtime.field.externalEditorPath.placeholder")}
+              onChange={(event) =>
+                updateSetting("externalEditorPath", event.target.value)
+              }
+              placeholder={t(
+                "settings.runtime.field.externalEditorPath.placeholder",
+              )}
               value={settings.externalEditorPath}
             />
           </label>
 
           <label className="settings-form-field">
-            <span className="settings-form-field__label">{t("settings.runtime.field.closeBehavior")}</span>
+            <span className="settings-form-field__label">
+              {t("settings.runtime.field.closeBehavior")}
+            </span>
             <FlatSelect
               aria-label={t("settings.runtime.field.closeBehavior")}
               className="settings-select"
-              onChange={(event) => updateSetting("closeBehavior", event.target.value)}
+              onChange={(event) =>
+                updateSetting("closeBehavior", event.target.value)
+              }
               shellClassName="settings-select-shell"
               value={settings.closeBehavior}
             >
-              <option value="Minimize to tray">{t("settings.runtime.field.closeBehavior.minimize")}</option>
-              <option value="Quit app">{t("settings.runtime.field.closeBehavior.quit")}</option>
+              <option value="Minimize to tray">
+                {t("settings.runtime.field.closeBehavior.minimize")}
+              </option>
+              <option value="Quit app">
+                {t("settings.runtime.field.closeBehavior.quit")}
+              </option>
             </FlatSelect>
           </label>
 
           <label className="settings-form-field">
-            <span className="settings-form-field__label">{t("settings.runtime.field.logging")}</span>
+            <span className="settings-form-field__label">
+              {t("settings.runtime.field.logging")}
+            </span>
             <FlatSelect
               aria-label={t("settings.runtime.field.logging")}
               className="settings-select"
@@ -673,8 +755,12 @@ export function SettingsPage() {
               shellClassName="settings-select-shell"
               value={settings.logging}
             >
-              <option value="Standard">{t("settings.runtime.field.logging.standard")}</option>
-              <option value="Verbose">{t("settings.runtime.field.logging.verbose")}</option>
+              <option value="Standard">
+                {t("settings.runtime.field.logging.standard")}
+              </option>
+              <option value="Verbose">
+                {t("settings.runtime.field.logging.verbose")}
+              </option>
             </FlatSelect>
           </label>
         </div>
@@ -687,7 +773,9 @@ export function SettingsPage() {
             aria-label={t("settings.runtime.toggle.launchAtLogin")}
             checked={settings.launchAtLogin}
             className="settings-checkbox"
-            onChange={(event) => updateSetting("launchAtLogin", event.target.checked)}
+            onChange={(event) =>
+              updateSetting("launchAtLogin", event.target.checked)
+            }
             type="checkbox"
           />
         </label>
@@ -700,7 +788,9 @@ export function SettingsPage() {
             aria-label={t("settings.runtime.toggle.trayResident")}
             checked={settings.trayResident}
             className="settings-checkbox"
-            onChange={(event) => updateSetting("trayResident", event.target.checked)}
+            onChange={(event) =>
+              updateSetting("trayResident", event.target.checked)
+            }
             type="checkbox"
           />
         </label>
@@ -713,7 +803,9 @@ export function SettingsPage() {
             aria-label={t("settings.runtime.toggle.backgroundAdapters")}
             checked={settings.backgroundAdapters}
             className="settings-checkbox"
-            onChange={(event) => updateSetting("backgroundAdapters", event.target.checked)}
+            onChange={(event) =>
+              updateSetting("backgroundAdapters", event.target.checked)
+            }
             type="checkbox"
           />
         </label>
@@ -726,7 +818,9 @@ export function SettingsPage() {
             aria-label={t("settings.runtime.toggle.notifications")}
             checked={settings.notifications}
             className="settings-checkbox"
-            onChange={(event) => updateSetting("notifications", event.target.checked)}
+            onChange={(event) =>
+              updateSetting("notifications", event.target.checked)
+            }
             type="checkbox"
           />
         </label>
@@ -764,8 +858,12 @@ export function SettingsPage() {
               shellClassName="settings-select-shell"
               value={locale}
             >
-              <option value="zh-CN">{t("settings.appearance.option.zh-CN")}</option>
-              <option value="en-US">{t("settings.appearance.option.en-US")}</option>
+              <option value="zh-CN">
+                {t("settings.appearance.option.zh-CN")}
+              </option>
+              <option value="en-US">
+                {t("settings.appearance.option.en-US")}
+              </option>
             </FlatSelect>
           </label>
         </div>
@@ -794,7 +892,9 @@ export function SettingsPage() {
                   onClick={() => setActiveSection(section.id)}
                   type="button"
                 >
-                  <span className="settings-directory__nav-label">{sectionLabel}</span>
+                  <span className="settings-directory__nav-label">
+                    {sectionLabel}
+                  </span>
                 </button>
               );
             })}
@@ -806,11 +906,21 @@ export function SettingsPage() {
           className="settings-main settings-directory__content"
           data-testid="settings-control-surface"
         >
-          {!isLoaded ? <div className="settings-loading-state">{t("settings.loading")}</div> : null}
+          {!isLoaded ? (
+            <div className="settings-loading-state">
+              {t("settings.loading")}
+            </div>
+          ) : null}
 
-          {isLoaded && activeSection === "providers" ? renderProvidersSection() : null}
-          {isLoaded && activeSection === "runtime" ? renderRuntimeSection() : null}
-          {isLoaded && activeSection === "appearance" ? renderAppearanceSection() : null}
+          {isLoaded && activeSection === "providers"
+            ? renderProvidersSection()
+            : null}
+          {isLoaded && activeSection === "runtime"
+            ? renderRuntimeSection()
+            : null}
+          {isLoaded && activeSection === "appearance"
+            ? renderAppearanceSection()
+            : null}
         </section>
       </div>
     </div>

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import App from "./App";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,7 +27,8 @@ const sampleTeam = {
   id: "team-release",
   name: "Release Team",
   goal: "Ship the release and publish notes",
-  summary: "Coordinates release validation, notes, and final publish readiness.",
+  summary:
+    "Coordinates release validation, notes, and final publish readiness.",
   successCriteria: "Release notes and checklist are complete.",
   coordinationPolicy: "Moderator-led rounds with checkpoint summaries.",
   createdAt: "2026-03-11T12:00:00Z",
@@ -59,103 +62,105 @@ const sampleRun = {
   events: [],
 };
 
-const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
-  switch (command) {
-    case "app_runtime_status":
-      return {
-        provider: { ...runtimeStatusState.provider },
-        knowledge: { ...runtimeStatusState.knowledge },
-        app: { ...runtimeStatusState.app },
-      };
-    case "route_world_prompt": {
-      const prompt = String(args?.prompt ?? "");
-      return {
-        session: {
-          id: "chat-session-default",
-          title: prompt,
-          providerId: "provider-local",
-          workflowId: null,
-          messageCount: 1,
-        },
-        route: {
-          kind: "direct_reply",
-        },
-        messages: [
-          {
-            id: "chat-default-message-1",
-            role: "user",
-            content: prompt,
+const invokeMock = vi.fn(
+  async (command: string, args?: Record<string, unknown>) => {
+    switch (command) {
+      case "app_runtime_status":
+        return {
+          provider: { ...runtimeStatusState.provider },
+          knowledge: { ...runtimeStatusState.knowledge },
+          app: { ...runtimeStatusState.app },
+        };
+      case "route_world_prompt": {
+        const prompt = String(args?.prompt ?? "");
+        return {
+          session: {
+            id: "chat-session-default",
+            title: prompt,
+            providerId: "provider-local",
+            workflowId: null,
+            messageCount: 1,
           },
-        ],
-        provider: {
-          id: "provider-local",
-          name: "Local",
-          model: "gpt-oss",
-          baseUrl: "http://localhost:11434/v1",
-        },
-        context: {
-          attachedAgents: [],
-          attachedKnowledgeLibraries: [],
-        },
-      };
+          route: {
+            kind: "direct_reply",
+          },
+          messages: [
+            {
+              id: "chat-default-message-1",
+              role: "user",
+              content: prompt,
+            },
+          ],
+          provider: {
+            id: "provider-local",
+            name: "Local",
+            model: "gpt-oss",
+            baseUrl: "http://localhost:11434/v1",
+          },
+          context: {
+            attachedAgents: [],
+            attachedKnowledgeLibraries: [],
+          },
+        };
+      }
+      case "list_teams":
+        return [sampleTeam];
+      case "create_team_from_goal":
+        return {
+          ...sampleTeam,
+          goal: String(args?.goal ?? sampleTeam.goal),
+        };
+      case "start_team_run":
+        return sampleRun;
+      case "list_workspace_sessions":
+        return [];
+      case "load_workspace_session":
+        return null;
+      case "list_memory_scopes":
+        return [];
+      case "get_memory_node_detail":
+        return null;
+      case "list_pending_memory_candidates":
+        return [];
+      case "review_memory_candidate":
+        return undefined;
+      case "list_knowledge_libraries":
+        return [];
+      case "list_index_jobs":
+        return [];
+      case "default_agent_tool_bindings":
+        return { names: ["codex", "git", "search_knowledge"] };
+      case "list_agents":
+        return [];
+      case "list_providers":
+        return [];
+      case "load_settings":
+        return {
+          defaultProviderId: "",
+          fallbackProviderId: "",
+          connectionChecks: true,
+          interfaceFont: "Inter",
+          messageFont: "Inter Text",
+          textSize: "14 px",
+          language: "English (US)",
+          responseLocale: "Follow session",
+          timeFormat: "24-hour",
+          density: "Comfortable",
+          motion: "Standard",
+          windowChrome: "Minimal glass",
+          sidebarDefault: "Expanded",
+          closeBehavior: "Minimize to tray",
+          launchAtLogin: false,
+          trayResident: true,
+          backgroundAdapters: true,
+          logging: "Standard",
+          notifications: true,
+        };
+      default:
+        return null;
     }
-    case "list_teams":
-      return [sampleTeam];
-    case "create_team_from_goal":
-      return {
-        ...sampleTeam,
-        goal: String(args?.goal ?? sampleTeam.goal),
-      };
-    case "start_team_run":
-      return sampleRun;
-    case "list_workspace_sessions":
-      return [];
-    case "load_workspace_session":
-      return null;
-    case "list_memory_scopes":
-      return [];
-    case "get_memory_node_detail":
-      return null;
-    case "list_pending_memory_candidates":
-      return [];
-    case "review_memory_candidate":
-      return undefined;
-    case "list_knowledge_libraries":
-      return [];
-    case "list_index_jobs":
-      return [];
-    case "default_agent_tool_bindings":
-      return { names: ["codex", "git", "search_knowledge"] };
-    case "list_agents":
-      return [];
-    case "list_providers":
-      return [];
-    case "load_settings":
-      return {
-        defaultProviderId: "",
-        fallbackProviderId: "",
-        connectionChecks: true,
-        interfaceFont: "Inter",
-        messageFont: "Inter Text",
-        textSize: "14 px",
-        language: "English (US)",
-        responseLocale: "Follow session",
-        timeFormat: "24-hour",
-        density: "Comfortable",
-        motion: "Standard",
-        windowChrome: "Minimal glass",
-        sidebarDefault: "Expanded",
-        closeBehavior: "Minimize to tray",
-        launchAtLogin: false,
-        trayResident: true,
-        backgroundAdapters: true,
-        logging: "Standard",
-        notifications: true,
-      };
-    default:
-      return null;
-  }
-});
+  },
+);
 
 const { appWindowControls } = vi.hoisted(() => ({
   appWindowControls: {
@@ -167,7 +172,8 @@ const { appWindowControls } = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (command: string, args?: Record<string, unknown>) => invokeMock(command, args),
+  invoke: (command: string, args?: Record<string, unknown>) =>
+    invokeMock(command, args),
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -186,7 +192,8 @@ function getButtonByText(container: HTMLElement, text: string) {
 
   return Array.from(container.querySelectorAll("button")).find((button) => {
     const buttonText = button.textContent?.trim().toLowerCase() ?? "";
-    const ariaLabel = button.getAttribute("aria-label")?.trim().toLowerCase() ?? "";
+    const ariaLabel =
+      button.getAttribute("aria-label")?.trim().toLowerCase() ?? "";
     const title = button.getAttribute("title")?.trim().toLowerCase() ?? "";
 
     return (
@@ -211,7 +218,9 @@ async function clickButton(container: HTMLElement, text: string) {
 }
 
 async function setComposerValue(container: HTMLElement, value: string) {
-  const textarea = container.querySelector("textarea") as HTMLTextAreaElement | null;
+  const textarea = container.querySelector(
+    "textarea",
+  ) as HTMLTextAreaElement | null;
 
   await act(async () => {
     if (!textarea) {
@@ -228,7 +237,11 @@ async function setComposerValue(container: HTMLElement, value: string) {
   });
 }
 
-async function setSelectValue(container: HTMLElement, ariaLabel: string, value: string) {
+async function setSelectValue(
+  container: HTMLElement,
+  ariaLabel: string,
+  value: string,
+) {
   const select = container.querySelector(
     `select[aria-label="${ariaLabel}"]`,
   ) as HTMLSelectElement | null;
@@ -291,7 +304,9 @@ describe("App shell", () => {
 
     expect(findText(firstView.container, "Chat")).toBeTruthy();
     expect(findText(firstView.container, "Settings")).toBeTruthy();
-    expect(window.localStorage.getItem(DESKTOP_LOCALE_STORAGE_KEY)).toBe("en-US");
+    expect(window.localStorage.getItem(DESKTOP_LOCALE_STORAGE_KEY)).toBe(
+      "en-US",
+    );
 
     await firstView.cleanup();
 
@@ -315,11 +330,17 @@ describe("App shell", () => {
     ) as HTMLButtonElement | null;
 
     expect(findText(view.container, "Team")).toBeTruthy();
-    expect(view.container.querySelector('button[aria-label="Workflow"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('button[aria-label="Workflow"]'),
+    ).toBeFalsy();
     expect(chatButton?.querySelector(".app-sidebar__nav-icon")).toBeTruthy();
-    expect(chatButton?.querySelector(".app-sidebar__nav-label")?.textContent).toContain("Chat");
+    expect(
+      chatButton?.querySelector(".app-sidebar__nav-label")?.textContent,
+    ).toContain("Chat");
     expect(teamButton?.querySelector(".app-sidebar__nav-icon")).toBeTruthy();
-    expect(teamButton?.querySelector(".app-sidebar__nav-label")?.textContent).toContain("Team");
+    expect(
+      teamButton?.querySelector(".app-sidebar__nav-label")?.textContent,
+    ).toContain("Team");
 
     await clickButton(view.container, "+");
 
@@ -335,7 +356,9 @@ describe("App shell", () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const providerCard = view.container.querySelector('[data-testid="sidebar-provider-card"]');
+    const providerCard = view.container.querySelector(
+      '[data-testid="sidebar-provider-card"]',
+    );
     const settingsButton = view.container.querySelector(
       'button[aria-label="Settings"]',
     ) as HTMLButtonElement | null;
@@ -343,10 +366,16 @@ describe("App shell", () => {
     expect(providerCard).toBeTruthy();
     expect(providerCard?.nextElementSibling).toBe(settingsButton);
     expect(findText(view.container, "Local Provider")).toBeTruthy();
-    expect(findText(view.container, "Ready for chat and team runs.")).toBeFalsy();
+    expect(
+      findText(view.container, "Ready for chat and team runs."),
+    ).toBeFalsy();
     expect(providerCard?.querySelector(".status-badge")).toBeFalsy();
-    expect(providerCard?.querySelector(".app-sidebar__provider-eyebrow")).toBeFalsy();
-    expect(providerCard?.querySelector(".app-sidebar__provider-message")).toBeFalsy();
+    expect(
+      providerCard?.querySelector(".app-sidebar__provider-eyebrow"),
+    ).toBeFalsy();
+    expect(
+      providerCard?.querySelector(".app-sidebar__provider-message"),
+    ).toBeFalsy();
   });
 
   it("deduplicates runtime status requests across shell consumers on first load", async () => {
@@ -382,7 +411,9 @@ describe("App shell", () => {
       await Promise.resolve();
     });
 
-    expect(view.container.querySelector('[data-testid="app-toast-viewport"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('[data-testid="app-toast-viewport"]'),
+    ).toBeTruthy();
     expect(findText(view.container, "Draft loaded from editor.")).toBeTruthy();
   });
 
@@ -394,12 +425,17 @@ describe("App shell", () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const providerCard = view.container.querySelector('[data-testid="sidebar-provider-card"]');
+    const providerCard = view.container.querySelector(
+      '[data-testid="sidebar-provider-card"]',
+    );
 
     expect(providerCard).toBeTruthy();
     expect(findText(view.container, "No provider configured")).toBeTruthy();
     expect(
-      findText(view.container, "Open settings to add a default OpenAI-compatible provider."),
+      findText(
+        view.container,
+        "Open settings to add a default OpenAI-compatible provider.",
+      ),
     ).toBeFalsy();
     expect(findText(view.container, "Provider required")).toBeFalsy();
     expect(findText(view.container, "Required")).toBeFalsy();
@@ -413,7 +449,11 @@ describe("App shell", () => {
       await Promise.resolve();
     });
 
-    expect(view.container.querySelector('.app-shell__page[data-active-page="settings"]')).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        '.app-shell__page[data-active-page="settings"]',
+      ),
+    ).toBeTruthy();
   });
 
   it("renders the sidebar logo as a static brand mark without button semantics", async () => {
@@ -423,15 +463,21 @@ describe("App shell", () => {
     const brand = view.container.querySelector(".app-sidebar__brand");
 
     expect(brand?.tagName).toBe("DIV");
-    expect(view.container.querySelector('button[aria-label="Open Chat"]')).toBeFalsy();
+    expect(
+      view.container.querySelector('button[aria-label="Open Chat"]'),
+    ).toBeFalsy();
   });
 
   it("keeps window chrome lightweight instead of rendering a global shell titlebar", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const titlebar = view.container.querySelector('[data-testid="app-titlebar"]');
-    const windowControls = view.container.querySelector('[data-testid="app-window-controls"]');
+    const titlebar = view.container.querySelector(
+      '[data-testid="app-titlebar"]',
+    );
+    const windowControls = view.container.querySelector(
+      '[data-testid="app-window-controls"]',
+    );
     const minimizeButton = view.container.querySelector(
       'button[aria-label="Minimize window"]',
     ) as HTMLButtonElement | null;
@@ -468,7 +514,9 @@ describe("App shell", () => {
     const dragRegion = view.container.querySelector(".app-window-drag-region");
     const sidebar = view.container.querySelector(".app-sidebar");
     const sidebarBrand = view.container.querySelector(".app-sidebar__brand");
-    const providerCard = view.container.querySelector('[data-testid="sidebar-provider-card"]');
+    const providerCard = view.container.querySelector(
+      '[data-testid="sidebar-provider-card"]',
+    );
 
     expect(dragRegion?.className).toContain("app-window-drag-region");
     expect(dragRegion?.className).toContain("app-shell__chrome-lock");
@@ -481,13 +529,46 @@ describe("App shell", () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const windowChrome = view.container.querySelector('[data-testid="app-window-chrome"]');
+    const windowChrome = view.container.querySelector(
+      '[data-testid="app-window-chrome"]',
+    );
     const dragRegion = view.container.querySelector(".app-window-drag-region");
-    const controls = view.container.querySelector('[data-testid="app-window-controls"]');
+    const controls = view.container.querySelector(
+      '[data-testid="app-window-controls"]',
+    );
 
     expect(windowChrome?.firstElementChild).toBe(dragRegion);
     expect(windowChrome?.lastElementChild).toBe(controls);
     expect(dragRegion?.hasAttribute("data-tauri-drag-region")).toBe(true);
+  });
+
+  it("reserves a chrome-safe inset inside the shared workspace", async () => {
+    const view = await renderIntoDocument(<App />);
+    cleanups.push(view.cleanup);
+
+    const workspace = view.container.querySelector(".app-shell__workspace");
+
+    expect(workspace?.className).toContain("app-shell__workspace--chrome-safe");
+  });
+
+  it("keeps the window chrome in a slim header row so the workspace keeps most of the vertical room", async () => {
+    const themeCss = readFileSync(
+      resolve(process.cwd(), "src/styles/theme.css"),
+      "utf8",
+    );
+
+    expect(themeCss).toMatch(
+      /\.app-shell\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*28px minmax\(0,\s*1fr\);/s,
+    );
+    expect(themeCss).toMatch(
+      /\.app-window-chrome\s*\{[^}]*position:\s*relative;[^}]*height:\s*28px;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.app-shell__workspace--chrome-safe\s*\{[^}]*padding-top:\s*0;/s,
+    );
+    expect(themeCss).toMatch(
+      /\.app-titlebar__button\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;/s,
+    );
   });
 
   it("starts native dragging from the drag region but not from window controls", async () => {
@@ -500,14 +581,18 @@ describe("App shell", () => {
     ) as HTMLButtonElement | null;
 
     await act(async () => {
-      dragRegion?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      dragRegion?.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+      );
       await Promise.resolve();
     });
 
     expect(appWindowControls.startDragging).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      closeButton?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      closeButton?.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+      );
       await Promise.resolve();
     });
 
@@ -528,9 +613,9 @@ describe("App shell", () => {
       'button[aria-label="Close window"]',
     ) as HTMLButtonElement | null;
 
-    expect(minimizeButton?.closest('[data-tauri-drag-region]')).toBeFalsy();
-    expect(maximizeButton?.closest('[data-tauri-drag-region]')).toBeFalsy();
-    expect(closeButton?.closest('[data-tauri-drag-region]')).toBeFalsy();
+    expect(minimizeButton?.closest("[data-tauri-drag-region]")).toBeFalsy();
+    expect(maximizeButton?.closest("[data-tauri-drag-region]")).toBeFalsy();
+    expect(closeButton?.closest("[data-tauri-drag-region]")).toBeFalsy();
   });
 
   it("shows provider-required state for AI pages before a default provider exists", async () => {
@@ -580,8 +665,12 @@ describe("App shell", () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    expect(view.container.querySelector('.app-shell__page[data-active-page="chat"]')).toBeTruthy();
-    expect(view.container.querySelector('[aria-label="Chat landing hero"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('.app-shell__page[data-active-page="chat"]'),
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('[aria-label="Chat landing hero"]'),
+    ).toBeTruthy();
     expect(findText(view.container, "Direct chat")).toBeFalsy();
     expect(findText(view.container, "Release Team Run")).toBeFalsy();
   });
@@ -590,8 +679,12 @@ describe("App shell", () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const statusStrip = view.container.querySelector('[data-testid="status-strip"]');
-    const settingsButton = view.container.querySelector('button[aria-label="Settings"]');
+    const statusStrip = view.container.querySelector(
+      '[data-testid="status-strip"]',
+    );
+    const settingsButton = view.container.querySelector(
+      'button[aria-label="Settings"]',
+    );
 
     expect(statusStrip).toBeFalsy();
 
@@ -602,15 +695,22 @@ describe("App shell", () => {
     });
 
     expect(settingsButton?.getAttribute("aria-current")).toBe("page");
-    expect(view.container.querySelector('.app-shell__page[data-active-page="settings"]')).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        '.app-shell__page[data-active-page="settings"]',
+      ),
+    ).toBeTruthy();
   });
 
   it("does not render the removed shell inspector on any page", async () => {
     const view = await renderIntoDocument(<App />);
     cleanups.push(view.cleanup);
 
-    const settingsButton = view.container.querySelector('button[aria-label="Settings"]');
-    const shellInspector = () => view.container.querySelector(".app-shell__inspector");
+    const settingsButton = view.container.querySelector(
+      'button[aria-label="Settings"]',
+    );
+    const shellInspector = () =>
+      view.container.querySelector(".app-shell__inspector");
 
     expect(shellInspector()).toBeFalsy();
 
@@ -634,7 +734,10 @@ describe("App shell", () => {
 
     await clickButton(view.container, "+");
     await clickButton(view.container, "Create team");
-    await setComposerValue(view.container, "Ship the release and publish notes");
+    await setComposerValue(
+      view.container,
+      "Ship the release and publish notes",
+    );
     await clickButton(view.container, "Send");
 
     await act(async () => {
@@ -642,13 +745,18 @@ describe("App shell", () => {
       await Promise.resolve();
     });
 
-    expect(view.container.querySelector('.app-shell__page[data-active-page="chat"]')).toBeTruthy();
+    expect(
+      view.container.querySelector('.app-shell__page[data-active-page="chat"]'),
+    ).toBeTruthy();
     expect(findText(view.container, "Release Team Run")).toBeFalsy();
     expect(findText(view.container, "Workflow Lobby")).toBeFalsy();
     expect(findText(view.container, "Workflow Room")).toBeFalsy();
     expect(invokeMock).toHaveBeenCalledWith("create_team_from_goal", {
       goal: "Ship the release and publish notes",
     });
-    expect(invokeMock).not.toHaveBeenCalledWith("start_team_run", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "start_team_run",
+      expect.anything(),
+    );
   });
 });
